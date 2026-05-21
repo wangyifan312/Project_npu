@@ -1,0 +1,41 @@
+# Local helper files
+.claude/
+.codex
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Simulator build products
+csrc/
+simv
+simv.daidir/
+ucli.key
+*.vcd
+*.fsdb
+*.log
+*.key
+
+# Simulation outputs and temporary compiled images
+sim/*.vvp
+sim/*.vcd
+sim/*.fsdb
+sim/*.log
+sim/simv_lenet
+sim/simv_lenet.daidir/
+sim/.lenet_samples.txt
+
+# Debug / EDA work dirs
+AN.DB/
+verdiLog/
+novas*/
+
+# Downloaded datasets / model artifacts (regenerable)
+datasets/cifar10/*.tar.gz
+datasets/mnist/*.gz
+datasets/mnist/*.npz
+datasets/mnist/models/
+datasets/mnist/exports/
+datasets/mnist/lenet_fixture/
+
