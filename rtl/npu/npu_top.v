@@ -1,6 +1,7 @@
-// npu_top: NPU accelerator top-level integration
+// npu_top: NPU accelerator orchestration top for the formal 6-cluster SoC baseline
 // Multi-channel Conv: temporal input-channel iteration with parallel output channels
-// 64x64 systolic array (16x16 tiles of 4x4 MAC PEs), weight-stationary
+// Current top-level execution path keeps a single-cluster compatibility-mode hookup
+// while the formal compute hierarchy is compute_core_6cluster / cluster_scheduler / output_arbiter
 `timescale 1ns / 1ps
 
 module npu_top #(
@@ -96,7 +97,10 @@ module npu_top #(
     wire [31:0] perf_cycle_lo, perf_cycle_hi;
     wire [31:0] perf_read_beats, perf_write_beats;
     wire [31:0] perf_read_active, perf_write_active;
+    wire [31:0] perf_mac_lo, perf_mac_hi;
     wire [31:0] perf_array_active, perf_array_stall;
+    wire [31:0] perf_cluster_active, perf_cluster_stall;
+    wire [31:0] perf_cluster_cfg;
 
     wire [31:0] blk_in_addr, blk_wgt_addr, blk_out_addr;
     wire [31:0] blk_in_bytes, blk_wgt_bytes, blk_out_bytes;
@@ -131,7 +135,10 @@ module npu_top #(
         .perf_cycle_lo_i(perf_cycle_lo), .perf_cycle_hi_i(perf_cycle_hi),
         .perf_read_beats_i(perf_read_beats), .perf_write_beats_i(perf_write_beats),
         .perf_read_active_i(perf_read_active), .perf_write_active_i(perf_write_active),
-        .perf_array_active_i(perf_array_active), .perf_array_stall_i(perf_array_stall)
+        .perf_mac_lo_i(perf_mac_lo), .perf_mac_hi_i(perf_mac_hi),
+        .perf_array_active_i(perf_array_active), .perf_array_stall_i(perf_array_stall),
+        .perf_cluster_active_i(perf_cluster_active), .perf_cluster_stall_i(perf_cluster_stall),
+        .perf_cluster_cfg_i(perf_cluster_cfg)
     );
 
     assign npu_busy = ctrl_busy;
@@ -344,7 +351,7 @@ module npu_top #(
     );
 
     // ============================================================
-    // Systolic array
+    // Compute core compatibility wrapper
     // ============================================================
     wire [(PE_ROWS*8)-1:0]    array_act_in;
     wire [(PE_COLS*32)-1:0]   array_sum_in;
@@ -352,15 +359,57 @@ module npu_top #(
     wire                      array_weight_ld;
     wire [(PE_COLS*32)-1:0]   array_sum_out;
     wire [(N_TILES)-1:0]      array_clk_en;
+    wire [(PE_ROWS*8)-1:0]    compat_cluster_act_in_flat;
+    wire [(PE_COLS*32)-1:0]   compat_cluster_sum_in_flat;
+    wire [(N_TILES*16*8)-1:0] compat_cluster_weight_flat;
+    wire                      compat_cluster_weight_ld;
+    wire [(N_TILES)-1:0]      compat_cluster_tile_clk_en_flat;
+    wire [(PE_COLS*32)-1:0]   compat_cluster_sum_out_flat;
+    wire                      compat_cluster_busy;
+    wire                      compat_cluster_valid;
+    wire                      compat_cluster_done;
+    wire                      compat_any_cluster_busy;
+    wire                      compat_all_enabled_done;
+    wire [5:0]                perf_cluster_enable;
+    wire [2:0]                perf_cluster_count;
+    wire                      perf_schedule_valid;
 
     assign array_sum_in = {PE_COLS{32'h0}};
     assign array_clk_en = {N_TILES{1'b1}};
+    assign compat_cluster_act_in_flat = array_act_in;
+    assign compat_cluster_sum_in_flat = array_sum_in;
+    assign compat_cluster_weight_flat = array_weight;
+    assign compat_cluster_weight_ld = array_weight_ld;
+    assign compat_cluster_tile_clk_en_flat = array_clk_en;
+    assign array_sum_out = compat_cluster_sum_out_flat;
 
-    array_top #(.TILE_ROWS(TILE_ROWS), .TILE_COLS(TILE_COLS)) u_array (
+    cluster_scheduler u_cluster_scheduler (
+        .cluster_mode(2'd0),
+        .cluster_mask_req(6'b11_1111),
+        .cluster_enable(perf_cluster_enable),
+        .cluster_count(perf_cluster_count),
+        .schedule_valid(perf_schedule_valid)
+    );
+
+    compute_core_6cluster #(
+        .CLUSTER_COUNT(1),
+        .TILE_ROWS(TILE_ROWS),
+        .TILE_COLS(TILE_COLS)
+    ) u_compute_core (
         .clk(clk), .rst_n(rst_n),
-        .act_in_flat(array_act_in), .sum_in_flat(array_sum_in),
-        .weight_flat(array_weight), .weight_ld(array_weight_ld),
-        .sum_out_flat(array_sum_out), .tile_clk_en_flat(array_clk_en)
+        .start(array_weight_ld),
+        .cluster_enable(perf_cluster_enable[0]),
+        .cluster_act_in_flat(compat_cluster_act_in_flat),
+        .cluster_sum_in_flat(compat_cluster_sum_in_flat),
+        .cluster_weight_flat(compat_cluster_weight_flat),
+        .cluster_weight_ld(compat_cluster_weight_ld),
+        .cluster_tile_clk_en_flat(compat_cluster_tile_clk_en_flat),
+        .cluster_sum_out_flat(compat_cluster_sum_out_flat),
+        .cluster_busy(compat_cluster_busy),
+        .cluster_valid(compat_cluster_valid),
+        .cluster_done(compat_cluster_done),
+        .any_cluster_busy(compat_any_cluster_busy),
+        .all_enabled_done(compat_all_enabled_done)
     );
 
     // ============================================================
@@ -373,6 +422,15 @@ module npu_top #(
     wire is_fc_mode   = (task_type == 2'd1);
     wire is_pool_mode = (task_type == 2'd2);
     wire is_conv_mode = (task_type == 2'd0);
+    wire perf_conv_array_active;
+    wire perf_conv_array_stall;
+    wire perf_fc_array_active;
+    wire perf_array_active_evt;
+    wire perf_array_stall_evt;
+    wire [63:0] perf_conv_window_count;
+    wire [63:0] perf_conv_channel_work;
+    wire [63:0] perf_conv_mac_count;
+    wire [63:0] perf_fc_mac_count;
 
     wire [15:0] pp_input_h = is_pool_mode ? blk_in_rows : input_h;
     wire [15:0] pp_input_c = is_pool_mode ? input_c : 16'd1;
@@ -383,21 +441,6 @@ module npu_top #(
         .relu_en(relu_en), .pool_en(pool_en),
         .input_w(input_w), .input_h(pp_input_h), .input_c(pp_input_c),
         .start(pp_start), .done(pp_done)
-    );
-
-    // ============================================================
-    // perf counter
-    // ============================================================
-    wire perf_freeze, perf_task_active;
-    perf_counter u_perf (
-        .clk(clk), .rst_n(rst_n), .task_active(perf_task_active), .freeze(perf_freeze),
-        .read_beat(m_axi_rvalid && m_axi_rready), .write_beat(dma_wr_valid && dma_wr_ready),
-        .read_active(act_dma_busy || wgt_dma_busy), .write_active(dma_wr_busy),
-        .array_active(cf_window_valid_i), .array_stall(cf_window_valid_i && !pp_data_ready),
-        .total_cycle_lo(perf_cycle_lo), .total_cycle_hi(perf_cycle_hi),
-        .read_beat_count(perf_read_beats), .write_beat_count(perf_write_beats),
-        .read_active_cycles(perf_read_active), .write_active_cycles(perf_write_active),
-        .array_active_cycles(perf_array_active), .array_stall_cycles(perf_array_stall)
     );
 
     // ============================================================
@@ -462,6 +505,52 @@ module npu_top #(
     reg [31:0]          fc_acc_wr_data_r;
     reg [31:0]          fc_store_addr;
     reg [31:0]          fc_store_bytes;
+
+    // ============================================================
+    // perf counter
+    // ============================================================
+    wire perf_freeze, perf_task_active;
+    assign perf_conv_array_active =
+        is_conv_mode &&
+        (fsm_state == FSM_COMPUTE) &&
+        ((comp_sub_state == CP_FEED_ACT) ||
+         (comp_sub_state == CP_DRAIN) ||
+         (comp_sub_state == CP_COLLECT));
+    assign perf_conv_array_stall =
+        is_conv_mode &&
+        (fsm_state == FSM_COMPUTE) &&
+        (comp_sub_state == CP_WAIT_WIN) &&
+        !cf_new_window &&
+        !cf_done;
+    assign perf_fc_array_active = is_fc_mode && (fsm_state == FSM_FC_COMPUTE);
+    assign perf_array_active_evt = perf_conv_array_active || perf_fc_array_active;
+    assign perf_array_stall_evt = perf_conv_array_stall;
+    assign perf_conv_window_count =
+        ((input_h >= 16'd5) && (input_w >= 16'd5)) ? ((input_h - 16'd4) * (input_w - 16'd4)) : 64'd0;
+    assign perf_conv_channel_work = input_c * output_c;
+    assign perf_conv_mac_count = perf_conv_window_count * perf_conv_channel_work * 64'd25;
+    assign perf_fc_mac_count = (input_bytes >> 2) * output_c;
+    assign perf_mac_lo = is_conv_mode ? perf_conv_mac_count[31:0] :
+                         is_fc_mode   ? perf_fc_mac_count[31:0] :
+                                        32'd0;
+    assign perf_mac_hi = is_conv_mode ? perf_conv_mac_count[63:32] :
+                         is_fc_mode   ? perf_fc_mac_count[63:32] :
+                                        32'd0;
+    assign perf_cluster_cfg = {24'd0, 2'd0, perf_cluster_enable};
+
+    perf_counter u_perf (
+        .clk(clk), .rst_n(rst_n), .task_active(perf_task_active), .freeze(perf_freeze),
+        .read_beat(m_axi_rvalid && m_axi_rready), .write_beat(dma_wr_valid && dma_wr_ready),
+        .read_active(act_dma_busy || wgt_dma_busy), .write_active(dma_wr_busy),
+        .array_active(perf_array_active_evt), .array_stall(perf_array_stall_evt),
+        .cluster_active_inc(perf_array_active_evt ? perf_cluster_count : 3'd0),
+        .cluster_stall_inc(perf_array_stall_evt ? perf_cluster_count : 3'd0),
+        .total_cycle_lo(perf_cycle_lo), .total_cycle_hi(perf_cycle_hi),
+        .read_beat_count(perf_read_beats), .write_beat_count(perf_write_beats),
+        .read_active_cycles(perf_read_active), .write_active_cycles(perf_write_active),
+        .array_active_cycles(perf_array_active), .array_stall_cycles(perf_array_stall),
+        .cluster_active_cycles(perf_cluster_active), .cluster_stall_cycles(perf_cluster_stall)
+    );
 
     function signed [7:0] sat_i32_to_i8;
         input signed [31:0] val;
@@ -558,7 +647,6 @@ module npu_top #(
         for (ai = 0; ai < PE_ROWS; ai = ai + 1) begin : act_map
             if (ai < KERNEL_SPATIAL) begin
                 wire [7:0] win_val = is_conv_mode ? cf_window[ai] : (is_fc_mode ? cf_act_data : 8'd0);
-                // Conv: drive during FEED_ACT/DRAIN. Once results are captured, COLLECT only writes back.
                 wire conv_act_drive = (comp_sub_state == CP_FEED_ACT) || (comp_sub_state == CP_DRAIN);
                 assign array_act_in[ai*8 +: 8] = is_conv_mode ?
                     (conv_act_drive ? (act_feed_en && comp_feed_cnt == ai ? cf_window[ai] : act_held[ai]) : 8'd0) :

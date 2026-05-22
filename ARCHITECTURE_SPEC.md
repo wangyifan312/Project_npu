@@ -1,542 +1,259 @@
-# CPU+NPU 异构处理器架构规格说明
+# CPU+NPU SoC Architecture Specification
 
-本文件作为后续 RTL 设计、验证和设计文档的统一基线。
+本文件定义本轮重构后的统一架构基线，用于约束 RTL、testbench、数据导出脚本和验收口径。
 
-配套架构框图见 [cpu_npu_architecture.png](/root/Project_npu/cpu_npu_architecture.png)。
+配套说明见 [docs/SOC_6CLUSTER_ARCHITECTURE.md](/root/Project_npu/docs/SOC_6CLUSTER_ARCHITECTURE.md)。
 
-## 1. 设计目标
+## 1. 目标与边界
 
-- 面向赛题三的 `CPU + NPU` 异构处理器实现。
-- `CPU` 负责任务配置与控制，`NPU` 负责数据搬运与计算。
-- 支持 `AXI-Lite` 控制通路和 `AXI4 burst` 数据通路。
-- 以 `LeNet-style` 推理链路为应用背景，但硬件能力按固定子集收敛。
-- 首版优先完成可验证、可扩展、适合 RTL 闭环的实现。
+- 目标平台：`PicoRV32 + NPU + shared memory` 的 `CPU+NPU SoC`
+- 目标网络：`LeNet(MNIST)`，用于驱动本轮 SoC、真实权重和性能闭环
+- 控制面：`AXI-Lite`
+- 数据面：`AXI4 burst`
+- 本轮 SoC 级验证方式：`top` 层 + testbench `AXI-Lite master` + shared memory preload
+- 本轮不要求先由 PicoRV32 固件驱动完整 LeNet
 
-## 2. 顶层架构
+本文件描述的是**本轮固定目标架构**，不是旧实现状态说明。
 
-### 2.1 系统组成
+## 2. 固定目标规格
 
-- `PicoRV32 CPU`
-- `NPU` 加速器
-- `AXI-Lite` 控制接口
-- `AXI4` 共享总线
-- `系统主存 / Data RAM`
+### 2.1 Compute Target
 
-### 2.2 角色划分
+- 计算阵列采用 `6-cluster` 动态可调脉动阵列
+- 每个 cluster = `16x16 PE`
+- 每个 PE 每周期执行 `1 x INT8 MAC`
+- 基础复用单元为 `4x4 tile`
+- 总 PE 数：`6 x 16 x 16 = 1536`
+- 峰值算力：`1536 x 2 x 200MHz = 0.6144 TOPS`
+- 本轮正式目标口径固定为以上 `6-cluster / 1536 PE / 0.6144 TOPS`，不再沿用旧阵列目标说法
 
-- `CPU`
-  - 配置任务参数
-  - 启动 NPU
-  - 轮询 `busy/done/error`
-  - 读取结果区和性能计数器
-- `NPU`
-  - 执行参数检查
-  - 自主搬运激活和权重
-  - 完成卷积、全连接、池化相关计算
-  - 将结果写回主存
+### 2.2 Cluster Modes
 
-### 2.3 总线接口
+- `single-cluster mode`
+- `dual-cluster mode`
+- `six-cluster full mode`
+- `cluster_enable[5:0]` 为正式架构接口
 
-- `CPU -> NPU`：`AXI-Lite`
-- `NPU -> 主存`：`AXI4 master`
-- 系统主设备：
-  - `CPU`
-  - `NPU(内部 DMA)`
+### 2.3 SoC Memory Target
 
-## 3. NPU 外部抽象
+- `top/shared_ram` 不再允许停留在旧 `64KB` 小容量模型
+- 默认共享内存窗口必须覆盖当前 LeNet 地址图
+- 当前基线要求默认可寻址窗口至少覆盖 `0x0000_0000 ~ 0x000F_FFFF`，即 `1MB`
+- CPU 与 NPU DMA 必须继续访问同一份 shared memory 语义
 
-对 CPU 而言，NPU 是一个“一次执行一条任务”的设备。
+## 3. 顶层角色划分
 
-CPU 只负责：
+### 3.1 SoC Top
 
-1. 写统一寄存器区
-2. 写 `start=1`
-3. 轮询状态
-4. 读取结果和统计数据
+`rtl/soc/top.v` 负责：
 
-CPU 不感知以下内部细节：
+- `PicoRV32`
+- `axi_interconnect`
+- `shared_ram`
+- `npu_top`
+- CPU/NPU 对同一内存空间的协同语义
 
-- 双缓冲 `bank A/B`
-- block 分块执行
-- DMA 预取阶段
-- bank 切换
-- 内部流水调度
+### 3.2 NPU Top
 
-## 4. NPU 内部模块划分
+`npu_top` 是任务编排与数据流统筹层，不再直接承载过多 cluster 级组织细节。
 
-### 4.1 主控制与状态
+保留并继续作为正式主路径的模块：
 
 - `npu_ctrl`
-  - 任务接受
-  - 参数锁存
-  - 内部初始化
-  - block 调度
-  - bank 切换
-  - 完成和异常处理
 - `task_checker`
-  - 参数与地址合法性检查
-- `status_error_regs`
-  - `busy/done/error/error_code`
-
-### 4.2 内部 DMA
-
-- `dma_read_path`
-  - `act_read_path`
-  - `weight_read_path`
-- `dma_write_path`
-
-约束如下：
-
-- `act_read_path` 和 `weight_read_path` 内部逻辑分开
-- 对外共享一个 `AXI4` 读主口
-- 不做复杂动态仲裁
-- 由主状态机按固定阶段调度读激活或读权重
-- 写回路径独立，对外走 AXI4 写通道
-
-### 4.3 本地存储
-
-三块独立私有 buffer，每块采用双缓冲（bank A / bank B）：
-
-| Buffer | 单 Bank 大小 | 双缓冲总计 | 数据宽度 | 典型容纳 |
-|--------|-------------|-----------|----------|----------|
-| `act buffer` | 16 KB | 32 KB | 4B (32-bit, v1) / 64B (512-bit, future) | 20×20×32 激活 (INT8) |
-| `weight buffer` | 32 KB | 64 KB | 4B (32-bit, v1) / 64B (512-bit, future) | 5×5×32×64 权重 (INT8) |
-| `acc/output buffer` | 16 KB | 32 KB | 4B (32-bit, v1) / 256B (2048-bit, future) | 16×16×16 输出 (INT32) |
-
-共同特征：
-
-- CPU 不可直接访问
-- 由 NPU 内部维护 bank 状态
-- **当前版本 (v1)**: act/weight/acc buffer 统一使用 32-bit 位宽 (`BUF_DATA_W=32`)，为功能模型。
-- **未来版本**: act buffer 和 weight buffer 位宽对齐 AXI4 单 beat (64B = 512-bit)；acc buffer 位宽匹配 64 个 MAC 并行输出 (64 × 32-bit = 2048-bit)
-
-双缓冲目的：
-
-- 支持 `load / compute / store` 三段流水重叠
-- 一个 bank 被计算模块使用时，另一个 bank 可被 DMA 填充/排空
-
-### 4.4 输入前端
-
+- `block_scheduler`
+- `act_read_path`
+- `weight_read_path`
+- `dma_axi_writer`
+- `npu_buffer`
 - `conv_frontend`
-  - 固定支持 `5x5 / stride=1 / valid`
-  - 负责卷积窗口生成和数据整理
-- `fc_frontend`
-  - 负责向量/矩阵整理
-
-### 4.5 计算与后处理
-
-- `array_top`
-  - 共用主乘加阵列
-  - `Conv` 和 `FC` 共用
+- `fc_frontend` 或等价 FC 前端/执行流
 - `postproc`
-  - `ReLU`
-  - `2x2 MaxPool(optional), stride=2`
-
-### 4.6 观测与统计
-
 - `perf_counter`
-  - 周期统计
-  - 带宽统计
-  - 阵列利用率统计
 
-## 5. 阵列结构与低功耗
+Cluster 级结构必须下沉到新的 compute hierarchy。
 
-### 5.1 阵列规模
+## 4. Compute Hierarchy
 
-- 基础计算单元：`4x4 tile`
-- 顶层目标规模：`64x64`
-- 组织方式：`16 x 16` 个 `4x4 tile`
+### 4.1 `cluster_16x16`
 
-### 5.2 低功耗策略
+职责：
 
-- 首版重点实现阵列时钟门控
-- 门控粒度：每个 `4x4 tile`
-- 当前任务不参与计算的 tile 可以关时钟
+- 封装单个 `16x16 PE` cluster
+- 内部复用现有 `array_top` / `4x4 tile` 资产
+- 提供 cluster 级 enable / busy / valid / done / result 接口
+- 支持独立 clock gate 语义
 
-不纳入首版主线：
+### 4.2 `compute_core_6cluster`
 
-- DFS
-- 复杂电源域
-- DMA/控制器细粒度门控
+职责：
+
+- 真正例化 `6` 个 `cluster_16x16`
+- 暴露统一 compute 接口
+- 暴露 `cluster_enable[5:0]`
+- 汇出 cluster busy / valid / done / result
+
+### 4.3 `cluster_scheduler`
+
+职责：
+
+- 根据任务规模、模式和 cluster mask 进行 cluster 分配
+- 至少支持 `1 / 2 / 6 cluster` 模式
+- 输出 cluster 使能与调度决策
+
+### 4.4 `output_arbiter`
+
+职责：
+
+- 汇聚 6 个 cluster 的输出
+- 约束写回顺序和 channel/block 映射
+- 不允许 cluster 输出覆盖、错位或乱序
+
+## 5. 数据类型与算子语义
+
+- activation：`INT8`
+- weight：`INT8`
+- accumulate：`INT32`
+- 输出写回：`INT32`
+
+固定支持：
+
+- `Conv`: `5x5`, `stride=1`, `valid`, `no bias`
+- `Pool`: `2x2 MaxPool`, `stride=2`
+- `ReLU`: `INT32` 域
+- `FC`: 共用 6-cluster compute hierarchy，不允许再按“未支持”处理
+
+FC 规则固定为：
+
+- 输入来自 `INT32` feature/vector
+- 进入共享阵列前执行 `INT32 -> saturating INT8`
+- 饱和区间 `[-128, 127]`
 
 ## 6. 任务模型
 
-### 6.1 一次启动的语义
-
 - 一次 `start` 只执行一条任务
-- `busy=1` 时再次 `start`：
-  - 不接受新任务
-  - 置 `error`
-  - 写对应 `error_code`
+- `busy=1` 时重复 `start` 必须报错
+- 参数检查必须先于 DMA / compute 放行
+- `block_scheduler` 必须真实驱动数据路径，而不是只保留框架
+- `done=1` 只能在数值路径、后处理、写回和性能冻结全部完成后拉起
 
-### 6.2 支持的任务类型
+## 7. 共享内存与地址图
 
-首版支持：
+### 7.1 LeNet Default Address Map
 
-- `Conv`
-- `FC`
-- `Pool`
+| Region | Base |
+|--------|------|
+| Input image | `0x0000_0100` |
+| Conv1 weights | `0x0000_1000` |
+| Conv1 output / Pool1 input | `0x0000_4000` |
+| Pool1 output / Conv2 input | `0x0001_8000` |
+| Conv2 weights | `0x0002_0000` |
+| Conv2 output / Pool2 input | `0x0006_0000` |
+| Pool2 output / FC1 input | `0x0008_0000` |
+| FC1 weights | `0x0009_0000` |
+| FC1 output / FC2 input | `0x000F_2000` |
+| FC2 weights | `0x000F_3000` |
+| Final logits | `0x000F_5000` |
 
-说明：
+### 7.2 Alignment Rules
 
-- `Conv` 和 `FC` 共用同一套主阵列
-- `Pool` 也可作为输出后处理开关存在
+- 所有 base address 必须满足 `64B` 对齐
+- `task_checker` 的合法地址窗口必须与 `top/shared_ram` 实际容量保持一致
 
-### 6.3 任务内部执行方式
+## 8. 验证层级
 
-- CPU 提交任务全局参数
-- NPU 内部自行拆成多个 `block`
-- CPU 不参与 block 级控制
+### 8.1 NPU 子系统级
 
-## 7. 数据精度与输出格式
+`npu_top + axi4_ram` 用于：
 
-- `activation = INT8`
-- `weight = INT8`
-- `accumulate = INT32`
-- 首版输出写回主存格式：`INT32`
+- 大容量特征图 / 权重回归
+- deterministic fixture
+- 层级与网络级数值对拍
 
-这样满足：
+### 8.2 SoC 顶层级
 
-- 主计算按 `INT8 x INT8 -> INT32` 口径实现
-- 首版结果保留 `INT32` 便于调试和验证
+`top` 用于：
 
-## 8. 算子能力边界
+- CPU/NPU/共享内存统一语义
+- AXI-Lite 控制面驱动
+- shared memory preload
+- NPU 执行与结果回读闭环
 
-### 8.1 Conv
+本轮默认 SoC 级方法：
 
-首版固定支持：
-
-- `kernel = 5x5`
-- `stride = 1`
-- `padding = valid`
-
-不支持：
-
-- 任意核大小
-- 任意 stride
-- 任意 padding
-
-### 8.2 FC
-
-当前版本支持 `FC` 任务，且已经完成功能级验证。
-
-- 使用同一套主乘加阵列
-- 不设计专用 FC 阵列
-- 当前功能路径由 `npu_top` 内部 FC 执行流承担
-- 输入在进入主阵列前执行 `INT32 -> saturating INT8`
-- `fc_frontend` 模块仍保留在代码中，但不是当前功能验证主路径
-
-当前已验证范围：
-
-- `4 -> 2`
-- `800 -> 500`
-- `500 -> 10`
-
-当前说明：
-
-- 这是一条“最小可验证”的 FC 路径，后续仍可重构为更贴近初始架构规划的前端形式
-
-### 8.3 Pool
-
-首版固定支持：
-
-- `2x2 MaxPool`
-- `stride = 2`
-
-不支持：
-
-- Average Pool
-- 通用窗口
-- 通用 stride
-
-### 8.4 Bias
-
-- 首版不支持 `bias`
-- 测试参数约束为仅提供 `weight`
-
-## 9. 后处理链
-
-固定顺序如下：
-
-1. `MAC accumulate`
-2. `ReLU`
-3. `Pool(optional)`
-4. `writeback`
+1. testbench 预加载 input / weight 到 shared memory
+2. testbench 通过 AXI-Lite master 模拟 CPU 配置寄存器
+3. 启动 NPU 执行
+4. 从同一份 shared memory 回读结果
 
 说明：
 
-- `ReLU` 工作在 `INT32` 域
-- `Pool` 基于 `INT32` 数据工作
-- 阵列结果先进入 `acc/output buffer`
-- 后处理也通过 `acc/output buffer` 衔接
+- “完整 LeNet 已跑通”只有在对应层级的严格测试通过时才成立
+- 旧结论“LeNet 仅在 `npu_top + axi4_ram` 子系统跑通”不能再被误写成 SoC 顶层已完成
+- SoC 顶层当前的性能模式验证重点是 shared memory / AXI-Lite / 地址图 / 性能寄存器链路闭环
+- 当前 `tb_top / tb_top_lenet` 仍主要工作在 `single-cluster compatibility mode`，对应 `cluster_cfg = 0x01`
 
-## 10. 双缓冲与 bank 机制
+## 9. LeNet 当前闭环要求
 
-### 10.1 双缓冲目的
+本轮必须同时保留两条验证链：
 
-支持三段流水重叠：
+- deterministic fixture：快速 smoke / regression
+- 真实训练权重 + 真实 MNIST 样本：正式网络级验收
 
-- `load`
-- `compute`
-- `store`
+真实 LeNet 闭环优先级高于“只做 deterministic fixture”。
 
-### 10.2 bank 状态
+## 10. 性能统计要求
 
-每个 bank 至少要支持以下逻辑状态：
+至少保留并可导出：
 
-- `empty`
-- `loading`
-- `ready`
-- `using`
-- `done`
+- `mac_count`
+- `cycle_count`
+- `axi_read_beats`
+- `axi_write_beats`
+- `axi_read_active_cycles`
+- `axi_write_active_cycles`
+- `array_active_cycles`
+- `array_stall_cycles`
+- `cluster_active_cycles`
+- `cluster_stall_cycles`
+- `cluster_enable_mask`
+- `cluster_mode`
 
-### 10.3 bank 控制原则
+派生指标至少包括：
 
-- CPU 完全不感知 bank
-- DMA 不决定 bank 策略
-- `NPU 主控制器` 统一决定：
-  - 当前使用哪个 bank
-  - 下一批数据装到哪个 bank
-  - 何时切换 bank
+- 理论峰值对比
+- `read_bw_util`
+- `write_bw_util`
+- `array_util`
+- 不同 cluster 模式性能对比
 
-## 11. DMA 数据流
+当前验证口径需要明确区分：
 
-### 11.1 主存侧数据
+- compute-core / cluster-level：已通过 `tb_cluster_perf_modes` 覆盖 `single / dual / six-cluster full / dynamic mask`
+- SoC top-level：已通过 `tb_top / tb_top_lenet` 覆盖性能寄存器读出与 LeNet 闭环，但当前 cluster 模式仍以 `single-cluster compatibility mode` 为主
 
-CPU 配置的地址全部是主存地址：
+## 11. 不回退约束
 
-- `input_addr`
-- `weight_addr`
-- `output_addr`
+以下项目视为强制门槛，不再是“后续待修”：
 
-CPU 还需配置字节数：
+- 参数检查先于执行启动
+- `block_scheduler` 已接入真实主数据路径
+- `AXI-Lite interconnect` 事务目标锁存安全
+- CPU/NPU 共享同一份内存语义
+- Conv / Pool / ReLU / FC 不允许以“结构已接通”替代功能验收
 
-- `input_bytes`
-- `weight_bytes`
-- `output_bytes`
+## 12. 完成判定
 
-### 11.2 搬运路径
+以下任一项都不能单独视为完成：
 
-单条任务数据流：
+- `framework exists`
+- `structure complete`
+- `done=1`
+- `output non-x`
 
-1. 主存 -> `act buffer`
-2. 主存 -> `weight buffer`
-3. `conv_frontend` 或 `fc_frontend`
-4. `array_top`
-5. `acc/output buffer`
-6. `ReLU`
-7. `Pool(optional)`
-8. `dma_write_path`
-9. 主存结果区
+完成必须同时满足：
 
-### 11.3 搬运能力
-
-- 首版仅支持连续块搬运
-- 不支持二维 stride 搬运
-- 不支持 scatter-gather
-
-## 12. 寄存器模型
-
-### 12.1 统一寄存器区
-
-采用统一寄存器区，由 `task_type` 决定字段解释方式。
-
-统一寄存器区至少应包含：
-
-- `task_type`
-- `input_addr`
-- `weight_addr`
-- `output_addr`
-- `input_bytes`
-- `weight_bytes`
-- `output_bytes`
-- 尺寸参数字段
-- `relu_en`
-- `pool_en`
-- `start`
-- `busy`
-- `done`
-- `error`
-- `error_code`
-- 性能计数器寄存器
-
-### 12.2 task_type
-
-`task_type` 用于声明本次任务类型，例如：
-
-- `Conv`
-- `FC`
-- `Pool`
-
-### 12.3 start
-
-- `start` 为一次性启动位
-- CPU 写 `1` 发起任务
-- 硬件自动清零
-
-### 12.4 busy 期间寄存器访问规则
-
-`busy=1` 时：
-
-- 允许读状态寄存器
-- 允许读性能计数器
-- 不允许改写当前任务相关寄存器
-- 若改写，置 `error` 和对应 `error_code`
-
-## 13. 启动顺序
-
-固定流程如下：
-
-1. CPU 写好寄存器
-2. CPU 写 `start=1`
-3. NPU 做参数合法性检查
-4. 锁存本次任务参数
-5. 初始化内部状态
-6. 进入正式执行
-
-参数一旦锁存：
-
-- 当前任务执行期间不再受 CPU 后续写寄存器影响
-
-## 14. 参数与地址检查
-
-### 14.1 必查项
-
-- `task_type` 合法
-- 字节数非零
-- 地址非空
-- 地址对齐
-- 地址位于合法数据区
-- `addr + bytes` 不越界
-
-### 14.2 算子约束检查
-
-- `Conv` 必须满足 `5x5 / stride=1 / valid`
-- `Pool` 必须满足 `2x2 / stride=2`
-- 任务尺寸关系必须合法
-
-### 14.3 失败处理
-
-- 不进入正式执行
-- 直接置 `error`
-- 写 `error_code`
-
-## 15. 性能统计
-
-### 15.1 统计窗口
-
-保留两种口径：
-
-- 总任务周期
-  - 从任务被接受并通过检查开始
-  - 到 `done=1` 结束
-- DMA/带宽统计窗口
-  - 只统计读写通道真实活跃阶段
-
-### 15.2 最少统计项
-
-- `total_cycle`
-- `read_beat_count`
-- `write_beat_count`
-- `read_active_cycle`
-- `write_active_cycle`
-- `array_active_cycle`
-- `array_stall_cycle`
-
-### 15.3 利用率定义
-
-- `read_bw_util = read_beat_count / read_active_cycle`
-- `write_bw_util = write_beat_count / write_active_cycle`
-- `array_util = array_active_cycle / (array_active_cycle + array_stall_cycle)`
-
-### 15.4 done 与计数器关系
-
-只有在以下条件都满足后，才置 `done=1`：
-
-- 读写完成
-- 计算完成
-- 后处理完成
-- 写回完成
-- 性能计数器冻结完成
-
-## 16. 错误处理
-
-### 16.1 必须区分的错误类型
-
-- 参数非法
-- 地址非法
-- 地址越界
-- DMA 读错误
-- DMA 写错误
-- `busy` 状态重复启动
-- `busy` 状态改写寄存器
-- 内部状态机错误
-
-### 16.2 错误行为
-
-任务执行中出错时：
-
-- 立即停止任务
-- 置 `error`
-- 不置 `done`
-- 性能计数器保留当前值并冻结
-
-## 17. 软件与网络适配边界
-
-### 17.1 软件职责
-
-软件仅负责：
-
-- 准备主存中的输入和权重
-- 配置寄存器
-- 启动任务
-- 轮询状态
-- 读取结果和计数器
-
-### 17.2 首版网络约束
-
-首版面向 `LeNet-style`，但硬件能力固定为：
-
-- `Conv`: `5x5 / stride=1 / valid`
-- `FC`: 共用阵列
-- `Pool`: `2x2 maxpool / stride=2`
-- 无 `bias`
-
-补充说明：
-
-- 当前完整 `LeNet(MNIST)` 回归已经在 `npu_top + axi4_ram` 子系统级验证通过
-- SoC 顶层 `top` 仍主要用于 CPU/NPU/共享内存语义与控制流验证
-- `top` 默认实例化的 `shared_ram` 容量为 `64KB`
-- 因此当前“完整 LeNet 跑通”的结论默认指 **NPU 子系统级**，不等同于 SoC 顶层已在相同地址图下完成整网运行
-
-## 18. 建议 RTL 实现顺序
-
-建议按以下顺序推进：
-
-1. `寄存器 + start/busy/done/error`
-2. `task_checker`
-3. `DMA 连续块搬运`
-4. `三块 buffer + 双缓冲 + bank 状态`
-5. `block 调度`
-6. `Conv/FC 前端`
-7. `共用主阵列`
-8. `ReLU + Pool`
-9. `写回路径`
-10. `性能计数器和错误路径`
-
-## 19. 当前已锁定的关键结论
-
-- CPU 核：`PicoRV32`
-- 控制面：`AXI-Lite`
-- 数据面：`NPU 内部 DMA + AXI4 burst`
-- NPU 一次执行一条任务
-- 内部可自动分 block
-- `Conv/FC` 共用阵列
-- `Pool` 固定为 `2x2 maxpool`
-- `bias` 首版不支持
-- 三块独立双缓冲私有 buffer
-- `load/compute/store` 尽量流水重叠
-- `4x4 tile` 级时钟门控
-- 顶层目标阵列规模：`64x64`
-- 当前完整 `LeNet(MNIST)` 回归已在 `npu_top` 子系统级跑通
-- SoC 顶层 `top` 默认 `shared_ram` 仍为 `64KB` 功能模型
+1. 严格 testbench PASS
+2. 输出数值与 golden/reference 一致
+3. 相关回归未破坏
+4. 文档、RTL、testbench 口径一致

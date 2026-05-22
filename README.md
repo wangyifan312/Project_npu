@@ -1,101 +1,80 @@
 # Project_npu
 
-`Project_npu` 是一个面向比赛场景构建的 `CPU + NPU` 异构处理器 RTL 仓库。  
-当前仓库已经具备：
+`Project_npu` 是一个面向赛题三的 `CPU + NPU` 异构处理器 RTL 仓库。本轮工作目标不是继续维护旧的阵列原型口径，而是正式切换到 `6-cluster` SoC 基线，并补齐 SoC、真实权重与性能闭环。
 
-- `PicoRV32 + NPU + shared memory` 的基础 SoC 架构
-- `AXI-Lite` 控制面
-- `AXI4 burst` 数据面
-- `Conv / Pool / ReLU / FC` 的 NPU 子系统级功能验证
-- 基于 `MNIST` 的 `LeNet(MNIST)` 逐层黄金对拍流程
+## 本轮固定目标
 
-## 当前状态
+- `6-cluster` 动态可调脉动阵列
+- 每个 cluster = `16x16 PE`
+- 总计 `1536 PE`
+- `200MHz` 理论峰值 `0.6144 TOPS`
+- `top` 层 shared memory 默认覆盖完整 LeNet 地址图
+- SoC 级验证采用 testbench `AXI-Lite master` + shared memory preload 模拟 CPU 软件行为
+- FC 必须在新 compute hierarchy 下重新完成功能验收
 
-### 已完成
+## 当前仓库基线
 
-- 原始架构收敛任务 `Tasks 1-9`
-- LeNet 扩展任务：
-  - Task 1: 网络规格与数据导出链
-  - Task 2: 多通道 Conv
-  - Task 3: Pool / ReLU 集成
-  - Task 4: FC 路径
-  - Task 5: 网络级 LeNet testbench
-  - Task 6: 黄金模型 / fixture / 逐层对拍
+已完成且本轮不得回退：
 
-### 需要明确的边界
+- 原始 `Tasks 1-9`
+- 多通道 `Conv`
+- `Pool / ReLU`
+- FC 基本功能路径
+- `LeNet` 层级对拍与 deterministic fixture 流程
+- `npu_top + axi4_ram` 子系统级网络回归资产
 
-- 当前“完整 LeNet 跑通”的结论针对 **`npu_top + axi4_ram` 子系统级**
-- `rtl/soc/top.v` 默认 `shared_ram` 容量为 `64KB`
-- 因此，当前并不等同于 “SoC 顶层 `top` 已按完整 LeNet 地址图跑通”
-- 当前 LeNet fixture 使用的是 **确定性构造权重**，主要用于 RTL 功能验证，不代表真实分类准确率
+需要明确的是：
 
-## 顶层架构
+- 旧版“完整 LeNet 跑通”主要指 `npu_top + axi4_ram` 子系统级闭环
+- 本轮目标是把完整地址图、shared memory 语义、AXI-Lite 驱动流程推进到 `top` 层
+- 本轮默认不要求先写 PicoRV32 固件来驱动完整 LeNet
 
-系统主结构如下：
+## 架构摘要
 
-- `rtl/soc/top.v`
-  - `PicoRV32`
-  - `axi_interconnect`
-  - `shared_ram`
-  - `npu_top`
+- SoC 顶层：`rtl/soc/top.v`
+- NPU 编排层：`rtl/npu/npu_top.v`
+- 新 compute hierarchy：
+  - `rtl/npu/cluster_16x16.v`
+  - `rtl/npu/compute_core_6cluster.v`
+  - `rtl/npu/cluster_scheduler.v`
+  - `rtl/npu/output_arbiter.v`
 
-角色分工：
+详细基线见：
 
-- CPU：配置寄存器、启动任务、读取状态
-- NPU：DMA 搬运、块调度、算子执行、结果写回
-- Shared memory：CPU 与 NPU DMA 共享主存
-
-## NPU 结构
-
-主要模块位于 `rtl/npu/`：
-
-- `npu_ctrl`：寄存器、任务生命周期、性能计数器映射
-- `task_checker`：地址/对齐/参数检查
-- `block_scheduler`：Conv / Pool / FC 分块
-- `conv_frontend`：卷积窗口生成
-- `postproc`：`ReLU + 2x2 MaxPool`
-- `act_read_path / weight_read_path / dma_axi_writer`：DMA 读写
-- `npu_buffer`：本地 buffer / bank 状态
-- `npu_top`：主状态机与算子执行流
-
-## 当前支持的算子语义
-
-- `Conv`
-  - `5x5`
-  - `stride=1`
-  - `valid`
-  - `INT8 x INT8 -> INT32`
-  - 支持多输入通道、多输出通道、multi-block
-- `Pool`
-  - `2x2 MaxPool`
-  - `stride=2`
-  - `INT32` 域
-- `ReLU`
-  - `INT32` 域
-- `FC`
-  - 共用主阵列
-  - 输入先做 `INT32 -> saturating INT8`
-  - 已验证 `4->2`、`800->500`、`500->10`
-
-不支持：
-
-- bias
-- Average Pool
-- 通用 kernel / stride / padding
-
-## LeNet(MNIST) 目标网络
-
-当前固定网络规格见：
-
+- [ARCHITECTURE_SPEC.md](ARCHITECTURE_SPEC.md)
+- [docs/SOC_6CLUSTER_ARCHITECTURE.md](docs/SOC_6CLUSTER_ARCHITECTURE.md)
 - [docs/LENET_MNIST_SPEC.md](docs/LENET_MNIST_SPEC.md)
+- [docs/RTL_DEBUG_PLAYBOOK.md](docs/RTL_DEBUG_PLAYBOOK.md)
 
-目标网络为：
+## 目标网络
+
+固定网络为：
 
 `Input(28x28x1) -> Conv1(20, 5x5, valid) -> Pool1(2x2 max, s=2) -> Conv2(50, 5x5, valid) -> Pool2(2x2 max, s=2) -> Flatten(800) -> FC1(500) -> ReLU -> FC2(10) -> Argmax`
 
-当前完整网络 testbench 位于：
+固定规则：
 
-- `tb/integration/tb_lenet_network.v`
+- feature map layout：`HWC`
+- conv weight layout：`[in_c][k_h][k_w][out_c]`，每个 `in_c` chunk 做 32-bit 对齐
+- fc weight layout：`[out_neuron][in_neuron]`
+- FC 输入：`INT32 -> saturating INT8`
+
+## 验证层级
+
+- `npu_top + axi4_ram`
+  - 大容量 deterministic fixture
+  - 层级/网络级黄金对拍
+  - compute-core / cluster-level 性能模式覆盖由 `tb_cluster_perf_modes` 提供，已覆盖 `single / dual / full / dynamic mask`
+- `top`
+  - CPU/NPU/shared memory 协同
+  - AXI-Lite 配置与状态回读
+  - 完整 LeNet 地址图闭环
+  - 当前 SoC 顶层性能验证仍主要是 `single-cluster compatibility mode`
+
+本轮最终要求同时保留：
+
+- deterministic fixture 快速回归
+- 真实训练权重 + 真实 MNIST 小批量回归
 
 ## 仓库结构
 
@@ -103,12 +82,12 @@
 rtl/
   bus/        AXI 互连
   cpu/        PicoRV32
-  npu/        NPU 主体
-  soc/        SoC 顶层与 memory model
+  npu/        NPU 主体与 compute hierarchy
+  soc/        SoC 顶层与 shared memory
 
 tb/
   unit/       单元测试
-  integration/集成测试 / LeNet 网络测试
+  integration/集成测试与网络级测试
 
 sim/
   run_sim.sh
@@ -116,93 +95,40 @@ sim/
 
 datasets/
   mnist/
-  cifar10/
   scripts/
 
 docs/
-  架构、任务单、LeNet 规格、调试规范
+  架构、LeNet 规格、调试规则
 ```
 
-## 常用仿真入口
+## 常用入口
 
-### 1. 基础回归
+基础回归：
 
 ```bash
 bash sim/run_sim.sh all
 ```
 
-也可以单独运行：
-
-```bash
-bash sim/run_sim.sh tb_npu_top
-bash sim/run_sim.sh tb_task1
-bash sim/run_sim.sh tb_task2
-bash sim/run_sim.sh tb_task3
-bash sim/run_sim.sh tb_task6
-bash sim/run_sim.sh tb_checker
-```
-
-### 2. LeNet fixture 测试
-
-先编译：
+LeNet fixture：
 
 ```bash
 bash sim/run_lenet_fixture.sh compile
-```
-
-单样本：
-
-```bash
 SIMULATOR=vcs bash sim/run_lenet_fixture.sh sample
-```
-
-8 样本：
-
-```bash
 SIMULATOR=vcs PROGRESS=0 bash sim/run_lenet_fixture.sh all
 ```
 
 说明：
 
-- `vcs` 是当前完整 LeNet 回归的主推荐后端
-- `iverilog/vvp` 也可用于较小测试，但完整网络更慢
+- deterministic fixture 继续作为快速 smoke/regression 路径
+- 真实权重流会单独补充导出脚本与回归入口
 
-## 数据与 fixture
+## 完成标准
 
-当前数据相关脚本位于：
+以下都不算完成：
 
-- `datasets/scripts/export_mnist_samples.py`
-- `datasets/scripts/pack_bytes_to_memh.py`
-- `datasets/scripts/generate_lenet_fixture.py`
+- `done=1`
+- 输出非 `x`
+- framework exists
+- structure complete
 
-这些脚本用于：
-
-- 导出 MNIST 样本
-- 打包 `memh`
-- 生成 LeNet 权重/中间层黄金值 fixture
-
-默认情况下，大体积数据和可再生成产物不会纳入 git：
-
-- 下载的数据集原始包
-- `mnist.npz`
-- 生成的 `exports/`
-- 生成的 `lenet_fixture/`
-- 下载的外部模型文件
-
-## 关键文档
-
-- [ARCHITECTURE_SPEC.md](ARCHITECTURE_SPEC.md)
-- [CLAUDE.md](CLAUDE.md)
-- [docs/LENET_MNIST_SPEC.md](docs/LENET_MNIST_SPEC.md)
-- [docs/LENET_MNIST_IMPLEMENTATION_TASKS.md](docs/LENET_MNIST_IMPLEMENTATION_TASKS.md)
-- [docs/RTL_DEBUG_PLAYBOOK.md](docs/RTL_DEBUG_PLAYBOOK.md)
-
-## 当前建议
-
-如果后续继续推进，建议优先级是：
-
-1. 导入真实训练得到的 LeNet 权重
-2. 将 `.pt`/其他模型源转换成当前 RTL 使用的 `memh/bin`
-3. 在现有整网 testbench 上跑真实 MNIST 准确率测试
-4. 再考虑把完整网络运行能力下沉到 `top` 层，而不是只停留在 `npu_top` 子系统层
-
+完成必须以严格测试与数值对拍为准，并且不能破坏既有回归。

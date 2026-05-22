@@ -213,10 +213,10 @@ module conv_frontend #(
     wire [AW:0] c0_byte, c1_byte, c2_byte, c3_byte, c4_byte;
 
     // Each column advance adds input_c bytes (stride between consecutive HWC positions)
-    assign row_bytes_per_col = {AW{1'b0}} | {5'd0, input_c};
+    assign row_bytes_per_col = {6'd0, input_c};
 
     // Byte address for window top-left corner channel
-    wire [AW:0] base_byte = {AW{1'b0}} | ({5'd0, curr_col} * row_bytes_per_col) | {6'd0, channel_sel};
+    wire [AW:0] base_byte = ({5'd0, curr_col} * row_bytes_per_col) + {6'd0, channel_sel};
     assign c0_byte = base_byte;
     assign c1_byte = base_byte + row_bytes_per_col;
     assign c2_byte = base_byte + (row_bytes_per_col << 1);

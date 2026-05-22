@@ -68,8 +68,13 @@ module npu_ctrl #(
     input  wire [31:0]                 perf_write_beats_i,
     input  wire [31:0]                 perf_read_active_i,
     input  wire [31:0]                 perf_write_active_i,
+    input  wire [31:0]                 perf_mac_lo_i,
+    input  wire [31:0]                 perf_mac_hi_i,
     input  wire [31:0]                 perf_array_active_i,
-    input  wire [31:0]                 perf_array_stall_i
+    input  wire [31:0]                 perf_array_stall_i,
+    input  wire [31:0]                 perf_cluster_active_i,
+    input  wire [31:0]                 perf_cluster_stall_i,
+    input  wire [31:0]                 perf_cluster_cfg_i
 );
 
     // ============================================================
@@ -95,6 +100,11 @@ module npu_ctrl #(
     localparam ADDR_PERF_WRITE_ACTIVE = 6'd17;  // 0x44
     localparam ADDR_PERF_ARRAY_ACTIVE = 6'd18;  // 0x48
     localparam ADDR_PERF_ARRAY_STALL  = 6'd19;  // 0x4C
+    localparam ADDR_PERF_MAC_LO         = 6'd20;  // 0x50
+    localparam ADDR_PERF_MAC_HI         = 6'd21;  // 0x54
+    localparam ADDR_PERF_CLUSTER_ACTIVE = 6'd22;  // 0x58
+    localparam ADDR_PERF_CLUSTER_STALL  = 6'd23;  // 0x5C
+    localparam ADDR_PERF_CLUSTER_CFG    = 6'd24;  // 0x60
 
     // ============================================================
     // AXI-Lite write path: AW+W stored separately, write when both ready
@@ -401,6 +411,11 @@ module npu_ctrl #(
         (rd_addr == ADDR_PERF_WRITE_ACTIVE) ? perf_write_active_i  :
         (rd_addr == ADDR_PERF_ARRAY_ACTIVE) ? perf_array_active_i  :
         (rd_addr == ADDR_PERF_ARRAY_STALL)  ? perf_array_stall_i   :
+        (rd_addr == ADDR_PERF_MAC_LO)       ? perf_mac_lo_i        :
+        (rd_addr == ADDR_PERF_MAC_HI)       ? perf_mac_hi_i        :
+        (rd_addr == ADDR_PERF_CLUSTER_ACTIVE) ? perf_cluster_active_i :
+        (rd_addr == ADDR_PERF_CLUSTER_STALL)  ? perf_cluster_stall_i  :
+        (rd_addr == ADDR_PERF_CLUSTER_CFG)    ? perf_cluster_cfg_i    :
         32'h0;
 
     always @(posedge clk) begin

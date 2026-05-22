@@ -47,8 +47,20 @@ module tb_npu_ctrl;
     reg         check_done;
     reg         checks_pass;
 
-    // Perf inputs (driven to 0 for now)
-    wire [31:0] perf_zero = 32'h0;
+    // Perf inputs
+    reg [31:0] perf_cycle_lo;
+    reg [31:0] perf_cycle_hi;
+    reg [31:0] perf_read_beats;
+    reg [31:0] perf_write_beats;
+    reg [31:0] perf_read_active;
+    reg [31:0] perf_write_active;
+    reg [31:0] perf_mac_lo;
+    reg [31:0] perf_mac_hi;
+    reg [31:0] perf_array_active;
+    reg [31:0] perf_array_stall;
+    reg [31:0] perf_cluster_active;
+    reg [31:0] perf_cluster_stall;
+    reg [31:0] perf_cluster_cfg;
 
     // Status outputs from npu_ctrl
     wire        ctrl_busy, ctrl_done, ctrl_error;
@@ -98,14 +110,19 @@ module tb_npu_ctrl;
         .task_error_code_i(task_error_code),
         .check_done_i    (check_done),
         .checks_pass_i   (checks_pass),
-        .perf_cycle_lo_i (perf_zero),
-        .perf_cycle_hi_i (perf_zero),
-        .perf_read_beats_i(perf_zero),
-        .perf_write_beats_i(perf_zero),
-        .perf_read_active_i(perf_zero),
-        .perf_write_active_i(perf_zero),
-        .perf_array_active_i(perf_zero),
-        .perf_array_stall_i(perf_zero)
+        .perf_cycle_lo_i (perf_cycle_lo),
+        .perf_cycle_hi_i (perf_cycle_hi),
+        .perf_read_beats_i(perf_read_beats),
+        .perf_write_beats_i(perf_write_beats),
+        .perf_read_active_i(perf_read_active),
+        .perf_write_active_i(perf_write_active),
+        .perf_mac_lo_i(perf_mac_lo),
+        .perf_mac_hi_i(perf_mac_hi),
+        .perf_array_active_i(perf_array_active),
+        .perf_array_stall_i(perf_array_stall),
+        .perf_cluster_active_i(perf_cluster_active),
+        .perf_cluster_stall_i(perf_cluster_stall),
+        .perf_cluster_cfg_i(perf_cluster_cfg)
     );
 
     // Clock: 200 MHz -> 5ns period
@@ -173,6 +190,19 @@ module tb_npu_ctrl;
         arvalid = 0; rready = 0;
         task_done = 0; task_error = 0; task_error_code = 0;
         check_done = 0; checks_pass = 0;
+        perf_cycle_lo = 32'h0000_1234;
+        perf_cycle_hi = 32'h0;
+        perf_read_beats = 32'd19;
+        perf_write_beats = 32'd7;
+        perf_read_active = 32'd23;
+        perf_write_active = 32'd9;
+        perf_mac_lo = 32'd288000;
+        perf_mac_hi = 32'd0;
+        perf_array_active = 32'd41;
+        perf_array_stall = 32'd5;
+        perf_cluster_active = 32'd41;
+        perf_cluster_stall = 32'd5;
+        perf_cluster_cfg = 32'h0000_0001;
 
         #10 rst_n = 1;
         #10;
@@ -335,6 +365,18 @@ module tb_npu_ctrl;
         axi_read(32'h04, rd_val);
         $display("  STATUS = 0x%08h (expect error_code=0x03)", rd_val);
         if (rd_val[7:0] != 8'h03) $error("  FAIL: error_code mismatch");
+
+        $display("=== Test 9: Performance register map ===");
+        axi_read(32'h30, rd_val);
+        if (rd_val !== perf_cycle_lo) $error("  FAIL: perf_cycle_lo mismatch");
+        axi_read(32'h38, rd_val);
+        if (rd_val !== perf_read_beats) $error("  FAIL: perf_read_beats mismatch");
+        axi_read(32'h50, rd_val);
+        if (rd_val !== perf_mac_lo) $error("  FAIL: perf_mac_lo mismatch");
+        axi_read(32'h58, rd_val);
+        if (rd_val !== perf_cluster_active) $error("  FAIL: perf_cluster_active mismatch");
+        axi_read(32'h60, rd_val);
+        if (rd_val !== perf_cluster_cfg) $error("  FAIL: perf_cluster_cfg mismatch");
 
         $display("=== All tests complete ===");
         #20;

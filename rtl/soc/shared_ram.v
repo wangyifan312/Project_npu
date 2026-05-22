@@ -5,7 +5,7 @@
 module shared_ram #(
     parameter AXI_ADDR_W = 32,
     parameter AXI_DATA_W = 32,
-    parameter RAM_DEPTH   = 16384  // 64 KB
+    parameter RAM_DEPTH   = 262144  // 1 MB @ 32-bit words
 ) (
     input  wire        clk,
     input  wire        rst_n,
@@ -193,7 +193,7 @@ module shared_ram #(
     assign npu_bvalid = npu_bvalid_r;
     assign npu_bresp  = 2'b00;
 
-    // NPU read path
+    // NPU read path: match axi4_ram timing/beat semantics
     reg         npu_ar_valid_r;
     reg  [31:0] npu_ar_addr_r;
     reg  [7:0]  npu_ar_len_r;
@@ -204,15 +204,17 @@ module shared_ram #(
 
     wire npu_ar_hs = npu_arvalid && npu_arready;
     wire npu_r_hs  = npu_rvalid && npu_rready;
+    wire [31:0] npu_rd_base = npu_ar_hs ? npu_araddr : npu_ar_addr_r;
+    wire [7:0]  npu_rd_beat = npu_ar_hs ? 8'h0 :
+                              (npu_r_hs ? (npu_r_beat_cnt + 8'h1) : npu_r_beat_cnt);
 
     assign npu_arready = !npu_ar_valid_r && !npu_r_active;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            npu_ar_valid_r  <= 1'b0;
-            npu_r_active    <= 1'b0;
-            npu_r_beat_cnt  <= 8'h0;
-            npu_rvalid_r    <= 1'b0;
+            npu_ar_valid_r <= 1'b0;
+            npu_r_active   <= 1'b0;
+            npu_r_beat_cnt <= 8'h0;
         end else begin
             if (npu_ar_hs) begin
                 npu_ar_valid_r <= 1'b1;
@@ -221,22 +223,34 @@ module shared_ram #(
                 npu_r_beat_cnt <= 8'h0;
                 npu_r_active   <= 1'b1;
             end
-            // Read data available next cycle
-            if (npu_r_active || npu_ar_hs) begin
-                npu_rvalid_r <= 1'b1;
-                npu_rdata_r  <= ram[((npu_ar_hs ? npu_araddr : npu_ar_addr_r) >> 2) + npu_r_beat_cnt];
-            end
+
             if (npu_r_hs) begin
                 if (npu_r_beat_cnt == npu_ar_len_r) begin
                     npu_r_active   <= 1'b0;
                     npu_ar_valid_r <= 1'b0;
-                    npu_rvalid_r   <= 1'b0;
                 end else begin
                     npu_r_beat_cnt <= npu_r_beat_cnt + 8'h1;
                 end
             end
         end
     end
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            npu_rvalid_r <= 1'b0;
+        end else if (npu_ar_hs) begin
+            npu_rvalid_r <= 1'b1;
+        end else if (npu_r_hs && (npu_r_beat_cnt == npu_ar_len_r)) begin
+            npu_rvalid_r <= 1'b0;
+        end
+    end
+
+    always @(posedge clk) begin
+        if (npu_r_active || npu_ar_hs) begin
+            npu_rdata_r <= ram[(npu_rd_base[ADDR_BITS+1:2]) + npu_rd_beat];
+        end
+    end
+
     assign npu_rvalid = npu_rvalid_r;
     assign npu_rdata  = npu_rdata_r;
     assign npu_rlast  = (npu_r_beat_cnt == npu_ar_len_r);

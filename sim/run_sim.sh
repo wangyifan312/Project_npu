@@ -1,7 +1,7 @@
 #!/bin/bash
 # run_sim.sh — unified simulation entry point for NPU verification
 # Usage: ./sim/run_sim.sh <test_name>
-#   test_name: tb_npu_top | tb_task1 | tb_task2 | tb_task3 | tb_task6 | tb_fc | tb_top | tb_shared | tb_system | tb_checker
+#   test_name: tb_npu_top | tb_task1 | tb_task2 | tb_task3 | tb_task6 | tb_fc | tb_top | tb_top_lenet | tb_shared | tb_system | tb_checker | tb_perf_counter | tb_cluster_perf
 set -e
 
 cd "$(dirname "$0")/.."
@@ -45,9 +45,21 @@ case "$1" in
         $IVERILOG -o "$SIMDIR/tb_task_checker.vvp" tb/unit/tb_task_checker.v rtl/npu/task_checker.v
         $VVP "$SIMDIR/tb_task_checker.vvp"
         ;;
+    tb_perf_counter)
+        $IVERILOG -o "$SIMDIR/tb_perf_counter.vvp" rtl/npu/perf_counter.v tb/unit/tb_perf_counter.v
+        $VVP "$SIMDIR/tb_perf_counter.vvp"
+        ;;
+    tb_cluster_perf)
+        $IVERILOG -o "$SIMDIR/tb_cluster_perf.vvp" $NPU_RTL tb/unit/tb_cluster_perf_modes.v
+        $VVP "$SIMDIR/tb_cluster_perf.vvp"
+        ;;
     tb_top)
         $IVERILOG -o "$SIMDIR/tb_top.vvp" $SOC_RTL $BUS_RTL $NPU_RTL rtl/cpu/picorv32/picorv32.v rtl/soc/top.v tb/integration/tb_top.v
         $VVP "$SIMDIR/tb_top.vvp"
+        ;;
+    tb_top_lenet)
+        $IVERILOG -o "$SIMDIR/tb_top_lenet.vvp" $SOC_RTL $BUS_RTL $NPU_RTL rtl/cpu/picorv32/picorv32.v rtl/soc/top.v tb/integration/tb_top_lenet.v
+        $VVP "$SIMDIR/tb_top_lenet.vvp"
         ;;
     tb_shared)
         $IVERILOG -o "$SIMDIR/tb_shared.vvp" rtl/soc/shared_ram.v tb/integration/tb_task4_shared_mem.v
@@ -67,7 +79,9 @@ case "$1" in
         echo "=== Task 5 (FC) ===" && ./sim/run_sim.sh tb_fc
         echo "=== Task 6 ===" && ./sim/run_sim.sh tb_task6
         echo "=== Task Checker Unit ===" && ./sim/run_sim.sh tb_checker
-        echo "=== Top Smoke ===" && ./sim/run_sim.sh tb_top
+        echo "=== Perf Counter ===" && ./sim/run_sim.sh tb_perf_counter
+        echo "=== Cluster Perf ===" && ./sim/run_sim.sh tb_cluster_perf
+        echo "=== Top SoC ===" && ./sim/run_sim.sh tb_top
         echo "=== Done ==="
         ;;
     *)
@@ -77,9 +91,12 @@ case "$1" in
         echo "  tb_task2     — Task 2 multi-block Conv"
         echo "  tb_task3     — Task 3 AXI-Lite decoupling"
         echo "  tb_task6     — Task 6 ping-pong bank sequencing"
-        echo "  tb_fc        — Task 5 FC rejection"
+        echo "  tb_fc        — legacy FC control-path regression"
         echo "  tb_checker   — task_checker unit test"
-        echo "  tb_top       — top-level smoke test"
+        echo "  tb_perf_counter — perf counter unit test"
+        echo "  tb_cluster_perf — cluster mode perf/log test"
+        echo "  tb_top       — top-level shared-memory + AXI-Lite system test"
+        echo "  tb_top_lenet — top-level LeNet deterministic sample"
         echo "  tb_shared    — Task 4 shared memory unit test"
         echo "  tb_system    — Task 4 system-level test"
         echo "  all          — run consolidated regression suite"

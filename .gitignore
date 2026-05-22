@@ -22,6 +22,8 @@ sim/*.vvp
 sim/*.vcd
 sim/*.fsdb
 sim/*.log
+sim/simv*
+sim/*.daidir/
 sim/simv_lenet
 sim/simv_lenet.daidir/
 sim/.lenet_samples.txt
@@ -38,4 +40,4 @@ datasets/mnist/*.npz
 datasets/mnist/models/
 datasets/mnist/exports/
 datasets/mnist/lenet_fixture/
-
+datasets/mnist/lenet_real_fixture/

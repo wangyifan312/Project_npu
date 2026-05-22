@@ -5,10 +5,33 @@
 
 module top #(
     parameter AXI_ADDR_W = 32,
-    parameter AXI_DATA_W = 32
+    parameter AXI_DATA_W = 32,
+    parameter SHARED_RAM_DEPTH = 262144,
+    parameter NPU_BUF_ENTRIES = 16384,
+    parameter NPU_BUF_ADDR_W = 14,
+    parameter NPU_TILE_ROWS = 7,
+    parameter NPU_TILE_COLS = 13
 ) (
     input  wire        clk,
     input  wire        rst_n,
+    input  wire        tb_axil_enable,
+    input  wire        tb_awvalid,
+    output wire        tb_awready,
+    input  wire [31:0] tb_awaddr,
+    input  wire        tb_wvalid,
+    output wire        tb_wready,
+    input  wire [31:0] tb_wdata,
+    input  wire [3:0]  tb_wstrb,
+    output wire        tb_bvalid,
+    input  wire        tb_bready,
+    output wire [1:0]  tb_bresp,
+    input  wire        tb_arvalid,
+    output wire        tb_arready,
+    input  wire [31:0] tb_araddr,
+    output wire        tb_rvalid,
+    input  wire        tb_rready,
+    output wire [31:0] tb_rdata,
+    output wire [1:0]  tb_rresp,
 
     // Debug/trace outputs
     output wire        cpu_trap,
@@ -18,6 +41,21 @@ module top #(
     // ============================================================
     // CPU ↔ Interconnect AXI-Lite
     // ============================================================
+    wire        cpu_core_awvalid, cpu_core_awready;
+    wire [31:0] cpu_core_awaddr;
+    wire [2:0]  cpu_core_awprot;
+    wire        cpu_core_wvalid, cpu_core_wready;
+    wire [31:0] cpu_core_wdata;
+    wire [3:0]  cpu_core_wstrb;
+    wire        cpu_core_bvalid, cpu_core_bready;
+    wire [1:0]  cpu_core_bresp;
+    wire        cpu_core_arvalid, cpu_core_arready;
+    wire [31:0] cpu_core_araddr;
+    wire [2:0]  cpu_core_arprot;
+    wire        cpu_core_rvalid, cpu_core_rready;
+    wire [31:0] cpu_core_rdata;
+    wire [1:0]  cpu_core_rresp;
+
     wire        cpu_awvalid, cpu_awready;
     wire [31:0] cpu_awaddr;
     wire [2:0]  cpu_awprot;
@@ -45,25 +83,25 @@ module top #(
         .COMPRESSED_ISA(1)
     ) u_cpu (
         .clk            (clk),
-        .resetn         (rst_n),
+        .resetn         (rst_n && !tb_axil_enable),
         .trap           (cpu_trap),
-        .mem_axi_awvalid(cpu_awvalid),
-        .mem_axi_awready(cpu_awready),
-        .mem_axi_awaddr (cpu_awaddr),
-        .mem_axi_awprot (cpu_awprot),
-        .mem_axi_wvalid (cpu_wvalid),
-        .mem_axi_wready (cpu_wready),
-        .mem_axi_wdata  (cpu_wdata),
-        .mem_axi_wstrb  (cpu_wstrb),
-        .mem_axi_bvalid (cpu_bvalid),
-        .mem_axi_bready (cpu_bready),
-        .mem_axi_arvalid(cpu_arvalid),
-        .mem_axi_arready(cpu_arready),
-        .mem_axi_araddr (cpu_araddr),
-        .mem_axi_arprot (cpu_arprot),
-        .mem_axi_rvalid (cpu_rvalid),
-        .mem_axi_rready (cpu_rready),
-        .mem_axi_rdata  (cpu_rdata),
+        .mem_axi_awvalid(cpu_core_awvalid),
+        .mem_axi_awready(cpu_core_awready),
+        .mem_axi_awaddr (cpu_core_awaddr),
+        .mem_axi_awprot (cpu_core_awprot),
+        .mem_axi_wvalid (cpu_core_wvalid),
+        .mem_axi_wready (cpu_core_wready),
+        .mem_axi_wdata  (cpu_core_wdata),
+        .mem_axi_wstrb  (cpu_core_wstrb),
+        .mem_axi_bvalid (cpu_core_bvalid),
+        .mem_axi_bready (cpu_core_bready),
+        .mem_axi_arvalid(cpu_core_arvalid),
+        .mem_axi_arready(cpu_core_arready),
+        .mem_axi_araddr (cpu_core_araddr),
+        .mem_axi_arprot (cpu_core_arprot),
+        .mem_axi_rvalid (cpu_core_rvalid),
+        .mem_axi_rready (cpu_core_rready),
+        .mem_axi_rdata  (cpu_core_rdata),
         .pcpi_valid     (),
         .pcpi_insn      (),
         .pcpi_rs1       (),
@@ -75,6 +113,36 @@ module top #(
         .irq            (32'h0),
         .eoi            ()
     );
+
+    assign cpu_awvalid = tb_axil_enable ? tb_awvalid : cpu_core_awvalid;
+    assign cpu_awaddr  = tb_axil_enable ? tb_awaddr  : cpu_core_awaddr;
+    assign cpu_awprot  = tb_axil_enable ? 3'b000     : cpu_core_awprot;
+    assign cpu_wvalid  = tb_axil_enable ? tb_wvalid  : cpu_core_wvalid;
+    assign cpu_wdata   = tb_axil_enable ? tb_wdata   : cpu_core_wdata;
+    assign cpu_wstrb   = tb_axil_enable ? tb_wstrb   : cpu_core_wstrb;
+    assign cpu_bready  = tb_axil_enable ? tb_bready  : cpu_core_bready;
+    assign cpu_arvalid = tb_axil_enable ? tb_arvalid : cpu_core_arvalid;
+    assign cpu_araddr  = tb_axil_enable ? tb_araddr  : cpu_core_araddr;
+    assign cpu_arprot  = tb_axil_enable ? 3'b000     : cpu_core_arprot;
+    assign cpu_rready  = tb_axil_enable ? tb_rready  : cpu_core_rready;
+
+    assign cpu_core_awready = tb_axil_enable ? 1'b0 : cpu_awready;
+    assign cpu_core_wready  = tb_axil_enable ? 1'b0 : cpu_wready;
+    assign cpu_core_bvalid  = tb_axil_enable ? 1'b0 : cpu_bvalid;
+    assign cpu_core_bresp   = tb_axil_enable ? 2'b00 : cpu_bresp;
+    assign cpu_core_arready = tb_axil_enable ? 1'b0 : cpu_arready;
+    assign cpu_core_rvalid  = tb_axil_enable ? 1'b0 : cpu_rvalid;
+    assign cpu_core_rdata   = tb_axil_enable ? 32'h0 : cpu_rdata;
+    assign cpu_core_rresp   = tb_axil_enable ? 2'b00 : cpu_rresp;
+
+    assign tb_awready = tb_axil_enable ? cpu_awready : 1'b0;
+    assign tb_wready  = tb_axil_enable ? cpu_wready  : 1'b0;
+    assign tb_bvalid  = tb_axil_enable ? cpu_bvalid  : 1'b0;
+    assign tb_bresp   = tb_axil_enable ? cpu_bresp   : 2'b00;
+    assign tb_arready = tb_axil_enable ? cpu_arready : 1'b0;
+    assign tb_rvalid  = tb_axil_enable ? cpu_rvalid  : 1'b0;
+    assign tb_rdata   = tb_axil_enable ? cpu_rdata   : 32'h0;
+    assign tb_rresp   = tb_axil_enable ? cpu_rresp   : 2'b00;
 
     // ============================================================
     // Interconnect → NPU registers AXI-Lite
@@ -277,7 +345,7 @@ module top #(
     // ============================================================
     // Unified Shared Memory (CPU + NPU DMA access same physical RAM)
     // ============================================================
-    shared_ram #(.RAM_DEPTH(16384)) u_shared_ram (
+    shared_ram #(.RAM_DEPTH(SHARED_RAM_DEPTH)) u_shared_ram (
         .clk            (clk),
         .rst_n          (rst_n),
         // CPU AXI-Lite port
@@ -329,7 +397,12 @@ module top #(
     // ============================================================
     // NPU Top-Level (register file + task_checker + DMA + buffers + compute)
     // ============================================================
-    npu_top u_npu (
+    npu_top #(
+        .BUF_ENTRIES(NPU_BUF_ENTRIES),
+        .BUF_ADDR_W(NPU_BUF_ADDR_W),
+        .TILE_ROWS(NPU_TILE_ROWS),
+        .TILE_COLS(NPU_TILE_COLS)
+    ) u_npu (
         .clk               (clk),
         .rst_n             (rst_n),
         .s_axi_awvalid     (npu_awvalid),
