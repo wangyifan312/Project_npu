@@ -45,6 +45,9 @@
 - [docs/SOC_6CLUSTER_ARCHITECTURE.md](docs/SOC_6CLUSTER_ARCHITECTURE.md)
 - [docs/LENET_MNIST_SPEC.md](docs/LENET_MNIST_SPEC.md)
 - [docs/RTL_DEBUG_PLAYBOOK.md](docs/RTL_DEBUG_PLAYBOOK.md)
+- [docs/DELIVERY_CHECKLIST.md](docs/DELIVERY_CHECKLIST.md)
+
+如果目标是**赛题最终提交 / 答辩交付**，请优先以 [docs/DELIVERY_CHECKLIST.md](docs/DELIVERY_CHECKLIST.md) 为收尾标准，而不是只以“工程上已可运行”作为完成依据。
 
 ## 目标网络
 
