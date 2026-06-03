@@ -2,7 +2,8 @@
 
 module output_arbiter #(
     parameter CLUSTER_COUNT = 6,
-    parameter CLUSTER_OUT_W = 16 * 32
+    parameter CLUSTER_OUT_W = 16 * 32,
+    parameter AGGREGATE_MODE = 0
 ) (
     input  wire                                 clk,
     input  wire                                 rst_n,
@@ -18,6 +19,7 @@ module output_arbiter #(
 );
 
     integer probe;
+    integer agg_idx;
     reg [2:0] rr_ptr;
     reg [2:0] pick_idx;
     reg       pick_found;
@@ -40,7 +42,15 @@ module output_arbiter #(
         arb_valid        = pick_found;
         arb_cluster_id   = pick_idx;
         arb_sum_out_flat = {CLUSTER_OUT_W{1'b0}};
-        if (pick_found) begin
+        if (AGGREGATE_MODE != 0) begin
+            arb_valid = |(cluster_enable & cluster_valid);
+            for (agg_idx = 0; agg_idx < CLUSTER_COUNT; agg_idx = agg_idx + 1) begin
+                if (cluster_enable[agg_idx] && cluster_valid[agg_idx]) begin
+                    arb_sum_out_flat = arb_sum_out_flat |
+                        cluster_sum_out_flat[agg_idx*CLUSTER_OUT_W +: CLUSTER_OUT_W];
+                end
+            end
+        end else if (pick_found) begin
             arb_sum_out_flat = cluster_sum_out_flat[pick_idx*CLUSTER_OUT_W +: CLUSTER_OUT_W];
         end
     end

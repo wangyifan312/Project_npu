@@ -1,5 +1,14 @@
 # Bug Tasks For Claude Code
 
+> Historical bug list:
+> 本文档记录的是仓库早期 `P0/P1` 收敛阶段的修复任务。
+> 其中多数问题现已解决，因此它**不是**当前未完成问题清单，也不是当前正式规格。
+> 当前正式状态请以：
+> - [README.md](/root/Project_npu/README.md)
+> - [CLAUDE.md](/root/Project_npu/CLAUDE.md)
+> - [ARCHITECTURE_SPEC.md](/root/Project_npu/ARCHITECTURE_SPEC.md)
+> 为准。
+
 本文档用于把当前仓库中的已确认问题转交给 Claude Code 逐项修复。
 
 使用原则：

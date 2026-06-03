@@ -39,6 +39,9 @@ module tb_npu_ctrl;
     wire [15:0] output_c;
     wire        relu_en;
     wire        pool_en;
+    wire [1:0]  requant_slot_sel;
+    wire [31:0] requant_multiplier;
+    wire [5:0]  requant_shift;
 
     // Task status
     reg         task_done;
@@ -105,6 +108,9 @@ module tb_npu_ctrl;
         .output_c        (output_c),
         .relu_en         (relu_en),
         .pool_en         (pool_en),
+        .requant_slot_sel(requant_slot_sel),
+        .requant_multiplier(requant_multiplier),
+        .requant_shift   (requant_shift),
         .task_done_i     (task_done),
         .task_error_i    (task_error),
         .task_error_code_i(task_error_code),
@@ -223,12 +229,18 @@ module tb_npu_ctrl;
         axi_write(32'h24, 32'h001C001C);    // H=28, W=28
         axi_write(32'h28, 32'h00060001);    // C_IN=1, C_OUT=6
         axi_write(32'h2C, 32'h00000001);    // relu_en=1
+        axi_write(32'h64, 32'h00000002);    // requant slot 2
+        axi_write(32'h78, 32'h00001234);    // slot 2 multiplier
+        axi_write(32'h7C, 32'h00000007);    // slot 2 shift
         $display("  Config registers written");
 
         // Read-back check
         axi_read(32'h0C, rd_val);
         $display("  Readback input_addr = 0x%08h (expect 0x00001000)", rd_val);
         if (rd_val != 32'h00001000) $error("  FAIL: input_addr mismatch");
+        axi_read(32'h78, rd_val);
+        $display("  Readback requant2_mult = 0x%08h (expect 0x00001234)", rd_val);
+        if (rd_val != 32'h00001234) $error("  FAIL: requant2_mult mismatch");
 
         $display("=== Test 3: Start task (normal flow with checker) ===");
         axi_write(32'h00, 32'h00000001);    // start=1
@@ -245,6 +257,12 @@ module tb_npu_ctrl;
         $display("    input_addr  = 0x%08h (expect 0x00001000)", input_addr);
         $display("    input_h     = %0d (expect 28)", input_h);
         $display("    relu_en     = %0d (expect 1)", relu_en);
+        $display("    rq_slot     = %0d (expect 2)", requant_slot_sel);
+        $display("    rq_mult     = 0x%08h (expect 0x00001234)", requant_multiplier);
+        $display("    rq_shift    = %0d (expect 7)", requant_shift);
+        if (requant_slot_sel != 2'd2) $error("  FAIL: requant slot mismatch");
+        if (requant_multiplier != 32'h00001234) $error("  FAIL: requant multiplier mismatch");
+        if (requant_shift != 6'd7) $error("  FAIL: requant shift mismatch");
 
         $display("=== Test 4: Start during busy (should error) ===");
         axi_write(32'h00, 32'h00000001);    // try start again while busy

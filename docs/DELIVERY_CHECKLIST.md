@@ -31,6 +31,17 @@
 
 不得直接表述为“赛题最终交付完成”。
 
+补充说明：
+
+- 上述 5 条必做项定义的是**当前仓库达到赛题答辩展示标准**的最小门槛
+- 如果赛题明确要求**完整测试集结果**，则除本清单外，还必须继续执行：
+  - [docs/MNIST_FULL_EVAL_PLAN.md](docs/MNIST_FULL_EVAL_PLAN.md)
+- 如果完整测试集 software gate 长期低于 `80%`，则还必须继续执行：
+  - [docs/REQUANTIZATION_PLAN.md](docs/REQUANTIZATION_PLAN.md)
+- 也就是说：
+  - `8` 样本或小批量 real-weight 回归可证明推理链路与 SoC 闭环
+  - 但不能替代完整 `MNIST test set` 结果
+
 ---
 
 ## 2. 必做项
@@ -75,6 +86,18 @@
 - `tb_top_lenet` 或等价 `top` 级 testbench 日志
 - 汇总表格
 - 可复现运行命令
+
+### 口径限制
+
+即使本项完成，也只能说明：
+
+- `top` 级真实权重闭环已成立
+- 小批量真实样本回归已成立
+
+不能自动推出：
+
+- 完整 `MNIST test set` 已跑完
+- 全量测试集 accuracy 已得出
 
 ---
 
@@ -301,6 +324,13 @@
 4. 真实权重说明文档
 5. 固定答辩回归入口
 
+如果赛题明确要求完整测试集结果，则在完成上述 5 项后，继续按以下顺序推进：
+
+1. 执行 [docs/MNIST_FULL_EVAL_PLAN.md](docs/MNIST_FULL_EVAL_PLAN.md)
+2. 先跑 subsystem 级完整测试集
+3. 再跑 `top` 级大批量或完整测试集
+4. 输出正式 accuracy / cycles / perf 统计
+
 ---
 
 ## 6. 一句话结论
@@ -316,3 +346,13 @@
 这五条全部完成时，才建议将当前仓库对外表述为：
 
 **“满足赛题最终提交 / 答辩交付要求的版本。”**
+
+如果赛题书面要求包含**完整测试集结果**，则还必须额外满足：
+
+- 已按 [docs/MNIST_FULL_EVAL_PLAN.md](docs/MNIST_FULL_EVAL_PLAN.md) 跑出完整测试集结论
+- 完整 `MNIST test set` accuracy 必须达到 `80%` 及以上
+
+否则只能表述为：
+
+- 已满足答辩展示级交付
+- 但尚未完成完整测试集结果交付

@@ -67,7 +67,7 @@
 - `dma_axi_writer`
 - `npu_buffer`
 - `conv_frontend`
-- `fc_frontend` 或等价 FC 前端/执行流
+- 阵列化 FC 执行流；`fc_frontend.v` 仅作为 legacy/debug formatter 保留
 - `postproc`
 - `perf_counter`
 
@@ -108,6 +108,7 @@ Cluster 级结构必须下沉到新的 compute hierarchy。
 - 汇聚 6 个 cluster 的输出
 - 约束写回顺序和 channel/block 映射
 - 不允许 cluster 输出覆盖、错位或乱序
+- P0-2 后，Conv 正式结果从 `output_arbiter` 聚合输出进入后续 accumulator/writeback，不再从 first-enabled cluster compatibility 选择器产生
 
 ## 5. 数据类型与算子语义
 
@@ -121,13 +122,13 @@ Cluster 级结构必须下沉到新的 compute hierarchy。
 - `Conv`: `5x5`, `stride=1`, `valid`, `no bias`
 - `Pool`: `2x2 MaxPool`, `stride=2`
 - `ReLU`: `INT32` 域
-- `FC`: 共用 6-cluster compute hierarchy，不允许再按“未支持”处理
+- `FC`: 共用 6-cluster compute hierarchy，正式路径不再使用标量累加 FSM
 
 FC 规则固定为：
 
-- 输入来自 `INT32` feature/vector
-- 进入共享阵列前执行 `INT32 -> saturating INT8`
-- 饱和区间 `[-128, 127]`
+- 输入来自 `INT8` feature/vector
+- 任意层间 `INT32 -> INT8` handoff 通过独立 requant 任务完成
+- requant 规则固定为：`multiplier + shift + round-half-away-from-zero + clamp`
 
 ## 6. 任务模型
 
@@ -191,7 +192,8 @@ FC 规则固定为：
 - “完整 LeNet 已跑通”只有在对应层级的严格测试通过时才成立
 - 旧结论“LeNet 仅在 `npu_top + axi4_ram` 子系统跑通”不能再被误写成 SoC 顶层已完成
 - SoC 顶层当前的性能模式验证重点是 shared memory / AXI-Lite / 地址图 / 性能寄存器链路闭环
-- 当前 `tb_top / tb_top_lenet` 仍主要工作在 `single-cluster compatibility mode`，对应 `cluster_cfg = 0x01`
+- 当前 Conv / FC 的 SoC 顶层主路径已切到 `cluster_scheduler -> compute_core_6cluster -> output_arbiter`
+- `fc_frontend.v` 降级为 legacy/debug helper，不作为正式 FC 执行流证据
 
 ## 9. LeNet 当前闭环要求
 
@@ -230,7 +232,7 @@ FC 规则固定为：
 当前验证口径需要明确区分：
 
 - compute-core / cluster-level：已通过 `tb_cluster_perf_modes` 覆盖 `single / dual / six-cluster full / dynamic mask`
-- SoC top-level：已通过 `tb_top / tb_top_lenet` 覆盖性能寄存器读出与 LeNet 闭环，但当前 cluster 模式仍以 `single-cluster compatibility mode` 为主
+- SoC top-level：已通过 `tb_top / tb_top_lenet` 覆盖性能寄存器读出与 LeNet 闭环；Conv / FC cluster 模式走正式 6-cluster 主路径，完整多模式网络级性能覆盖仍需单独回归
 
 ## 11. 不回退约束
 

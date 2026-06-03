@@ -1,6 +1,6 @@
 `timescale 1ns / 1ps
 
-module tb_top;
+module tb_top_cluster_modes;
 
     reg         clk;
     reg         rst_n;
@@ -29,23 +29,20 @@ module tb_top;
     localparam WEIGHT_ADDR = 32'h0000_0200;
     localparam OUTPUT_ADDR = 32'h0000_0300;
     localparam NPU_BASE    = 32'h1000_0000;
-    localparam PERF_CYCLE_LO      = NPU_BASE + 32'h30;
-    localparam PERF_CYCLE_HI      = NPU_BASE + 32'h34;
-    localparam PERF_READ_BEATS    = NPU_BASE + 32'h38;
-    localparam PERF_WRITE_BEATS   = NPU_BASE + 32'h3C;
-    localparam PERF_READ_ACTIVE   = NPU_BASE + 32'h40;
-    localparam PERF_WRITE_ACTIVE  = NPU_BASE + 32'h44;
-    localparam PERF_ARRAY_ACTIVE  = NPU_BASE + 32'h48;
-    localparam PERF_ARRAY_STALL   = NPU_BASE + 32'h4C;
-    localparam PERF_MAC_LO        = NPU_BASE + 32'h50;
-    localparam PERF_MAC_HI        = NPU_BASE + 32'h54;
+    localparam PERF_CYCLE_LO       = NPU_BASE + 32'h30;
+    localparam PERF_ARRAY_ACTIVE   = NPU_BASE + 32'h48;
+    localparam PERF_MAC_LO         = NPU_BASE + 32'h50;
     localparam PERF_CLUSTER_ACTIVE = NPU_BASE + 32'h58;
-    localparam PERF_CLUSTER_STALL  = NPU_BASE + 32'h5C;
     localparam PERF_CLUSTER_CFG    = NPU_BASE + 32'h60;
+    localparam [1:0] TEST_CLUSTER_MODE = 2'd1;
+    localparam [5:0] TEST_CLUSTER_MASK = 6'b00_0011;
+    localparam [7:0] EXPECTED_CLUSTER_CFG = {TEST_CLUSTER_MODE, TEST_CLUSTER_MASK};
 
     top #(
         .NPU_TILE_ROWS(16),
-        .NPU_TILE_COLS(16)
+        .NPU_TILE_COLS(16),
+        .NPU_CLUSTER_MODE(TEST_CLUSTER_MODE),
+        .NPU_CLUSTER_MASK_REQ(TEST_CLUSTER_MASK)
     ) u_top (
         .clk(clk),
         .rst_n(rst_n),
@@ -104,57 +101,6 @@ module tb_top;
         end
     endtask
 
-    task report_perf;
-        input [127:0] tag;
-        input [31:0] expected_mac_lo;
-        reg [31:0] cycle_lo;
-        reg [31:0] cycle_hi;
-        reg [31:0] read_beats;
-        reg [31:0] write_beats;
-        reg [31:0] read_active;
-        reg [31:0] write_active;
-        reg [31:0] array_active;
-        reg [31:0] array_stall;
-        reg [31:0] mac_lo;
-        reg [31:0] mac_hi;
-        reg [31:0] cluster_active;
-        reg [31:0] cluster_stall;
-        reg [31:0] cluster_cfg;
-        real read_bw_util;
-        real write_bw_util;
-        real array_util;
-        begin
-            axil_read(PERF_CYCLE_LO, cycle_lo);
-            axil_read(PERF_CYCLE_HI, cycle_hi);
-            axil_read(PERF_READ_BEATS, read_beats);
-            axil_read(PERF_WRITE_BEATS, write_beats);
-            axil_read(PERF_READ_ACTIVE, read_active);
-            axil_read(PERF_WRITE_ACTIVE, write_active);
-            axil_read(PERF_ARRAY_ACTIVE, array_active);
-            axil_read(PERF_ARRAY_STALL, array_stall);
-            axil_read(PERF_MAC_LO, mac_lo);
-            axil_read(PERF_MAC_HI, mac_hi);
-            axil_read(PERF_CLUSTER_ACTIVE, cluster_active);
-            axil_read(PERF_CLUSTER_STALL, cluster_stall);
-            axil_read(PERF_CLUSTER_CFG, cluster_cfg);
-
-            if (mac_lo !== expected_mac_lo || mac_hi !== 32'd0)
-                $fatal(1, "%0s perf mac mismatch got 0x%08x_%08x expect 0x00000000_%08x", tag, mac_hi, mac_lo, expected_mac_lo);
-            if (cycle_lo == 32'd0)
-                $fatal(1, "%0s perf cycles should be non-zero", tag);
-            if (cluster_cfg[7:0] !== 8'h01)
-                $fatal(1, "%0s cluster cfg mismatch: 0x%08x", tag, cluster_cfg);
-
-            read_bw_util = (read_active != 0) ? (read_beats * 1.0 / read_active) : 0.0;
-            write_bw_util = (write_active != 0) ? (write_beats * 1.0 / write_active) : 0.0;
-            array_util = (cycle_lo != 0) ? (array_active * 1.0 / cycle_lo) : 0.0;
-
-            $display("PERF %0s cycles=%0d read_beats=%0d write_beats=%0d read_bw_util=%0.4f write_bw_util=%0.4f array_active=%0d array_stall=%0d cluster_active=%0d cluster_stall=%0d mac=%0d cluster_cfg=0x%08x array_util=%0.4f",
-                     tag, cycle_lo, read_beats, write_beats, read_bw_util, write_bw_util,
-                     array_active, array_stall, cluster_active, cluster_stall, mac_lo, cluster_cfg, array_util);
-        end
-    endtask
-
     task axil_read;
         input  [31:0] addr;
         output [31:0] data;
@@ -183,18 +129,60 @@ module tb_top;
                 cnt = cnt + 1;
             end
             if (npu_status[3])
-                $fatal(1, "top-level NPU error");
+                $fatal(1, "top cluster-mode NPU error");
             if (!npu_status[2])
-                $fatal(1, "top-level timeout");
+                $fatal(1, "top cluster-mode timeout");
+        end
+    endtask
+
+    task report_perf;
+        input signed [31:0] expected_output;
+        input [31:0] expected_mac;
+        reg [31:0] cycle_lo;
+        reg [31:0] array_active;
+        reg [31:0] mac_lo;
+        reg [31:0] cluster_active;
+        reg [31:0] cluster_cfg;
+        reg [31:0] rd_data;
+        real array_util;
+        real cluster_util;
+        begin
+            axil_read(PERF_CYCLE_LO, cycle_lo);
+            axil_read(PERF_ARRAY_ACTIVE, array_active);
+            axil_read(PERF_MAC_LO, mac_lo);
+            axil_read(PERF_CLUSTER_ACTIVE, cluster_active);
+            axil_read(PERF_CLUSTER_CFG, cluster_cfg);
+            axil_read(OUTPUT_ADDR, rd_data);
+
+            if ($signed(rd_data) !== expected_output)
+                $fatal(1, "dual-cluster output mismatch got %0d expect %0d", $signed(rd_data), expected_output);
+            if (mac_lo !== expected_mac)
+                $fatal(1, "dual-cluster mac mismatch got %0d expect %0d", mac_lo, expected_mac);
+            if (cluster_cfg[7:0] !== EXPECTED_CLUSTER_CFG)
+                $fatal(1, "dual-cluster cluster cfg mismatch got 0x%08x expect 0x%02x", cluster_cfg, EXPECTED_CLUSTER_CFG);
+            if (cycle_lo == 32'd0)
+                $fatal(1, "dual-cluster cycle count should be non-zero");
+
+            array_util = (cycle_lo != 0) ? (array_active * 1.0 / cycle_lo) : 0.0;
+            cluster_util = (cycle_lo != 0) ? (cluster_active * 1.0 / (cycle_lo * 2.0)) : 0.0;
+            $display("TOP_CLUSTER_RESULT mode=dual cluster_cfg=0x%08x cycles=%0d mac=%0d array_util=%0.4f cluster_util=%0.4f predicted_output=%0d status=PASS",
+                     cluster_cfg, cycle_lo, mac_lo, array_util, cluster_util, $signed(rd_data));
         end
     endtask
 
     integer word_idx;
-    reg [31:0] rd_data;
+    reg seen_output_arbiter;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            seen_output_arbiter <= 1'b0;
+        else if (u_top.u_npu.cluster_arb_out_valid)
+            seen_output_arbiter <= 1'b1;
+    end
 
     initial begin
-        $dumpfile("sim/tb_top.vcd");
-        $dumpvars(0, tb_top);
+        $dumpfile("sim/tb_top_cluster_modes.vcd");
+        $dumpvars(0, tb_top_cluster_modes);
 
         clk = 1'b0;
         rst_n = 1'b0;
@@ -213,21 +201,12 @@ module tb_top;
         rst_n = 1'b1;
         #20;
 
-        $display("=== AXI-Lite write shared memory ===");
         for (word_idx = 0; word_idx < 7; word_idx = word_idx + 1)
             axil_write(INPUT_ADDR + word_idx*4, 32'h01010101);
         for (word_idx = 0; word_idx < 7; word_idx = word_idx + 1)
             axil_write(WEIGHT_ADDR + word_idx*4, 32'h02020202);
         axil_write(OUTPUT_ADDR, 32'h0);
 
-        axil_read(INPUT_ADDR, rd_data);
-        if (rd_data !== 32'h01010101)
-            $fatal(1, "shared memory readback mismatch for input");
-        axil_read(WEIGHT_ADDR, rd_data);
-        if (rd_data !== 32'h02020202)
-            $fatal(1, "shared memory readback mismatch for weight");
-
-        $display("=== Configure NPU through top AXI-Lite ===");
         axil_write(NPU_BASE + 32'h08, 32'h0);
         axil_write(NPU_BASE + 32'h0C, INPUT_ADDR);
         axil_write(NPU_BASE + 32'h10, WEIGHT_ADDR);
@@ -241,15 +220,11 @@ module tb_top;
         axil_write(NPU_BASE + 32'h00, 32'h1);
 
         wait_done(400000);
+        if (!seen_output_arbiter)
+            $fatal(1, "top cluster-mode did not observe output_arbiter on formal conv path");
+        report_perf(32'sd50, 32'd25);
 
-        $display("=== AXI-Lite read output shared memory ===");
-        axil_read(OUTPUT_ADDR, rd_data);
-        if ($signed(rd_data) !== 32'sd50)
-            $fatal(1, "output mismatch got %0d expect 50", $signed(rd_data));
-
-        report_perf("top_conv_smoke", 32'd25);
-
-        $display("tb_top PASS");
+        $display("tb_top_cluster_modes PASS");
         $finish;
     end
 

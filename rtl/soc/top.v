@@ -9,8 +9,10 @@ module top #(
     parameter SHARED_RAM_DEPTH = 262144,
     parameter NPU_BUF_ENTRIES = 16384,
     parameter NPU_BUF_ADDR_W = 14,
-    parameter NPU_TILE_ROWS = 7,
-    parameter NPU_TILE_COLS = 13
+    parameter NPU_TILE_ROWS = 16,
+    parameter NPU_TILE_COLS = 16,
+    parameter [1:0] NPU_CLUSTER_MODE = 2'd0,
+    parameter [5:0] NPU_CLUSTER_MASK_REQ = 6'b11_1111
 ) (
     input  wire        clk,
     input  wire        rst_n,
@@ -401,7 +403,9 @@ module top #(
         .BUF_ENTRIES(NPU_BUF_ENTRIES),
         .BUF_ADDR_W(NPU_BUF_ADDR_W),
         .TILE_ROWS(NPU_TILE_ROWS),
-        .TILE_COLS(NPU_TILE_COLS)
+        .TILE_COLS(NPU_TILE_COLS),
+        .CLUSTER_MODE(NPU_CLUSTER_MODE),
+        .CLUSTER_MASK_REQ(NPU_CLUSTER_MASK_REQ)
     ) u_npu (
         .clk               (clk),
         .rst_n             (rst_n),

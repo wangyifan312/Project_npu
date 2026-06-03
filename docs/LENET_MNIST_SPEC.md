@@ -2,6 +2,10 @@
 
 本文件固定本轮 `LeNet(MNIST)` 的网络规格、地址图、数据布局和验证口径。
 
+真实训练权重的生成、量化、导出与地址映射说明见：
+
+- [docs/REAL_WEIGHT_FLOW.md](/root/Project_npu/docs/REAL_WEIGHT_FLOW.md)
+
 ## 1. 目标网络
 
 固定网络：
@@ -37,8 +41,9 @@
 
 共享阵列的乘加口径固定为 `INT8 x INT8 -> INT32`，因此：
 
-- `FC1` / `FC2` 输入都从 `INT32` 显式转换到 `INT8`
-- 转换规则为 saturating clamp 到 `[-128, 127]`
+- `FC1` / `FC2` 输入都从 `INT32` 显式 requant 到 `INT8`
+- 转换规则固定为：`multiplier + shift + round-half-away-from-zero + clamp`
+- requant 参数粒度固定为：每层一组
 
 ## 3. 算子语义
 
@@ -63,6 +68,8 @@
 - 必须走共享 `6-cluster` compute hierarchy
 - 不允许再用“FC 未支持”描述当前基线
 - `FC1` 与 `FC2` 都属于本轮强制验收范围
+- P0-3 后，`FC1` / `FC2` 正式执行流使用 `cluster_scheduler -> compute_core_6cluster -> output_arbiter`
+- `Pool2 -> FC1` 与 `FC1(ReLU) -> FC2` 的 handoff 继续通过当前 layer-wise requant 语义提供 `INT8` 输入
 
 ## 4. Tensor Layout
 
@@ -156,14 +163,22 @@ MNIST 主数据源：
 
 ## 9. Requantization Rules
 
-当前网络驱动链中保留两类显式转换：
+当前正式网络驱动链中保留 3 处显式 `INT32 -> INT8` requant：
 
-- `Pool1 INT32 -> Conv2 INT8`
-- `Pool2 INT32 -> FC1 INT8`
+- `Pool1 -> Conv2`
+- `Pool2 -> FC1`
+- `FC1(ReLU) -> FC2`
 
-两处都采用 saturating clamp 到 `[-128, 127]`，并保持 `HWC` 顺序。
+三处都采用统一 requant 公式：
 
-`FC2` 输入同样按 `INT32 -> INT8` 饱和转换规则处理。
+`q = clamp(round_half_away_from_zero((acc * multiplier) / 2^shift), -128, 127)`
+
+规则约束：
+
+- `multiplier` / `shift` 为 layer-wise 参数
+- 参数通过 `npu_ctrl` / AXI-Lite 寄存器配置
+- testbench / fixture / software / RTL 必须使用同一组 requant 参数
+- `postproc` 保持 `INT32` 域职责，不把 requant 混入 Pool 状态机
 
 ## 10. 验证闭环要求
 

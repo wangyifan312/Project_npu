@@ -1,6 +1,9 @@
 # Local helper files
 .claude/
 .codex
+.vscode/
+tmp/
+saturating
 
 # Python cache
 __pycache__/
@@ -39,5 +42,16 @@ datasets/mnist/*.gz
 datasets/mnist/*.npz
 datasets/mnist/models/
 datasets/mnist/exports/
+datasets/mnist/exports_full/
+datasets/mnist/exports_full_10000/
 datasets/mnist/lenet_fixture/
 datasets/mnist/lenet_real_fixture/
+datasets/mnist/lenet_candidate_b_fixture/
+datasets/mnist/lenet_candidate_b_manifest_100/
+datasets/mnist/lenet_real_manifest_100/
+datasets/mnist/lenet_real_manifest_10000/
+datasets/mnist/lenet_requant_candidate_final_fixture/
+datasets/mnist/lenet_requant_candidate_final_fixture_smoke/
+
+# Generated run outputs
+results/

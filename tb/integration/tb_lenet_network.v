@@ -4,11 +4,16 @@
 module tb_lenet_network;
     reg clk, rst_n;
     reg s_axi_awvalid, s_axi_wvalid, s_axi_bready;
+    reg s_axi_arvalid, s_axi_rready;
     reg [31:0] s_axi_awaddr, s_axi_wdata;
+    reg [31:0] s_axi_araddr;
     reg [3:0] s_axi_wstrb;
 
     wire s_axi_awready, s_axi_wready, s_axi_bvalid;
+    wire s_axi_arready, s_axi_rvalid;
     wire [1:0] s_axi_bresp;
+    wire [31:0] s_axi_rdata;
+    wire [1:0] s_axi_rresp;
     wire npu_busy, npu_done, npu_error;
     wire [7:0] npu_error_code;
     wire npu_arvalid, npu_awvalid, npu_wvalid, npu_wlast;
@@ -35,6 +40,27 @@ module tb_lenet_network;
     localparam FC1_OUT_ADDR   = 32'h000F_2000;
     localparam FC2_WGT_ADDR   = 32'h000F_3000;
     localparam FC2_OUT_ADDR   = 32'h000F_5000;
+    localparam NPU_BASE       = 32'h1000_0000;
+    localparam PERF_CYCLE_LO       = NPU_BASE + 32'h30;
+    localparam PERF_CYCLE_HI       = NPU_BASE + 32'h34;
+    localparam PERF_READ_BEATS     = NPU_BASE + 32'h38;
+    localparam PERF_WRITE_BEATS    = NPU_BASE + 32'h3C;
+    localparam PERF_READ_ACTIVE    = NPU_BASE + 32'h40;
+    localparam PERF_WRITE_ACTIVE   = NPU_BASE + 32'h44;
+    localparam PERF_ARRAY_ACTIVE   = NPU_BASE + 32'h48;
+    localparam PERF_ARRAY_STALL    = NPU_BASE + 32'h4C;
+    localparam PERF_MAC_LO         = NPU_BASE + 32'h50;
+    localparam PERF_MAC_HI         = NPU_BASE + 32'h54;
+    localparam PERF_CLUSTER_ACTIVE = NPU_BASE + 32'h58;
+    localparam PERF_CLUSTER_STALL  = NPU_BASE + 32'h5C;
+    localparam PERF_CLUSTER_CFG    = NPU_BASE + 32'h60;
+    localparam REQUANT_SEL         = NPU_BASE + 32'h64;
+    localparam REQUANT0_MULT       = NPU_BASE + 32'h68;
+    localparam REQUANT0_SHIFT      = NPU_BASE + 32'h6C;
+    localparam REQUANT1_MULT       = NPU_BASE + 32'h70;
+    localparam REQUANT1_SHIFT      = NPU_BASE + 32'h74;
+    localparam REQUANT2_MULT       = NPU_BASE + 32'h78;
+    localparam REQUANT2_SHIFT      = NPU_BASE + 32'h7C;
 
     localparam CONV1_OUT_WORDS = 24*24*20;
     localparam POOL1_OUT_WORDS = 12*12*20;
@@ -45,21 +71,31 @@ module tb_lenet_network;
     localparam MAX_FILE_WORDS  = 131072;
 
     reg [31:0] file_words [0:MAX_FILE_WORDS-1];
-    string fixture_dir, sample_name, sample_dir, weights_dir;
+    string fixture_dir, sample_name, sample_dir, weights_dir, sample_root_dir, weights_root_dir;
     string path_input, path_conv1_w, path_conv2_w, path_fc1_w, path_fc2_w;
     string path_conv1_g, path_pool1_g, path_conv2_input_g, path_conv2_g;
-    string path_pool2_g, path_fc1_g, path_fc2_g, path_argmax;
-    integer show_progress;
+    string path_pool2_g, path_fc1_g, path_fc2_g, path_expected, stop_after_layer;
+    string input_memh_name, expected_file_name;
+    integer show_progress, eval_mode, sample_ordinal, verbose_limit, verbose_this_sample, skip_perf_reads;
+    integer rq_conv2_mult, rq_conv2_shift;
+    integer rq_fc1_mult, rq_fc1_shift;
+    integer rq_fc2_mult, rq_fc2_shift;
+    integer errs, pred, expected_pred;
+    reg [63:0] sample_total_cycles, sample_total_mac;
+    reg [63:0] sample_total_read_beats, sample_total_write_beats;
+    reg [63:0] sample_total_read_active, sample_total_write_active;
+    reg [63:0] sample_total_array_active, sample_total_array_stall;
+    reg [63:0] sample_total_cluster_active, sample_total_cluster_stall;
 
-    npu_top #(.TILE_ROWS(7), .TILE_COLS(13), .BUF_ENTRIES(16384), .BUF_ADDR_W(14)) u_npu (
+    npu_top #(.TILE_ROWS(16), .TILE_COLS(16), .BUF_ENTRIES(16384), .BUF_ADDR_W(14)) u_npu (
         .clk(clk), .rst_n(rst_n),
         .s_axi_awvalid(s_axi_awvalid), .s_axi_awready(s_axi_awready),
         .s_axi_awaddr(s_axi_awaddr), .s_axi_wvalid(s_axi_wvalid),
         .s_axi_wready(s_axi_wready), .s_axi_wdata(s_axi_wdata),
         .s_axi_wstrb(s_axi_wstrb), .s_axi_bvalid(s_axi_bvalid),
         .s_axi_bready(s_axi_bready), .s_axi_bresp(s_axi_bresp),
-        .s_axi_arvalid(1'b0), .s_axi_arready(), .s_axi_araddr(32'h0),
-        .s_axi_rvalid(), .s_axi_rready(1'b0), .s_axi_rdata(), .s_axi_rresp(),
+        .s_axi_arvalid(s_axi_arvalid), .s_axi_arready(s_axi_arready), .s_axi_araddr(s_axi_araddr),
+        .s_axi_rvalid(s_axi_rvalid), .s_axi_rready(s_axi_rready), .s_axi_rdata(s_axi_rdata), .s_axi_rresp(s_axi_rresp),
         .m_axi_arvalid(npu_arvalid), .m_axi_arready(ram_arready),
         .m_axi_araddr(npu_araddr), .m_axi_arlen(npu_arlen),
         .m_axi_arsize(npu_arsize), .m_axi_arburst(npu_arburst),
@@ -92,29 +128,40 @@ module tb_lenet_network;
 
     always #2.5 clk = ~clk;
 
-    function signed [7:0] sat_i8;
-        input signed [31:0] val;
-        begin
-            if (val > 32'sd127) sat_i8 = 8'sd127;
-            else if (val < -32'sd128) sat_i8 = -8'sd128;
-            else sat_i8 = val[7:0];
-        end
-    endfunction
-
-    function integer read_argmax_file;
+    function integer read_int_file;
         input string path;
         integer fd, value;
         begin
             fd = $fopen(path, "r");
             if (fd == 0) begin
                 $display("ERROR: failed to open %0s", path);
-                read_argmax_file = -1;
+                read_int_file = -1;
             end else begin
                 value = -1;
                 if ($fscanf(fd, "%d", value) != 1)
                     value = -1;
                 $fclose(fd);
-                read_argmax_file = value;
+                read_int_file = value;
+            end
+        end
+    endfunction
+
+    function [63:0] expected_mac_count;
+        input [1:0] ttype;
+        input [31:0] in_bytes;
+        input [15:0] iw;
+        input [15:0] ih;
+        input [15:0] ic;
+        input [15:0] oc;
+        reg [63:0] conv_windows;
+        begin
+            if (ttype == 2'd0) begin
+                conv_windows = ((ih >= 16'd5) && (iw >= 16'd5)) ? ((ih - 16'd4) * (iw - 16'd4)) : 64'd0;
+                expected_mac_count = conv_windows * ic * oc * 64'd25;
+            end else if (ttype == 2'd1) begin
+                expected_mac_count = in_bytes * oc;
+            end else begin
+                expected_mac_count = 64'd0;
             end
         end
     endfunction
@@ -131,6 +178,35 @@ module tb_lenet_network;
             s_axi_bready = 1'b1;
             @(posedge clk);
             s_axi_bready = 1'b0;
+        end
+    endtask
+
+    task program_requant_slots;
+        begin
+            axi_write(REQUANT0_MULT, rq_conv2_mult[31:0]);
+            axi_write(REQUANT0_SHIFT, rq_conv2_shift[31:0]);
+            axi_write(REQUANT1_MULT, rq_fc1_mult[31:0]);
+            axi_write(REQUANT1_SHIFT, rq_fc1_shift[31:0]);
+            axi_write(REQUANT2_MULT, rq_fc2_mult[31:0]);
+            axi_write(REQUANT2_SHIFT, rq_fc2_shift[31:0]);
+        end
+    endtask
+
+    task axi_read;
+        input  [31:0] addr;
+        output [31:0] data;
+        begin
+            s_axi_arvalid = 1'b1;
+            s_axi_araddr  = addr;
+            @(posedge clk);
+            while (!s_axi_arready)
+                @(posedge clk);
+            s_axi_arvalid = 1'b0;
+            s_axi_rready  = 1'b1;
+            wait (s_axi_rvalid);
+            data = s_axi_rdata;
+            @(posedge clk);
+            s_axi_rready  = 1'b0;
         end
     endtask
 
@@ -186,30 +262,164 @@ module tb_lenet_network;
         end
     endtask
 
+    task compare_act_buffer_memh;
+        input string path;
+        input integer word_count;
+        input [127:0] name;
+        inout integer total_errs;
+        integer i, local_errs;
+        reg [31:0] actual;
+        begin
+            local_errs = 0;
+            $readmemh(path, file_words);
+            for (i = 0; i < word_count; i = i + 1) begin
+                if (u_npu.act_comp_bank == 1'b0)
+                    actual = u_npu.u_act_buffer.bank_a[i];
+                else
+                    actual = u_npu.u_act_buffer.bank_b[i];
+                if (actual !== file_words[i]) begin
+                    local_errs = local_errs + 1;
+                    if (local_errs <= 8)
+                        $display("  %0s mismatch[%0d]: got 0x%08x exp 0x%08x",
+                                 name, i, actual, file_words[i]);
+                end
+            end
+            if (local_errs == 0)
+                $display("  %0s PASS", name);
+            else
+                $display("  %0s FAIL: %0d mismatches", name, local_errs);
+            total_errs = total_errs + local_errs;
+        end
+    endtask
+
+    task compare_wgt_buffer_memh_slice;
+        input string path;
+        input integer word_offset;
+        input integer word_count;
+        input [127:0] name;
+        inout integer total_errs;
+        integer i, local_errs;
+        reg [31:0] actual;
+        begin
+            local_errs = 0;
+            $readmemh(path, file_words);
+            for (i = 0; i < word_count; i = i + 1) begin
+                if (u_npu.wgt_load_bank == 1'b0)
+                    actual = u_npu.u_wgt_buffer.bank_a[i];
+                else
+                    actual = u_npu.u_wgt_buffer.bank_b[i];
+                if (actual !== file_words[word_offset + i]) begin
+                    local_errs = local_errs + 1;
+                    if (local_errs <= 8)
+                        $display("  %0s mismatch[%0d]: got 0x%08x exp 0x%08x",
+                                 name, i, actual, file_words[word_offset + i]);
+                end
+            end
+            if (local_errs == 0)
+                $display("  %0s PASS", name);
+            else
+                $display("  %0s FAIL: %0d mismatches", name, local_errs);
+            total_errs = total_errs + local_errs;
+        end
+    endtask
+
+    task report_perf;
+        input [127:0] layer_name;
+        input [63:0] expected_mac;
+        reg [31:0] cycle_lo, cycle_hi;
+        reg [31:0] read_beats, write_beats;
+        reg [31:0] read_active, write_active;
+        reg [31:0] array_active, array_stall;
+        reg [31:0] mac_lo, mac_hi;
+        reg [31:0] cluster_active, cluster_stall;
+        reg [31:0] cluster_cfg;
+        real read_bw_util;
+        real write_bw_util;
+        real array_util;
+        begin
+            axi_read(PERF_CYCLE_LO, cycle_lo);
+            axi_read(PERF_CYCLE_HI, cycle_hi);
+            axi_read(PERF_READ_BEATS, read_beats);
+            axi_read(PERF_WRITE_BEATS, write_beats);
+            axi_read(PERF_READ_ACTIVE, read_active);
+            axi_read(PERF_WRITE_ACTIVE, write_active);
+            axi_read(PERF_ARRAY_ACTIVE, array_active);
+            axi_read(PERF_ARRAY_STALL, array_stall);
+            axi_read(PERF_MAC_LO, mac_lo);
+            axi_read(PERF_MAC_HI, mac_hi);
+            axi_read(PERF_CLUSTER_ACTIVE, cluster_active);
+            axi_read(PERF_CLUSTER_STALL, cluster_stall);
+            axi_read(PERF_CLUSTER_CFG, cluster_cfg);
+
+            if ({mac_hi, mac_lo} !== expected_mac)
+                $fatal(1, "%0s perf mac mismatch got 0x%08x_%08x expect 0x%08x_%08x",
+                       layer_name, mac_hi, mac_lo, expected_mac[63:32], expected_mac[31:0]);
+            if (cycle_lo == 32'd0)
+                $fatal(1, "%0s perf cycles should be non-zero", layer_name);
+            if (cluster_cfg[7:0] !== 8'h01)
+                $fatal(1, "%0s cluster cfg mismatch: 0x%08x", layer_name, cluster_cfg);
+
+            sample_total_cycles         = sample_total_cycles + {cycle_hi, cycle_lo};
+            sample_total_mac            = sample_total_mac + {mac_hi, mac_lo};
+            sample_total_read_beats     = sample_total_read_beats + read_beats;
+            sample_total_write_beats    = sample_total_write_beats + write_beats;
+            sample_total_read_active    = sample_total_read_active + read_active;
+            sample_total_write_active   = sample_total_write_active + write_active;
+            sample_total_array_active   = sample_total_array_active + array_active;
+            sample_total_array_stall    = sample_total_array_stall + array_stall;
+            sample_total_cluster_active = sample_total_cluster_active + cluster_active;
+            sample_total_cluster_stall  = sample_total_cluster_stall + cluster_stall;
+
+            if (verbose_this_sample != 0) begin
+                read_bw_util = (read_active != 0) ? (read_beats * 1.0 / read_active) : 0.0;
+                write_bw_util = (write_active != 0) ? (write_beats * 1.0 / write_active) : 0.0;
+                array_util = (cycle_lo != 0) ? (array_active * 1.0 / cycle_lo) : 0.0;
+                $display("PERF %0s cycles=%0d read_beats=%0d write_beats=%0d read_bw_util=%0.4f write_bw_util=%0.4f array_active=%0d array_stall=%0d cluster_active=%0d cluster_stall=%0d mac=%0d cluster_cfg=0x%08x array_util=%0.4f",
+                         layer_name, cycle_lo, read_beats, write_beats, read_bw_util, write_bw_util,
+                         array_active, array_stall, cluster_active, cluster_stall, mac_lo, cluster_cfg, array_util);
+            end
+        end
+    endtask
+
     task requantize_i32_to_i8_region;
         input [31:0] src_addr;
         input [31:0] dst_addr;
         input integer elem_count;
-        integer i, word_idx, byte_idx;
-        reg signed [31:0] src_val;
-        reg [31:0] pack_word;
-        reg signed [7:0] qv;
+        input [1:0] slot_sel;
+        input integer multiplier;
+        input integer shift;
+        integer rq_cycles;
         begin
-            pack_word = 32'd0;
-            word_idx = 0;
-            for (i = 0; i < elem_count; i = i + 1) begin
-                src_val = u_ram.ram[(src_addr >> 2) + i];
-                qv = sat_i8(src_val);
-                byte_idx = i[1:0];
-                pack_word[byte_idx*8 +: 8] = qv[7:0];
-                if (byte_idx == 3) begin
-                    u_ram.ram[(dst_addr >> 2) + word_idx] = pack_word;
-                    pack_word = 32'd0;
-                    word_idx = word_idx + 1;
+            axi_write(REQUANT_SEL, {30'd0, slot_sel});
+            case (slot_sel)
+                2'd0: begin
+                    axi_write(REQUANT0_MULT, multiplier[31:0]);
+                    axi_write(REQUANT0_SHIFT, shift[31:0]);
                 end
+                2'd1: begin
+                    axi_write(REQUANT1_MULT, multiplier[31:0]);
+                    axi_write(REQUANT1_SHIFT, shift[31:0]);
+                end
+                default: begin
+                    axi_write(REQUANT2_MULT, multiplier[31:0]);
+                    axi_write(REQUANT2_SHIFT, shift[31:0]);
+                end
+            endcase
+            run_layer(2'd3, src_addr, 32'h0, dst_addr, elem_count * 4, 0, elem_count,
+                      1, 1, 1, 1, 1'b0, 1'b0, 3000000, "Requant");
+        end
+    endtask
+
+    task maybe_stop_after_layer;
+        input string layer_key;
+        begin
+            if ((stop_after_layer != "") && (stop_after_layer == layer_key)) begin
+                $display("STOP_AFTER sample=%0s layer=%0s total_cycles=%0d total_mac=%0d total_read_beats=%0d total_write_beats=%0d total_array_active=%0d total_array_stall=%0d total_cluster_active=%0d total_cluster_stall=%0d",
+                         sample_name, layer_key,
+                         sample_total_cycles, sample_total_mac, sample_total_read_beats, sample_total_write_beats,
+                         sample_total_array_active, sample_total_array_stall, sample_total_cluster_active, sample_total_cluster_stall);
+                #20 $finish;
             end
-            if (elem_count % 4 != 0)
-                u_ram.ram[(dst_addr >> 2) + word_idx] = pack_word;
         end
     endtask
 
@@ -222,8 +432,14 @@ module tb_lenet_network;
         input integer maxc;
         input [127:0] layer_name;
         integer c;
+        integer done_cycle;
+        integer busy_clear_cycle;
+        integer conv2_act_debug_done;
+        integer conv2_wgt_debug_done;
+        reg [63:0] expected_mac;
         begin
-            $display("=== %0s ===", layer_name);
+            if (verbose_this_sample != 0)
+                $display("=== %0s ===", layer_name);
             if (npu_done || npu_error)
                 axi_write(32'h1000_0000, 32'h10);
             repeat (2) @(posedge clk);
@@ -239,27 +455,61 @@ module tb_lenet_network;
             axi_write(32'h1000_002C, {30'd0, pool, relu});
             axi_write(32'h1000_0000, 32'h1);
             c = 0;
+            done_cycle = -1;
+            busy_clear_cycle = -1;
+            conv2_act_debug_done = 0;
+            conv2_wgt_debug_done = 0;
             while (!npu_done && !npu_error && c < maxc) begin
                 @(posedge clk);
                 c = c + 1;
+                if (!eval_mode && (ttype == 2'd0) && (iw == 16'd12) && (ih == 16'd12) && (ic == 16'd20) && (oc == 16'd50)) begin
+                    if (!conv2_act_debug_done && (u_npu.fsm_state == 5'd2)) begin
+                        $display("  Conv2 debug bytes: blk_in_bytes=%0d act_dma_bytes=%0d blk_input_rows=%0d blk_output_rows=%0d",
+                                 u_npu.blk_in_bytes, u_npu.act_dma_bytes, u_npu.blk_in_rows, u_npu.blk_out_rows);
+                        compare_act_buffer_memh(path_conv2_input_g, 720, "Conv2 act_buffer", errs);
+                        conv2_act_debug_done = 1;
+                    end
+                    if (!conv2_wgt_debug_done && (u_npu.fsm_state == 5'd8)) begin
+                        $display("  Conv2 debug weights: blk_wgt_per_cin=%0d wgt_per_cin=%0d wgt_words_per_cin=%0d wgt_dma_bytes=%0d cin_idx=%0d",
+                                 u_npu.blk_wgt_per_cin, u_npu.wgt_per_cin, u_npu.wgt_words_per_cin, u_npu.wgt_dma_bytes, u_npu.cin_idx);
+                        compare_wgt_buffer_memh_slice(path_conv2_w, 0, 313, "Conv2 wgt_buffer cin0", errs);
+                        conv2_wgt_debug_done = 1;
+                    end
+                end
                 if (show_progress != 0 && (c % 1000) == 0) begin
-                    $display("  %0s progress: cycles=%0d fsm=%0d sub=%0d block_row=%0d cin=%0d win=%0d feed=%0d",
+                    $display("  %0s progress: cycles=%0d fsm=%0d sub=%0d block_row=%0d cin=%0d win=%0d feed=%0d dma_ptr=%0d dma_state=%0d awv=%0b awr=%0b wv=%0b wr=%0b bv=%0b br=%0b",
                              layer_name, c, u_npu.fsm_state, u_npu.comp_sub_state,
                              u_npu.u_block_sched.curr_out_row, u_npu.cin_idx,
-                             u_npu.comp_win_idx, u_npu.act_feed_done_cnt);
+                             u_npu.comp_win_idx, u_npu.act_feed_done_cnt,
+                             u_npu.dma_rd_ptr, u_npu.u_dma_writer.state,
+                             u_npu.m_axi_awvalid, u_npu.m_axi_awready,
+                             u_npu.m_axi_wvalid, u_npu.m_axi_wready,
+                             u_npu.m_axi_bvalid, u_npu.m_axi_bready);
                 end
             end
             if (npu_error)
                 $fatal(1, "%0s NPU error code=0x%02h", layer_name, npu_error_code);
             if (!npu_done)
                 $fatal(1, "%0s TIMEOUT", layer_name);
+            done_cycle = c;
             while (npu_busy && c < maxc) begin
                 @(posedge clk);
                 c = c + 1;
             end
             if (npu_busy)
                 $fatal(1, "%0s BUSY-STUCK after done", layer_name);
+            busy_clear_cycle = c;
+            if (verbose_this_sample != 0)
+                $display("LAYER_PHASE layer=%0s done_cycle=%0d busy_clear_cycle=%0d post_done_cycles=%0d",
+                         layer_name, done_cycle, busy_clear_cycle, busy_clear_cycle - done_cycle);
             repeat (4) @(posedge clk);
+            expected_mac = expected_mac_count(ttype, in_bytes, iw, ih, ic, oc);
+            if (!skip_perf_reads) begin
+                report_perf(layer_name, expected_mac);
+            end else begin
+                sample_total_cycles = sample_total_cycles + busy_clear_cycle;
+                sample_total_mac = sample_total_mac + expected_mac;
+            end
         end
     endtask
 
@@ -282,34 +532,79 @@ module tb_lenet_network;
         end
     endfunction
 
-    integer errs, pred, expected_pred;
-
     initial begin
         clk = 0; rst_n = 0; errs = 0;
         s_axi_awvalid = 0; s_axi_wvalid = 0; s_axi_bready = 0; s_axi_wstrb = 4'hF;
+        s_axi_arvalid = 0; s_axi_rready = 0; s_axi_araddr = 32'h0;
+        sample_total_cycles = 64'd0;
+        sample_total_mac = 64'd0;
+        sample_total_read_beats = 64'd0;
+        sample_total_write_beats = 64'd0;
+        sample_total_read_active = 64'd0;
+        sample_total_write_active = 64'd0;
+        sample_total_array_active = 64'd0;
+        sample_total_array_stall = 64'd0;
+        sample_total_cluster_active = 64'd0;
+        sample_total_cluster_stall = 64'd0;
 
         fixture_dir = "datasets/mnist/lenet_fixture";
         sample_name = "sample_00000_label_7";
+        sample_root_dir = "";
+        weights_root_dir = "";
+        input_memh_name = "input.memh";
+        expected_file_name = "argmax.txt";
+        stop_after_layer = "";
         show_progress = 0;
+        eval_mode = 0;
+        sample_ordinal = 0;
+        verbose_limit = 16;
+        skip_perf_reads = 0;
+        rq_conv2_mult = 1;
+        rq_conv2_shift = 0;
+        rq_fc1_mult = 1;
+        rq_fc1_shift = 0;
+        rq_fc2_mult = 1;
+        rq_fc2_shift = 0;
         void'($value$plusargs("fixture_dir=%s", fixture_dir));
         void'($value$plusargs("sample_name=%s", sample_name));
+        void'($value$plusargs("sample_root_dir=%s", sample_root_dir));
+        void'($value$plusargs("weights_root_dir=%s", weights_root_dir));
+        void'($value$plusargs("input_memh_name=%s", input_memh_name));
+        void'($value$plusargs("expected_file_name=%s", expected_file_name));
+        void'($value$plusargs("stop_after_layer=%s", stop_after_layer));
         void'($value$plusargs("progress=%d", show_progress));
-        sample_dir = {fixture_dir, "/", sample_name};
-        weights_dir = {fixture_dir, "/weights"};
+        void'($value$plusargs("eval_mode=%d", eval_mode));
+        void'($value$plusargs("sample_ordinal=%d", sample_ordinal));
+        void'($value$plusargs("verbose_limit=%d", verbose_limit));
+        void'($value$plusargs("skip_perf_reads=%d", skip_perf_reads));
+        void'($value$plusargs("rq_conv2_mult=%d", rq_conv2_mult));
+        void'($value$plusargs("rq_conv2_shift=%d", rq_conv2_shift));
+        void'($value$plusargs("rq_fc1_mult=%d", rq_fc1_mult));
+        void'($value$plusargs("rq_fc1_shift=%d", rq_fc1_shift));
+        void'($value$plusargs("rq_fc2_mult=%d", rq_fc2_mult));
+        void'($value$plusargs("rq_fc2_shift=%d", rq_fc2_shift));
+        if (sample_root_dir == "")
+            sample_root_dir = fixture_dir;
+        if (weights_root_dir == "")
+            weights_root_dir = {fixture_dir, "/weights"};
+        verbose_this_sample = (!eval_mode) || (sample_ordinal < verbose_limit);
 
-        path_input        = {sample_dir, "/input.memh"};
+        sample_dir = {sample_root_dir, "/", sample_name};
+        weights_dir = weights_root_dir;
+
+        path_input        = {sample_dir, "/", input_memh_name};
         path_conv1_w      = {weights_dir, "/conv1_weights.memh"};
         path_conv2_w      = {weights_dir, "/conv2_weights.memh"};
         path_fc1_w        = {weights_dir, "/fc1_weights.memh"};
         path_fc2_w        = {weights_dir, "/fc2_weights.memh"};
-        path_conv1_g      = {sample_dir, "/conv1_out.memh"};
-        path_pool1_g      = {sample_dir, "/pool1_out.memh"};
-        path_conv2_input_g= {sample_dir, "/conv2_input.memh"};
-        path_conv2_g      = {sample_dir, "/conv2_out.memh"};
-        path_pool2_g      = {sample_dir, "/pool2_out.memh"};
-        path_fc1_g        = {sample_dir, "/fc1_out.memh"};
-        path_fc2_g        = {sample_dir, "/fc2_logits.memh"};
-        path_argmax       = {sample_dir, "/argmax.txt"};
+        path_conv1_g      = {fixture_dir, "/", sample_name, "/conv1_out.memh"};
+        path_pool1_g      = {fixture_dir, "/", sample_name, "/pool1_out.memh"};
+        path_conv2_input_g= {fixture_dir, "/", sample_name, "/conv2_input.memh"};
+        path_conv2_g      = {fixture_dir, "/", sample_name, "/conv2_out.memh"};
+        path_pool2_g      = {fixture_dir, "/", sample_name, "/pool2_out.memh"};
+        path_fc1_g        = {fixture_dir, "/", sample_name, "/fc1_out.memh"};
+        path_fc2_g        = {fixture_dir, "/", sample_name, "/fc2_logits.memh"};
+        path_expected     = {sample_dir, "/", expected_file_name};
 
         #20 rst_n = 1; #20;
 
@@ -318,46 +613,75 @@ module tb_lenet_network;
         load_memh_to_ram(path_conv2_w, CONV2_WGT_ADDR, 6260);
         load_memh_to_ram(path_fc1_w,   FC1_WGT_ADDR,   100000);
         load_memh_to_ram(path_fc2_w,   FC2_WGT_ADDR,   1250);
+        program_requant_slots();
 
         run_layer(2'd0, INPUT_ADDR, CONV1_WGT_ADDR, CONV1_OUT_ADDR, 784, 500, 24*24*20*4,
                   28, 28, 1, 20, 1'b0, 1'b0, 5000000, "Conv1");
-        compare_region_memh(path_conv1_g, CONV1_OUT_ADDR, CONV1_OUT_WORDS, "Conv1 golden", errs);
+        if (!eval_mode)
+            compare_region_memh(path_conv1_g, CONV1_OUT_ADDR, CONV1_OUT_WORDS, "Conv1 golden", errs);
+        maybe_stop_after_layer("conv1");
 
         run_layer(2'd2, CONV1_OUT_ADDR, 32'h0, POOL1_OUT_ADDR, 24*24*20*4, 0, 12*12*20*4,
                   24, 24, 20, 20, 1'b0, 1'b1, 5000000, "Pool1");
-        compare_region_memh(path_pool1_g, POOL1_OUT_ADDR, POOL1_OUT_WORDS, "Pool1 golden", errs);
+        if (!eval_mode)
+            compare_region_memh(path_pool1_g, POOL1_OUT_ADDR, POOL1_OUT_WORDS, "Pool1 golden", errs);
+        maybe_stop_after_layer("pool1");
 
-        requantize_i32_to_i8_region(POOL1_OUT_ADDR, CONV2_IN_ADDR, POOL1_OUT_WORDS);
-        compare_region_memh(path_conv2_input_g, CONV2_IN_ADDR, 720, "Pool1->Conv2 requant", errs);
+        requantize_i32_to_i8_region(POOL1_OUT_ADDR, CONV2_IN_ADDR, POOL1_OUT_WORDS, 2'd0, rq_conv2_mult, rq_conv2_shift);
+        if (!eval_mode)
+            compare_region_memh(path_conv2_input_g, CONV2_IN_ADDR, 720, "Pool1->Conv2 requant", errs);
 
         run_layer(2'd0, CONV2_IN_ADDR, CONV2_WGT_ADDR, CONV2_OUT_ADDR, 12*12*20, 25040, 8*8*50*4,
                   12, 12, 20, 50, 1'b0, 1'b0, 8000000, "Conv2");
-        compare_region_memh(path_conv2_g, CONV2_OUT_ADDR, CONV2_OUT_WORDS, "Conv2 golden", errs);
+        if (!eval_mode)
+            compare_region_memh(path_conv2_g, CONV2_OUT_ADDR, CONV2_OUT_WORDS, "Conv2 golden", errs);
+        maybe_stop_after_layer("conv2");
 
         run_layer(2'd2, CONV2_OUT_ADDR, 32'h0, POOL2_OUT_ADDR, 8*8*50*4, 0, 4*4*50*4,
                   8, 8, 50, 50, 1'b0, 1'b1, 4000000, "Pool2");
-        compare_region_memh(path_pool2_g, POOL2_OUT_ADDR, POOL2_OUT_WORDS, "Pool2 golden", errs);
+        if (!eval_mode)
+            compare_region_memh(path_pool2_g, POOL2_OUT_ADDR, POOL2_OUT_WORDS, "Pool2 golden", errs);
+        maybe_stop_after_layer("pool2");
 
-        run_layer(2'd1, POOL2_OUT_ADDR, FC1_WGT_ADDR, FC1_OUT_ADDR, 3200, 400000, 2000,
+        requantize_i32_to_i8_region(POOL2_OUT_ADDR, POOL2_OUT_ADDR, POOL2_OUT_WORDS, 2'd1, rq_fc1_mult, rq_fc1_shift);
+
+        run_layer(2'd1, POOL2_OUT_ADDR, FC1_WGT_ADDR, FC1_OUT_ADDR, 800, 400000, 2000,
                   1, 1, 800, 500, 1'b1, 1'b0, 12000000, "FC1");
-        compare_region_memh(path_fc1_g, FC1_OUT_ADDR, FC1_OUT_WORDS, "FC1 golden", errs);
+        if (!eval_mode)
+            compare_region_memh(path_fc1_g, FC1_OUT_ADDR, FC1_OUT_WORDS, "FC1 golden", errs);
+        maybe_stop_after_layer("fc1");
 
-        run_layer(2'd1, FC1_OUT_ADDR, FC2_WGT_ADDR, FC2_OUT_ADDR, 2000, 5000, 40,
+        requantize_i32_to_i8_region(FC1_OUT_ADDR, FC1_OUT_ADDR, FC1_OUT_WORDS, 2'd2, rq_fc2_mult, rq_fc2_shift);
+
+        run_layer(2'd1, FC1_OUT_ADDR, FC2_WGT_ADDR, FC2_OUT_ADDR, 500, 5000, 40,
                   1, 1, 500, 10, 1'b0, 1'b0, 2000000, "FC2");
-        compare_region_memh(path_fc2_g, FC2_OUT_ADDR, FC2_OUT_WORDS, "FC2 golden", errs);
+        if (!eval_mode)
+            compare_region_memh(path_fc2_g, FC2_OUT_ADDR, FC2_OUT_WORDS, "FC2 golden", errs);
+        maybe_stop_after_layer("fc2");
 
         pred = argmax_region(FC2_OUT_ADDR, 10);
-        expected_pred = read_argmax_file(path_argmax);
-        $display("Predicted class=%0d expected=%0d", pred, expected_pred);
+        expected_pred = read_int_file(path_expected);
+        if (verbose_this_sample != 0)
+            $display("Predicted class=%0d expected=%0d", pred, expected_pred);
         if (pred != expected_pred) begin
-            $display("  Argmax mismatch");
+            if (verbose_this_sample != 0)
+                $display("  Argmax mismatch");
             errs = errs + 1;
         end
 
-        if (errs != 0)
+        if (errs != 0) begin
+            $display("SUBSYS_RESULT sample=%0s predicted=%0d expected=%0d status=FAIL total_cycles=%0d total_mac=%0d total_read_beats=%0d total_write_beats=%0d total_array_active=%0d total_array_stall=%0d total_cluster_active=%0d total_cluster_stall=%0d",
+                     sample_name, pred, expected_pred,
+                     sample_total_cycles, sample_total_mac, sample_total_read_beats, sample_total_write_beats,
+                     sample_total_array_active, sample_total_array_stall, sample_total_cluster_active, sample_total_cluster_stall);
             $fatal(1, "LeNet network FAILED with %0d total mismatches", errs);
-        else
+        end else begin
+            $display("SUBSYS_RESULT sample=%0s predicted=%0d expected=%0d status=PASS total_cycles=%0d total_mac=%0d total_read_beats=%0d total_write_beats=%0d total_array_active=%0d total_array_stall=%0d total_cluster_active=%0d total_cluster_stall=%0d",
+                     sample_name, pred, expected_pred,
+                     sample_total_cycles, sample_total_mac, sample_total_read_beats, sample_total_write_beats,
+                     sample_total_array_active, sample_total_array_stall, sample_total_cluster_active, sample_total_cluster_stall);
             $display("LeNet network PASSED for %0s", sample_name);
+        end
 
         #20 $finish;
     end

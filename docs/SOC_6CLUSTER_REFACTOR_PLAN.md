@@ -1,5 +1,15 @@
 # CPU+NPU SoC 6-Cluster 重构计划
 
+> Historical refactor plan:
+> 本文档是 6-cluster 重构阶段的执行计划和任务拆解记录。
+> 它保留了若干当时的“待做项/迁移项”描述，因此不应直接当作当前仓库状态说明。
+> 当前正式基线请以：
+> - [README.md](/root/Project_npu/README.md)
+> - [ARCHITECTURE_SPEC.md](/root/Project_npu/ARCHITECTURE_SPEC.md)
+> - [CLAUDE.md](/root/Project_npu/CLAUDE.md)
+> - [docs/REQUANTIZATION_PLAN.md](/root/Project_npu/docs/REQUANTIZATION_PLAN.md)
+> 为准。
+
 ## 1. 背景与目标
 
 当前 `Project_npu` 仓库已经具备较完整的 `NPU` 子系统功能框架，包括：

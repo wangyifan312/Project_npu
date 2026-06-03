@@ -19,7 +19,10 @@ def load_checkpoint_to_model(path: Path) -> tuple[Int8AwareLeNet, dict]:
         raise ValueError(f"unsupported checkpoint arch {payload.get('arch')!r}")
 
     qstate = payload.get("quantized_state", {})
-    model = Int8AwareLeNet()
+    model = Int8AwareLeNet(
+        weight_scale=float(payload.get("weight_scale", 32.0)),
+        requant_params=payload.get("requant_params"),
+    )
     model.conv1_weight.data.copy_(qstate["conv1_weight"].to(torch.float32) / model.weight_scale)
     model.conv2_weight.data.copy_(qstate["conv2_weight"].to(torch.float32) / model.weight_scale)
     model.fc1_weight.data.copy_(qstate["fc1_weight"].to(torch.float32) / model.weight_scale)

@@ -23,7 +23,14 @@ module tb_task4_fc;
     wire ram_rvalid, ram_rlast;
     wire [31:0] ram_rdata;
 
-    npu_top #(.TILE_ROWS(7), .TILE_COLS(2), .BUF_ENTRIES(1024), .BUF_ADDR_W(10)) u_npu (
+    npu_top #(
+        .TILE_ROWS(16),
+        .TILE_COLS(16),
+        .BUF_ENTRIES(16384),
+        .BUF_ADDR_W(14),
+        .CLUSTER_MODE(2'd1),
+        .CLUSTER_MASK_REQ(6'b00_0011)
+    ) u_npu (
         .clk(clk), .rst_n(rst_n),
         .s_axi_awvalid(s_axi_awvalid), .s_axi_awready(s_axi_awready),
         .s_axi_awaddr(s_axi_awaddr), .s_axi_wvalid(s_axi_wvalid),
@@ -109,6 +116,7 @@ module tb_task4_fc;
 
     integer i, errs;
     reg [31:0] actual;
+    reg seen_output_arbiter;
     localparam SMALL_IN_ADDR  = 32'h0000_0100;
     localparam SMALL_WGT_ADDR = 32'h0000_0200;
     localparam SMALL_OUT_ADDR = 32'h0000_0300;
@@ -119,16 +127,21 @@ module tb_task4_fc;
     localparam FC2_WGT_ADDR   = 32'h0009_2000;
     localparam FC2_OUT_ADDR   = 32'h0009_4000;
 
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            seen_output_arbiter <= 1'b0;
+        else if (u_npu.cluster_arb_out_valid)
+            seen_output_arbiter <= 1'b1;
+    end
+
     initial begin
         clk = 0; rst_n = 0; errs = 0;
         s_axi_awvalid = 0; s_axi_wvalid = 0; s_axi_bready = 0; s_axi_wstrb = 4'hF;
+        seen_output_arbiter = 1'b0;
         #20 rst_n = 1; #20;
 
         $display("=== Test A: FC 4->2 functional ===");
-        ram_write_word(SMALL_IN_ADDR + 32'd0,  32'sd5);
-        ram_write_word(SMALL_IN_ADDR + 32'd4, -32'sd3);
-        ram_write_word(SMALL_IN_ADDR + 32'd8,  32'sd2);
-        ram_write_word(SMALL_IN_ADDR + 32'd12, 32'sd7);
+        ram_write_word(SMALL_IN_ADDR + 32'd0,  32'h0702FD05);
         ram_write_word(SMALL_WGT_ADDR + 32'd0, 32'h01010101); // neuron0 weights = 1,1,1,1
         ram_write_word(SMALL_WGT_ADDR + 32'd4, 32'h02020202); // neuron1 weights = 2,2,2,2
         ram_write_word(SMALL_OUT_ADDR + 32'd0, 32'd0);
@@ -138,7 +151,7 @@ module tb_task4_fc;
         axi_write(32'h1000_000C, SMALL_IN_ADDR);
         axi_write(32'h1000_0010, SMALL_WGT_ADDR);
         axi_write(32'h1000_0014, SMALL_OUT_ADDR);
-        axi_write(32'h1000_0018, 16);
+        axi_write(32'h1000_0018, 4);
         axi_write(32'h1000_001C, 8);
         axi_write(32'h1000_0020, 8);
         axi_write(32'h1000_0024, {16'd1, 16'd1});
@@ -148,6 +161,8 @@ module tb_task4_fc;
         wait_done(200000);
         if (!npu_done) begin
             $display("  Test A failed to complete"); errs = errs + 1;
+        end else if (!seen_output_arbiter) begin
+            $display("  Test A did not observe output_arbiter"); errs = errs + 1;
         end else begin
             actual = ram_read_word(SMALL_OUT_ADDR + 32'd0);
             if ($signed(actual) != 11) begin $display("  out0=%0d exp 11", $signed(actual)); errs = errs + 1; end
@@ -156,11 +171,11 @@ module tb_task4_fc;
             if (errs == 0) $display("  Test A PASS");
         end
 
-        rst_n = 0; #20; rst_n = 1; #20;
+        rst_n = 0; #20; seen_output_arbiter = 1'b0; rst_n = 1; #20;
 
         $display("=== Test B: FC 800->500 all ones ===");
-        for (i = 0; i < 800; i = i + 1)
-            ram_write_word(FC1_IN_ADDR + i*4, 32'sd1);
+        for (i = 0; i < 200; i = i + 1)
+            ram_write_word(FC1_IN_ADDR + i*4, 32'h01010101);
         for (i = 0; i < 100000; i = i + 1)
             ram_write_word(FC1_WGT_ADDR + i*4, 32'h01010101);
         for (i = 0; i < 500; i = i + 1)
@@ -170,7 +185,7 @@ module tb_task4_fc;
         axi_write(32'h1000_000C, FC1_IN_ADDR);
         axi_write(32'h1000_0010, FC1_WGT_ADDR);
         axi_write(32'h1000_0014, FC1_OUT_ADDR);
-        axi_write(32'h1000_0018, 3200);
+        axi_write(32'h1000_0018, 800);
         axi_write(32'h1000_001C, 400000);
         axi_write(32'h1000_0020, 2000);
         axi_write(32'h1000_0024, {16'd1, 16'd1});
@@ -180,6 +195,8 @@ module tb_task4_fc;
         wait_done(5000000);
         if (!npu_done) begin
             $display("  Test B failed to complete"); errs = errs + 1;
+        end else if (!seen_output_arbiter) begin
+            $display("  Test B did not observe output_arbiter"); errs = errs + 1;
         end else begin
             actual = ram_read_word(FC1_OUT_ADDR + 32'd0);
             if ($signed(actual) != 800) begin $display("  out0=%0d exp 800", $signed(actual)); errs = errs + 1; end
@@ -190,11 +207,11 @@ module tb_task4_fc;
             if (errs == 0) $display("  Test B PASS");
         end
 
-        rst_n = 0; #20; rst_n = 1; #20;
+        rst_n = 0; #20; seen_output_arbiter = 1'b0; rst_n = 1; #20;
 
         $display("=== Test C: FC 500->10 all ones ===");
-        for (i = 0; i < 500; i = i + 1)
-            ram_write_word(FC2_IN_ADDR + i*4, 32'sd1);
+        for (i = 0; i < 125; i = i + 1)
+            ram_write_word(FC2_IN_ADDR + i*4, 32'h01010101);
         for (i = 0; i < 1250; i = i + 1)
             ram_write_word(FC2_WGT_ADDR + i*4, 32'h01010101);
         for (i = 0; i < 10; i = i + 1)
@@ -204,7 +221,7 @@ module tb_task4_fc;
         axi_write(32'h1000_000C, FC2_IN_ADDR);
         axi_write(32'h1000_0010, FC2_WGT_ADDR);
         axi_write(32'h1000_0014, FC2_OUT_ADDR);
-        axi_write(32'h1000_0018, 2000);
+        axi_write(32'h1000_0018, 500);
         axi_write(32'h1000_001C, 5000);
         axi_write(32'h1000_0020, 40);
         axi_write(32'h1000_0024, {16'd1, 16'd1});
@@ -214,6 +231,8 @@ module tb_task4_fc;
         wait_done(1000000);
         if (!npu_done) begin
             $display("  Test C failed to complete"); errs = errs + 1;
+        end else if (!seen_output_arbiter) begin
+            $display("  Test C did not observe output_arbiter"); errs = errs + 1;
         end else begin
             actual = ram_read_word(FC2_OUT_ADDR + 32'd0);
             if ($signed(actual) != 500) begin $display("  out0=%0d exp 500", $signed(actual)); errs = errs + 1; end

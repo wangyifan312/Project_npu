@@ -26,6 +26,8 @@ module task_checker #(
     input  wire [15:0] output_c,
     input  wire        relu_en,
     input  wire        pool_en,
+    input  wire [31:0] requant_multiplier,
+    input  wire [5:0]  requant_shift,
 
     // Check result
     output wire        checks_pass,
@@ -47,6 +49,7 @@ module task_checker #(
     localparam ERR_POOL_PARAM        = 8'h08;
     localparam ERR_DIM_RELATION      = 8'h09;
     localparam ERR_FC_NOT_SUPPORTED  = 8'h0A;
+    localparam ERR_REQUANT_PARAM     = 8'h0B;
 
     // ============================================================
     // Internal registers (latch inputs on task_start)
@@ -122,34 +125,35 @@ module task_checker #(
     // ============================================================
     reg [7:0]  error_code_comb;
 
-    // Alignment: require 64-byte alignment for AXI burst efficiency
-    // For Pool, weight_addr may be unused (0), skip its alignment check
+    // Alignment: require 64-byte alignment for AXI burst efficiency.
+    // Pool/Requant may leave weight_addr unused.
     wire addr_aligned_ok = (input_addr_r[5:0]  == 6'h00) &&
                            (output_addr_r[5:0] == 6'h00) &&
-                           ((task_type_r == 2'd2) || (weight_addr_r[5:0] == 6'h00));
+                           (((task_type_r == 2'd2) || (task_type_r == 2'd3)) || (weight_addr_r[5:0] == 6'h00));
 
-    // Check that required bytes are non-zero (weight may be unused for Pool)
+    // Check that required bytes are non-zero (weight may be unused for Pool/Requant)
     wire bytes_ok = (input_bytes_r != 32'h0) && (output_bytes_r != 32'h0) &&
-                    ((task_type_r == 2'd2) || (weight_bytes_r != 32'h0));
+                    (((task_type_r == 2'd2) || (task_type_r == 2'd3)) || (weight_bytes_r != 32'h0));
 
-    // Check that required addresses are non-null (weight may be unused for Pool)
+    // Check that required addresses are non-null (weight may be unused for Pool/Requant)
     wire addr_non_null = (input_addr_r != 32'h0) && (output_addr_r != 32'h0) &&
-                         ((task_type_r == 2'd2) || (weight_addr_r != 32'h0));
+                         (((task_type_r == 2'd2) || (task_type_r == 2'd3)) || (weight_addr_r != 32'h0));
 
-    // Check addresses are in bounds (weight_addr may be 0 for Pool)
+    // Check addresses are in bounds (weight_addr may be 0 for Pool/Requant)
     wire addr_bounds_ok = addr_in_bounds(input_addr_r) &&
                           addr_in_bounds(output_addr_r) &&
-                          ((task_type_r == 2'd2) || addr_in_bounds(weight_addr_r));
+                          (((task_type_r == 2'd2) || (task_type_r == 2'd3)) || addr_in_bounds(weight_addr_r));
 
-    // Check address ranges (weight may be 0 for Pool)
+    // Check address ranges (weight may be 0 for Pool/Requant)
     wire addr_range_ok_sig = addr_range_ok(input_addr_r,  input_bytes_r) &&
                              addr_range_ok(output_addr_r, output_bytes_r) &&
-                             ((task_type_r == 2'd2) || addr_range_ok(weight_addr_r, weight_bytes_r));
+                             (((task_type_r == 2'd2) || (task_type_r == 2'd3)) || addr_range_ok(weight_addr_r, weight_bytes_r));
 
-    // Check task_type: FC (2'd1) is not supported in current version
+    // Check task_type
     wire task_type_ok = (task_type_r == 2'd0) ||  // Conv
                         (task_type_r == 2'd1) ||  // FC
-                        (task_type_r == 2'd2);    // Pool
+                        (task_type_r == 2'd2) ||  // Pool
+                        (task_type_r == 2'd3);    // Requant
 
     // Conv: input must be >= 5x5 (kernel size)
     wire conv_dim_ok = (input_h_r >= 16'd5) && (input_w_r >= 16'd5);
@@ -166,7 +170,19 @@ module task_checker #(
     // Input/output channel relationship for Conv/FC
     // Conv: C_in >= 1, C_out >= 1
     // FC: C_in >= 1, C_out >= 1 (mapped to input_c/output_c or input_h/output_c)
-    wire dim_relation_ok = (input_c_r >= 16'd1) && (output_c_r >= 16'd1);
+    wire dim_relation_ok = (task_type_r == 2'd3) ? 1'b1 : ((input_c_r >= 16'd1) && (output_c_r >= 16'd1));
+
+    // Requant task:
+    // - input is INT32 words, so byte count must be 4 * output byte count
+    // - no weight payload
+    // - multiplier must be non-zero
+    wire requant_param_ok =
+        (task_type_r != 2'd3) ||
+        ((input_bytes_r[1:0] == 2'b00) &&
+         (output_bytes_r == (input_bytes_r >> 2)) &&
+         (weight_bytes_r == 32'd0) &&
+         (requant_multiplier != 32'd0) &&
+         (requant_shift <= 6'd31));
 
     // Priority-encoded error
     always @(*) begin
@@ -187,6 +203,8 @@ module task_checker #(
             error_code_comb = ERR_CONV_PARAM;
         else if (!pool_check)
             error_code_comb = ERR_POOL_PARAM;
+        else if (!requant_param_ok)
+            error_code_comb = ERR_REQUANT_PARAM;
         else if (!dim_relation_ok)
             error_code_comb = ERR_DIM_RELATION;
         else

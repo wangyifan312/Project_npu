@@ -1,4 +1,6 @@
-// fc_frontend: Fully-Connected layer input formatting for systolic array
+// fc_frontend: legacy/debug Fully-Connected stream formatter.
+// P0-3 formal FC execution is implemented directly in npu_top on the
+// cluster_scheduler -> compute_core_6cluster -> output_arbiter path.
 // Passes activations through as a 1D vector stream for vector-matrix multiply.
 // Supports tiling: if output neurons > array columns, iterates over column blocks.
 // Weights for output column j go to array column j; activations stream through rows.

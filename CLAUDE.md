@@ -27,6 +27,13 @@
 - 用真实训练权重闭合 `LeNet/MNIST`
 - 一次补齐性能统计与验证体系
 
+### 2.1 正式阵列规格与入口分层
+
+- 正式规格固定为 `16x16 cluster / 1536 PE / 0.6144 TOPS @ 200MHz`，不回退到历史小阵列口径。
+- 正式入口只认 `16x16`：`rtl/soc/top.v`、`tb/integration/tb_lenet_network.v`、`tb/integration/tb_top_lenet.v`、`tb/integration/tb_top.v`、`tb/integration/tb_top_cluster_modes.v` 必须显式或默认落在 `16/16`。
+- `tb_fc_accept`、`tb_fc_reject`、`tb_task_requant`、`tb_task4_fc_tiled_signed`、`tb_npu_top`、`tb_task1_illegal`、`tb_task3_pool`、`tb_task4_system`、`tb_task2_multiblock`、`tb_task2_weight_layout`、`tb_task6_pingpong`、`tb_task2_strict`、`tb_task4_fc_signed`、`tb_task2_multichannel`、`tb_requant_conv_handoff` 统一定位为 `legacy micro-tests`，允许用于局部回归，不得代表正式阵列基线或性能证据。
+- `tb_task4_fc` 已升级为阵列化 FC formal sanity 入口，不能再作为 legacy 标量 FC 证据使用。
+
 ## 3. 顶层架构
 
 ### SoC 层
@@ -44,7 +51,7 @@
 - DMA read/write path
 - `npu_buffer`
 - `conv_frontend`
-- `fc_frontend` 或等价 FC 执行流
+- 阵列化 FC 执行流
 - `postproc`
 - `perf_counter`
 - `npu_top`
@@ -62,6 +69,7 @@
 - `compute_core_6cluster` 必须真正例化 6 个 cluster
 - `cluster_enable[5:0]` 是正式接口，不是测试专用信号
 - Conv / FC 都必须走新 compute hierarchy
+- `fc_frontend.v` 当前只作为 legacy/debug stream formatter 保留，不承担正式 FC 主路径职责
 
 ## 4. 验证层级与口径
 
@@ -81,7 +89,10 @@
 - AXI-Lite 控制闭环
 - 完整 LeNet 地址图
 - shared memory 预加载与结果回读
-- 当前 SoC 顶层性能路径仍主要验证 `single-cluster compatibility mode`
+- Conv / FC 正式执行流必须走 `cluster_scheduler -> compute_core_6cluster -> output_arbiter`
+- `single / dual / full / mask` cluster mode 必须在同一 Conv 主路径上生效，不能只作为寄存器读数存在
+
+正式 SoC 顶层 testbench 必须使用 `16x16` 阵列参数；历史小阵列测试只作为 legacy debug/regression 资产。
 
 本轮 SoC 级默认方法：
 
@@ -119,8 +130,16 @@
 最终收尾时，必须同步对照：
 
 - `docs/DELIVERY_CHECKLIST.md`
+- `docs/MNIST_FULL_EVAL_PLAN.md`（当赛题明确要求完整测试集结果时）
+- `docs/REQUANTIZATION_PLAN.md`（当 software full-test 长期低于 `80%` gate 时）
 
 该清单高于一般工程里程碑，用于判断是否已经达到“可用于赛题最终提交 / 答辩展示”的标准。
+其中：
+
+- `DELIVERY_CHECKLIST.md` 用于判断是否达到答辩展示级交付
+- `MNIST_FULL_EVAL_PLAN.md` 用于判断是否已经完成完整测试集结果交付
+- `REQUANTIZATION_PLAN.md` 用于判断当前是否已进入“模型-硬件数值语义 blocker”阶段，以及后续是否允许切换到新 requant 语义
+- `REPO_REVIEW_2026Q2.md` 用于判断当前仓库的正式问题清单、架构一致性缺口和整改优先级；后续清理与派工应优先对照该文档，而不是依赖零散会话结论
 
 ## 5. 固定网络与数据规则
 
@@ -130,10 +149,17 @@
 - fc weight layout：`[out_neuron][in_neuron]`
 - activation / weight：`INT8`
 - accumulate / output：`INT32`
-- FC 输入规则：`INT32 -> saturating INT8`
+- 层间 `INT32 -> INT8` 规则：layer-wise requant
+- requant 算术：`multiplier + shift + round-half-away-from-zero + clamp`
 - `Pool = 2x2 MaxPool, stride=2`
 - `ReLU` 在 `INT32` 域
 - `bias` 本轮不支持
+
+补充说明：
+
+- 上述 requant 语义是当前正式基线
+- 旧 direct-saturate 路径不再作为正式交付语义保留
+- software / fixture / RTL 必须共同使用同一组 per-layer requant 参数
 
 ## 6. Shared Memory 基线
 

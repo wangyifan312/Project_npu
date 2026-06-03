@@ -10,7 +10,13 @@
 - `200MHz` 理论峰值 `0.6144 TOPS`
 - `top` 层 shared memory 默认覆盖完整 LeNet 地址图
 - SoC 级验证采用 testbench `AXI-Lite master` + shared memory preload 模拟 CPU 软件行为
-- FC 必须在新 compute hierarchy 下重新完成功能验收
+- FC 正式执行流已强切到 `6-cluster` compute hierarchy
+
+## 阵列规格与入口分层
+
+正式阵列规格固定为 `16x16 cluster / 1536 PE / 0.6144 TOPS @ 200MHz`，正式 RTL 和正式 testbench 入口只认 `16x16` 基线。正式入口文件为 `rtl/soc/top.v`、`tb/integration/tb_lenet_network.v`、`tb/integration/tb_top_lenet.v`、`tb/integration/tb_top.v`、`tb/integration/tb_top_cluster_modes.v`，不得再使用历史 `7/13` 小阵列口径。
+
+以下历史小阵列/局部功能测试保留为 `legacy micro-tests`，允许继续使用小阵列或局部实例化，但不能作为正式阵列规模、性能峰值或交付基线证据：`tb_fc_accept`、`tb_fc_reject`、`tb_task_requant`、`tb_task4_fc_tiled_signed`、`tb_npu_top`、`tb_task1_illegal`、`tb_task3_pool`、`tb_task4_system`、`tb_task2_multiblock`、`tb_task2_weight_layout`、`tb_task6_pingpong`、`tb_task2_strict`、`tb_task4_fc_signed`、`tb_task2_multichannel`、`tb_requant_conv_handoff`。`tb_task4_fc` 已升级为阵列化 FC formal sanity 入口。
 
 ## 当前仓库基线
 
@@ -19,7 +25,7 @@
 - 原始 `Tasks 1-9`
 - 多通道 `Conv`
 - `Pool / ReLU`
-- FC 基本功能路径
+- FC 阵列化正式路径
 - `LeNet` 层级对拍与 deterministic fixture 流程
 - `npu_top + axi4_ram` 子系统级网络回归资产
 
@@ -44,10 +50,23 @@
 - [ARCHITECTURE_SPEC.md](ARCHITECTURE_SPEC.md)
 - [docs/SOC_6CLUSTER_ARCHITECTURE.md](docs/SOC_6CLUSTER_ARCHITECTURE.md)
 - [docs/LENET_MNIST_SPEC.md](docs/LENET_MNIST_SPEC.md)
+- [docs/PERFORMANCE_SUMMARY.md](docs/PERFORMANCE_SUMMARY.md)
+- [docs/REAL_WEIGHT_FLOW.md](docs/REAL_WEIGHT_FLOW.md)
+- [docs/REPO_REVIEW_2026Q2.md](docs/REPO_REVIEW_2026Q2.md)
+- [docs/REQUANTIZATION_PLAN.md](docs/REQUANTIZATION_PLAN.md)
+- [docs/REQUANTIZATION_CODEX_PROMPT.md](docs/REQUANTIZATION_CODEX_PROMPT.md)
+- [docs/DEFENSE_REGRESSION.md](docs/DEFENSE_REGRESSION.md)
 - [docs/RTL_DEBUG_PLAYBOOK.md](docs/RTL_DEBUG_PLAYBOOK.md)
 - [docs/DELIVERY_CHECKLIST.md](docs/DELIVERY_CHECKLIST.md)
+- [docs/MNIST_FULL_EVAL_PLAN.md](docs/MNIST_FULL_EVAL_PLAN.md)
+
+如果目标是对当前仓库做正式状态评估、逐条清理历史问题和规划整改路线，请优先阅读 [docs/REPO_REVIEW_2026Q2.md](docs/REPO_REVIEW_2026Q2.md)。这份文档是当前仓库级 review 与整改清单基线，高于零散会话结论。
 
 如果目标是**赛题最终提交 / 答辩交付**，请优先以 [docs/DELIVERY_CHECKLIST.md](docs/DELIVERY_CHECKLIST.md) 为收尾标准，而不是只以“工程上已可运行”作为完成依据。
+
+如果赛题书面要求**完整 `MNIST` 测试集结果**，则还必须继续执行 [docs/MNIST_FULL_EVAL_PLAN.md](docs/MNIST_FULL_EVAL_PLAN.md)，不能把 `8` 样本或其他小批量回归结果当成完整测试集结论。
+此外，完整 `MNIST test set` 的最终交付 accuracy 门槛固定为 **`80%` 及以上**；低于该门槛的 full-test 结果只能算阶段性结果，不能算最终交付。
+如果 software full-test 始终卡在 `80%` 以下，则必须优先对照 [docs/REQUANTIZATION_PLAN.md](docs/REQUANTIZATION_PLAN.md) 审视中间层 requant 语义，而不是继续盲跑 RTL full-set。
 
 ## 目标网络
 
@@ -60,7 +79,8 @@
 - feature map layout：`HWC`
 - conv weight layout：`[in_c][k_h][k_w][out_c]`，每个 `in_c` chunk 做 32-bit 对齐
 - fc weight layout：`[out_neuron][in_neuron]`
-- FC 输入：`INT32 -> saturating INT8`
+- 层间 `INT32 -> INT8` handoff：使用 layer-wise requant
+- requant 规则：`multiplier + shift + round-half-away-from-zero + clamp`
 
 ## 验证层级
 
@@ -72,7 +92,8 @@
   - CPU/NPU/shared memory 协同
   - AXI-Lite 配置与状态回读
   - 完整 LeNet 地址图闭环
-  - 当前 SoC 顶层性能验证仍主要是 `single-cluster compatibility mode`
+  - Conv / FC 正式主路径使用 `cluster_scheduler -> compute_core_6cluster -> output_arbiter`
+  - `single / dual / full / mask` cluster mode 通过同一正式 compute 主路径生效
 
 本轮最终要求同时保留：
 
@@ -112,18 +133,35 @@ docs/
 bash sim/run_sim.sh all
 ```
 
+`sim/run_sim.sh` 中的 `tb_top`、`tb_top_lenet`、`tb_top_cluster_modes` 是正式 `16x16` SoC 入口；`tb_npu_top`、`tb_task*`、`tb_fc` 等历史局部测试属于 `legacy micro-tests`，只用于回归定位。
+
 LeNet fixture：
 
 ```bash
 bash sim/run_lenet_fixture.sh compile
 SIMULATOR=vcs bash sim/run_lenet_fixture.sh sample
 SIMULATOR=vcs PROGRESS=0 bash sim/run_lenet_fixture.sh all
+SIMULATOR=vcs ACCURACY_ONLY=1 \
+FIXTURE_DIR=datasets/mnist/lenet_real_manifest_100 \
+MANIFEST_PATH=datasets/mnist/lenet_real_manifest_100/manifest.json \
+SAMPLE_ROOT_DIR=datasets/mnist/exports_full \
+WEIGHTS_ROOT_DIR=datasets/mnist/lenet_real_manifest_100/weights \
+INPUT_MEMH_NAME=packed_words.memh EXPECTED_FILE_NAME=label.txt \
+COUNT=100 RESULTS_DIR=results/mnist_full_subsystem_100_accuracy_only \
+bash sim/run_lenet_fixture.sh batch
+SIMULATOR=vcs bash sim/run_top_lenet.sh sample
+SIMULATOR=vcs bash sim/run_top_lenet.sh all
 ```
 
 说明：
 
 - deterministic fixture 继续作为快速 smoke/regression 路径
-- 真实权重流会单独补充导出脚本与回归入口
+- 如果目标是完整测试集 accuracy，请优先走 `ACCURACY_ONLY=1` 的 subsystem batch 路径；该模式会跳过层后 perf 寄存器读取和逐层 compare
+- `accuracy-only` 模式仍统计 `total_cycles / total_mac`，但不采集 `read/write beats` 与 utilization
+- 真实权重流、性能表和答辩固定回归入口分别见：
+  - [docs/REAL_WEIGHT_FLOW.md](docs/REAL_WEIGHT_FLOW.md)
+  - [docs/PERFORMANCE_SUMMARY.md](docs/PERFORMANCE_SUMMARY.md)
+  - [docs/DEFENSE_REGRESSION.md](docs/DEFENSE_REGRESSION.md)
 
 ## 完成标准
 

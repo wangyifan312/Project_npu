@@ -1,5 +1,9 @@
 # Prompt For New Codex Session
 
+> Historical execution prompt:
+> 本文件是 6-cluster 重构阶段给另一个 Codex 会话使用的历史 prompt。
+> 它不是当前正式规格或当前任务入口；保留仅用于追溯。
+
 ```text
 请把这次工作当成一次“架构升级 + SoC 收尾”的正式重构，而不是零散修 bug。
 

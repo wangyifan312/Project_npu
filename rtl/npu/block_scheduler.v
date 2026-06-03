@@ -16,7 +16,7 @@ module block_scheduler #(
 
     // Task parameters (from npu_ctrl)
     input  wire        task_start,
-    input  wire [1:0]  task_type,     // 0=Conv, 1=FC, 2=Pool
+    input  wire [1:0]  task_type,     // 0=Conv, 1=FC, 2=Pool, 3=Requant
     input  wire [31:0] input_addr,
     input  wire [31:0] weight_addr,
     input  wire [31:0] output_addr,
@@ -73,16 +73,17 @@ module block_scheduler #(
 
     wire [15:0] next_total_out_rows =
         (task_type == 2'd2) ? (input_h >> 1) :
-        (task_type == 2'd1) ? 16'd1 :
+        ((task_type == 2'd1) || (task_type == 2'd3)) ? 16'd1 :
                               (input_h - 16'd5 + 16'd1);
 
     wire [15:0] next_total_out_cols =
         (task_type == 2'd2) ? (input_w >> 1) :
-        (task_type == 2'd1) ? 16'd1 :
+        ((task_type == 2'd1) || (task_type == 2'd3)) ? 16'd1 :
                               (input_w - 16'd5 + 16'd1);
 
     wire [31:0] next_bytes_per_in_row =
         (task_type == 2'd2) ? (input_w * input_c * 32'd4) :
+        (task_type == 2'd3) ? input_bytes :
                               (input_w * input_c);
 
     wire [15:0] conv_rows_per_block_raw =
@@ -95,7 +96,7 @@ module block_scheduler #(
         (pool_rows_per_block_out_raw < pool_rows_per_block_in_raw) ? pool_rows_per_block_out_raw : pool_rows_per_block_in_raw;
 
     wire [15:0] next_rows_per_block =
-        (task_type == 2'd1) ? 16'd1 :
+        ((task_type == 2'd1) || (task_type == 2'd3)) ? 16'd1 :
         (task_type == 2'd0) ?
             ((conv_rows_per_block_raw < 16'd1) ? 16'd1 :
              (conv_rows_per_block_raw > next_total_out_rows) ? next_total_out_rows :
@@ -180,6 +181,15 @@ module block_scheduler #(
             blk_output_bytes_r = output_bytes;
             blk_input_rows_r   = input_h;
             blk_output_rows_r  = input_h;
+        end else if (task_type == 2'd3) begin  // Requant: pass through
+            blk_input_addr_r   = input_addr;
+            blk_input_bytes_r  = input_bytes;
+            blk_weight_addr_r  = 32'd0;
+            blk_weight_bytes_r = 32'd0;
+            blk_output_addr_r  = output_addr;
+            blk_output_bytes_r = output_bytes;
+            blk_input_rows_r   = 16'd1;
+            blk_output_rows_r  = 16'd1;
         end else begin  // Conv: per-block slicing with kernel overlap
             blk_input_addr_r   = input_addr  + curr_out_row * input_w * input_c;
             blk_input_bytes_r  = this_in_rows * input_w * input_c;

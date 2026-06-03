@@ -53,6 +53,9 @@ module npu_ctrl #(
     output wire [15:0]                 output_c,
     output wire                        relu_en,
     output wire                        pool_en,
+    output wire [1:0]                  requant_slot_sel,
+    output wire [31:0]                 requant_multiplier,
+    output wire [5:0]                  requant_shift,
 
     // === Task status inputs (from NPU internals) ===
     input  wire                        task_done_i,
@@ -105,6 +108,15 @@ module npu_ctrl #(
     localparam ADDR_PERF_CLUSTER_ACTIVE = 6'd22;  // 0x58
     localparam ADDR_PERF_CLUSTER_STALL  = 6'd23;  // 0x5C
     localparam ADDR_PERF_CLUSTER_CFG    = 6'd24;  // 0x60
+    localparam ADDR_REQUANT_SEL         = 6'd25;  // 0x64: [1:0]=slot select
+    localparam ADDR_REQUANT0_MULT       = 6'd26;  // 0x68
+    localparam ADDR_REQUANT0_SHIFT      = 6'd27;  // 0x6C: [5:0]=shift
+    localparam ADDR_REQUANT1_MULT       = 6'd28;  // 0x70
+    localparam ADDR_REQUANT1_SHIFT      = 6'd29;  // 0x74: [5:0]=shift
+    localparam ADDR_REQUANT2_MULT       = 6'd30;  // 0x78
+    localparam ADDR_REQUANT2_SHIFT      = 6'd31;  // 0x7C: [5:0]=shift
+    localparam ADDR_REQUANT3_MULT       = 6'd32;  // 0x80
+    localparam ADDR_REQUANT3_SHIFT      = 6'd33;  // 0x84: [5:0]=shift
 
     // ============================================================
     // AXI-Lite write path: AW+W stored separately, write when both ready
@@ -214,6 +226,9 @@ module npu_ctrl #(
     reg  [31:0] cfg_dim_in;
     reg  [31:0] cfg_dim_out;
     reg  [31:0] cfg_postproc;
+    reg  [31:0] cfg_requant_sel;
+    reg  [31:0] cfg_requant_mult [0:3];
+    reg  [31:0] cfg_requant_shift [0:3];
 
     // Status registers (HW-managed)
     reg         busy;
@@ -236,6 +251,9 @@ module npu_ctrl #(
     reg  [15:0] output_c_r;
     reg         relu_en_r;
     reg         pool_en_r;
+    reg  [1:0]  requant_slot_sel_r;
+    reg  [31:0] requant_multiplier_r;
+    reg  [5:0]  requant_shift_r;
 
     wire [5:0] wr_addr = stored_awaddr[7:2];
     wire wr_allowed = !busy || error;
@@ -253,6 +271,15 @@ module npu_ctrl #(
             cfg_dim_in       <= 32'h0;
             cfg_dim_out      <= 32'h0;
             cfg_postproc     <= 32'h0;
+            cfg_requant_sel  <= 32'h0;
+            cfg_requant_mult[0] <= 32'd1;
+            cfg_requant_mult[1] <= 32'd1;
+            cfg_requant_mult[2] <= 32'd1;
+            cfg_requant_mult[3] <= 32'd1;
+            cfg_requant_shift[0] <= 32'd0;
+            cfg_requant_shift[1] <= 32'd0;
+            cfg_requant_shift[2] <= 32'd0;
+            cfg_requant_shift[3] <= 32'd0;
         end else if (write_hs && wr_allowed) begin
             case (wr_addr)
                 ADDR_TASK_TYPE:    cfg_task_type    <= stored_wdata;
@@ -265,6 +292,15 @@ module npu_ctrl #(
                 ADDR_DIM_IN:       cfg_dim_in       <= stored_wdata;
                 ADDR_DIM_OUT:      cfg_dim_out      <= stored_wdata;
                 ADDR_POSTPROC:     cfg_postproc     <= stored_wdata;
+                ADDR_REQUANT_SEL:   cfg_requant_sel      <= stored_wdata;
+                ADDR_REQUANT0_MULT: cfg_requant_mult[0]  <= stored_wdata;
+                ADDR_REQUANT0_SHIFT:cfg_requant_shift[0] <= stored_wdata;
+                ADDR_REQUANT1_MULT: cfg_requant_mult[1]  <= stored_wdata;
+                ADDR_REQUANT1_SHIFT:cfg_requant_shift[1] <= stored_wdata;
+                ADDR_REQUANT2_MULT: cfg_requant_mult[2]  <= stored_wdata;
+                ADDR_REQUANT2_SHIFT:cfg_requant_shift[2] <= stored_wdata;
+                ADDR_REQUANT3_MULT: cfg_requant_mult[3]  <= stored_wdata;
+                ADDR_REQUANT3_SHIFT:cfg_requant_shift[3] <= stored_wdata;
                 default: ;
             endcase
         end
@@ -302,6 +338,9 @@ module npu_ctrl #(
             output_c_r      <= 16'h0;
             relu_en_r       <= 1'b0;
             pool_en_r       <= 1'b0;
+            requant_slot_sel_r <= 2'b00;
+            requant_multiplier_r <= 32'd1;
+            requant_shift_r <= 6'd0;
         end else begin
             task_start_r <= 1'b0;
 
@@ -344,6 +383,25 @@ module npu_ctrl #(
                 output_c_r      <= cfg_dim_out[31:16];
                 relu_en_r       <= cfg_postproc[0];
                 pool_en_r       <= cfg_postproc[1];
+                requant_slot_sel_r <= cfg_requant_sel[1:0];
+                case (cfg_requant_sel[1:0])
+                    2'd0: begin
+                        requant_multiplier_r <= cfg_requant_mult[0];
+                        requant_shift_r <= cfg_requant_shift[0][5:0];
+                    end
+                    2'd1: begin
+                        requant_multiplier_r <= cfg_requant_mult[1];
+                        requant_shift_r <= cfg_requant_shift[1][5:0];
+                    end
+                    2'd2: begin
+                        requant_multiplier_r <= cfg_requant_mult[2];
+                        requant_shift_r <= cfg_requant_shift[2][5:0];
+                    end
+                    default: begin
+                        requant_multiplier_r <= cfg_requant_mult[3];
+                        requant_shift_r <= cfg_requant_shift[3][5:0];
+                    end
+                endcase
                 task_start_r <= 1'b1;
                 busy         <= 1'b1;
                 checking     <= 1'b1;
@@ -381,6 +439,9 @@ module npu_ctrl #(
     assign output_c      = output_c_r;
     assign relu_en       = relu_en_r;
     assign pool_en       = pool_en_r;
+    assign requant_slot_sel = requant_slot_sel_r;
+    assign requant_multiplier = requant_multiplier_r;
+    assign requant_shift = requant_shift_r;
 
     // ============================================================
     // AXI read data generation
@@ -403,6 +464,7 @@ module npu_ctrl #(
         (rd_addr == ADDR_DIM_IN)           ? cfg_dim_in           :
         (rd_addr == ADDR_DIM_OUT)          ? cfg_dim_out          :
         (rd_addr == ADDR_POSTPROC)         ? cfg_postproc         :
+        (rd_addr == ADDR_REQUANT_SEL)      ? cfg_requant_sel      :
         (rd_addr == ADDR_PERF_CYCLE_LO)    ? perf_cycle_lo_i      :
         (rd_addr == ADDR_PERF_CYCLE_HI)    ? perf_cycle_hi_i      :
         (rd_addr == ADDR_PERF_READ_BEATS)  ? perf_read_beats_i    :
@@ -416,6 +478,14 @@ module npu_ctrl #(
         (rd_addr == ADDR_PERF_CLUSTER_ACTIVE) ? perf_cluster_active_i :
         (rd_addr == ADDR_PERF_CLUSTER_STALL)  ? perf_cluster_stall_i  :
         (rd_addr == ADDR_PERF_CLUSTER_CFG)    ? perf_cluster_cfg_i    :
+        (rd_addr == ADDR_REQUANT0_MULT)      ? cfg_requant_mult[0]   :
+        (rd_addr == ADDR_REQUANT0_SHIFT)     ? cfg_requant_shift[0]  :
+        (rd_addr == ADDR_REQUANT1_MULT)      ? cfg_requant_mult[1]   :
+        (rd_addr == ADDR_REQUANT1_SHIFT)     ? cfg_requant_shift[1]  :
+        (rd_addr == ADDR_REQUANT2_MULT)      ? cfg_requant_mult[2]   :
+        (rd_addr == ADDR_REQUANT2_SHIFT)     ? cfg_requant_shift[2]  :
+        (rd_addr == ADDR_REQUANT3_MULT)      ? cfg_requant_mult[3]   :
+        (rd_addr == ADDR_REQUANT3_SHIFT)     ? cfg_requant_shift[3]  :
         32'h0;
 
     always @(posedge clk) begin

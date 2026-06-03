@@ -19,6 +19,8 @@ module tb_task_checker;
     reg  [15:0] output_c;
     reg         relu_en;
     reg         pool_en;
+    reg  [31:0] requant_multiplier;
+    reg  [5:0]  requant_shift;
 
     wire        checks_pass;
     wire [7:0]  error_code;
@@ -44,6 +46,8 @@ module tb_task_checker;
         .output_c     (output_c),
         .relu_en      (relu_en),
         .pool_en      (pool_en),
+        .requant_multiplier(requant_multiplier),
+        .requant_shift(requant_shift),
         .checks_pass  (checks_pass),
         .error_code   (error_code),
         .check_done   (check_done)
@@ -114,12 +118,32 @@ module tb_task_checker;
         end
     endtask
 
+    task set_requant_valid;
+        begin
+            task_type    = 2'd3;
+            input_addr   = 32'h0000_2000;
+            weight_addr  = 32'h0000_0000;
+            output_addr  = 32'h0000_6000;
+            input_bytes  = 32'd3200;
+            weight_bytes = 32'd0;
+            output_bytes = 32'd800;
+            input_h      = 16'd1;
+            input_w      = 16'd1;
+            input_c      = 16'd1;
+            output_c     = 16'd1;
+            requant_multiplier = 32'd1234;
+            requant_shift = 6'd7;
+        end
+    endtask
+
     initial begin
         $dumpfile("sim/tb_task_checker.vcd");
         $dumpvars(0, tb_task_checker);
 
         clk = 0; rst_n = 0;
         task_start = 0;
+        requant_multiplier = 32'd1;
+        requant_shift = 6'd0;
         set_conv_valid;
         #10 rst_n = 1;
         #10;
@@ -147,16 +171,23 @@ module tb_task_checker;
         $display("  PASS: checks_pass=%b", checks_pass);
 
         // ============================================================
-        $display("=== Test 4: Invalid task_type ===");
-        set_conv_valid;
-        task_type = 2'd3;  // invalid
+        $display("=== Test 4: Valid Requant parameters ===");
+        set_requant_valid;
         do_check;
-        if (checks_pass) $error("  FAIL: invalid task_type should fail");
-        if (error_code != 8'h01) $error("  FAIL: expected ERR_INVALID_TASK_TYPE(01), got %0h", error_code);
+        if (!checks_pass) $error("  FAIL: valid Requant should pass, got error=%0h", error_code);
+        $display("  PASS: checks_pass=%b", checks_pass);
+
+        // ============================================================
+        $display("=== Test 5: Requant invalid params ===");
+        set_requant_valid;
+        output_bytes = 32'd801;
+        do_check;
+        if (checks_pass) $error("  FAIL: invalid requant sizing should fail");
+        if (error_code != 8'h0B) $error("  FAIL: expected ERR_REQUANT_PARAM(0B), got %0h", error_code);
         $display("  PASS: error_code=%0h", error_code);
 
         // ============================================================
-        $display("=== Test 5: Zero bytes ===");
+        $display("=== Test 6: Zero bytes ===");
         set_conv_valid;
         input_bytes = 32'h0;
         do_check;
@@ -165,7 +196,7 @@ module tb_task_checker;
         $display("  PASS: error_code=%0h", error_code);
 
         // ============================================================
-        $display("=== Test 6: Null address ===");
+        $display("=== Test 7: Null address ===");
         set_conv_valid;
         weight_addr = 32'h0;
         do_check;
@@ -174,7 +205,7 @@ module tb_task_checker;
         $display("  PASS: error_code=%0h", error_code);
 
         // ============================================================
-        $display("=== Test 7: Address misaligned ===");
+        $display("=== Test 8: Address misaligned ===");
         set_conv_valid;
         input_addr = 32'h0000_2004;  // not 64-byte aligned
         do_check;
@@ -183,7 +214,7 @@ module tb_task_checker;
         $display("  PASS: error_code=%0h", error_code);
 
         // ============================================================
-        $display("=== Test 8: Address out of bounds ===");
+        $display("=== Test 9: Address out of bounds ===");
         set_conv_valid;
         input_addr = 32'h0000_0800;  // below MEM_BASE (0x1000)
         do_check;
@@ -192,7 +223,7 @@ module tb_task_checker;
         $display("  PASS: error_code=%0h", error_code);
 
         // ============================================================
-        $display("=== Test 9: Address overflow ===");
+        $display("=== Test 10: Address overflow ===");
         set_conv_valid;
         input_bytes = 32'h0001_0000;  // addr(0x2000) + bytes(0x10000) = 0x12000 > MEM_BASE+MEM_SIZE(0x11000)
         do_check;
@@ -201,7 +232,7 @@ module tb_task_checker;
         $display("  PASS: error_code=%0h", error_code);
 
         // ============================================================
-        $display("=== Test 10: Conv dimensions too small ===");
+        $display("=== Test 11: Conv dimensions too small ===");
         set_conv_valid;
         input_h = 16'd4;  // too small for 5x5 kernel
         input_w = 16'd4;
@@ -211,7 +242,7 @@ module tb_task_checker;
         $display("  PASS: error_code=%0h", error_code);
 
         // ============================================================
-        $display("=== Test 11: Pool with odd dimensions ===");
+        $display("=== Test 12: Pool with odd dimensions ===");
         set_pool_valid;
         input_h = 16'd25;  // odd
         input_w = 16'd25;
@@ -221,7 +252,7 @@ module tb_task_checker;
         $display("  PASS: error_code=%0h", error_code);
 
         // ============================================================
-        $display("=== Test 12: Zero channels ===");
+        $display("=== Test 13: Zero channels ===");
         set_conv_valid;
         output_c = 16'd0;
         do_check;
@@ -230,7 +261,7 @@ module tb_task_checker;
         $display("  PASS: error_code=%0h", error_code);
 
         // ============================================================
-        $display("=== Test 13: Minimum valid Conv (5x5 input) ===");
+        $display("=== Test 14: Minimum valid Conv (5x5 input) ===");
         set_conv_valid;
         input_h = 16'd5;
         input_w = 16'd5;
@@ -239,7 +270,7 @@ module tb_task_checker;
         $display("  PASS: checks_pass=%b", checks_pass);
 
         // ============================================================
-        $display("=== Test 14: Pool with weight_bytes=0 is OK ===");
+        $display("=== Test 15: Pool with weight_bytes=0 is OK ===");
         set_pool_valid;
         weight_bytes = 32'h0;  // pool doesn't need weights
         do_check;

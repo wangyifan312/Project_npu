@@ -1,5 +1,14 @@
 # LeNet(MNIST) Implementation Tasks
 
+> Historical planning note:
+> 本文档是早期 LeNet bring-up 的任务拆解记录，保留用于追溯实现过程。
+> 它**不是**当前正式规格或当前交付状态说明。
+> 当前正式基线请以以下文档为准：
+> - [README.md](/root/Project_npu/README.md)
+> - [ARCHITECTURE_SPEC.md](/root/Project_npu/ARCHITECTURE_SPEC.md)
+> - [docs/LENET_MNIST_SPEC.md](/root/Project_npu/docs/LENET_MNIST_SPEC.md)
+> - [docs/REQUANTIZATION_PLAN.md](/root/Project_npu/docs/REQUANTIZATION_PLAN.md)
+
 ## Goal
 
 Implement full support for a `Caffe-style LeNet` on top of the current `CPU + NPU` RTL,
@@ -104,6 +113,14 @@ It must be extended from `C_in=1, C_out=1` to support at least:
   - `FC2: 500 -> 10`
 
 ### Fixed rule
+
+> Historical note:
+> 下述 `saturating clamp` 规则属于旧 direct-saturate bring-up 基线；
+> 当前正式层间语义已经升级到 requant，请以
+> [docs/LENET_MNIST_SPEC.md](/root/Project_npu/docs/LENET_MNIST_SPEC.md)
+> 和
+> [docs/REQUANTIZATION_PLAN.md](/root/Project_npu/docs/REQUANTIZATION_PLAN.md)
+> 为准。
 
 - FC inputs come from `INT32` intermediate data
 - Convert to `INT8` with saturating clamp before entering the shared MAC path

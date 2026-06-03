@@ -1,5 +1,5 @@
 #!/bin/bash
-# run_lenet_fixture.sh — compile and run LeNet subsystem tests / full-eval batches
+# run_top_lenet.sh — compile and run top-level LeNet tests / full-eval batches
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -7,30 +7,32 @@ cd "$(dirname "$0")/.."
 SIMDIR=sim
 mkdir -p "$SIMDIR"
 
-FIXTURE_DIR="${FIXTURE_DIR:-datasets/mnist/lenet_fixture}"
+FIXTURE_DIR="${FIXTURE_DIR:-datasets/mnist/lenet_real_fixture}"
 MANIFEST_PATH="${MANIFEST_PATH:-$FIXTURE_DIR/manifest.json}"
 SAMPLE_ROOT_DIR="${SAMPLE_ROOT_DIR:-$FIXTURE_DIR}"
 WEIGHTS_ROOT_DIR="${WEIGHTS_ROOT_DIR:-$FIXTURE_DIR/weights}"
 SAMPLE_NAME="${SAMPLE_NAME:-sample_00000_label_7}"
 SIMULATOR="${SIMULATOR:-vcs}"
 PROGRESS="${PROGRESS:-0}"
+TOP_SIM_BASENAME="${TOP_SIM_BASENAME:-simv_top_lenet_run}"
 INPUT_MEMH_NAME="${INPUT_MEMH_NAME:-input.memh}"
 EXPECTED_FILE_NAME="${EXPECTED_FILE_NAME:-argmax.txt}"
 EVAL_MODE="${EVAL_MODE:-0}"
 SKIP_PERF_READS="${SKIP_PERF_READS:-0}"
 COUNT="${COUNT:-0}"
 OFFSET="${OFFSET:-0}"
-VERBOSE_LIMIT="${VERBOSE_LIMIT:-16}"
+VERBOSE_LIMIT="${VERBOSE_LIMIT:-8}"
 RESULTS_DIR="${RESULTS_DIR:-}"
-RUN_LABEL="${RUN_LABEL:-subsystem}"
+RUN_LABEL="${RUN_LABEL:-top}"
 RQ_CONV2_MULT="${RQ_CONV2_MULT:-}"
 RQ_CONV2_SHIFT="${RQ_CONV2_SHIFT:-}"
 RQ_FC1_MULT="${RQ_FC1_MULT:-}"
 RQ_FC1_SHIFT="${RQ_FC1_SHIFT:-}"
 RQ_FC2_MULT="${RQ_FC2_MULT:-}"
 RQ_FC2_SHIFT="${RQ_FC2_SHIFT:-}"
+
 IVERILOG="iverilog -DNO_DUMP -g2012 -I rtl/npu -I rtl/soc -I rtl/bus -I tb/integration"
-RTL_SOURCES="rtl/npu/*.v rtl/soc/axi4_ram.v tb/integration/tb_lenet_network.v"
+TOP_RTL_SOURCES="rtl/soc/axi4_ram.v rtl/soc/shared_ram.v rtl/bus/axi_interconnect.v rtl/npu/*.v rtl/cpu/picorv32/picorv32.v rtl/soc/top.v tb/integration/tb_top_lenet.v"
 VCS_BIN="${VCS_BIN:-vcs}"
 
 resolve_requant_params() {
@@ -69,14 +71,14 @@ PY
 }
 
 compile_iverilog() {
-    $IVERILOG -o "$SIMDIR/tb_lenet_network.vvp" $RTL_SOURCES
+    $IVERILOG -o "$SIMDIR/tb_top_lenet.vvp" $TOP_RTL_SOURCES
 }
 
 compile_vcs() {
     $VCS_BIN -full64 -sverilog -timescale=1ns/1ps \
-        -o "$SIMDIR/simv_lenet" \
+        -o "$SIMDIR/$TOP_SIM_BASENAME" \
         +incdir+rtl/npu +incdir+rtl/soc +incdir+rtl/bus +incdir+tb/integration \
-        $RTL_SOURCES
+        $TOP_RTL_SOURCES
 }
 
 compile() {
@@ -93,8 +95,8 @@ apply_accuracy_only_defaults() {
         SKIP_PERF_READS="1"
         PROGRESS="0"
         VERBOSE_LIMIT="0"
-        if [[ "$RUN_LABEL" == "subsystem" ]]; then
-            RUN_LABEL="subsystem_accuracy_only"
+        if [[ "$RUN_LABEL" == "top" ]]; then
+            RUN_LABEL="top_accuracy_only"
         fi
     fi
 }
@@ -116,7 +118,7 @@ run_one() {
     case "$SIMULATOR" in
         iverilog)
             timeout "${TIMEOUT_SECS:-600}s" \
-                vvp "$SIMDIR/tb_lenet_network.vvp" \
+                vvp "$SIMDIR/tb_top_lenet.vvp" \
                 +fixture_dir="$FIXTURE_DIR" \
                 +sample_name="$sample" \
                 +sample_root_dir="$SAMPLE_ROOT_DIR" \
@@ -137,7 +139,7 @@ run_one() {
             ;;
         vcs)
             timeout "${TIMEOUT_SECS:-600}s" \
-                "$SIMDIR/simv_lenet" \
+                "$SIMDIR/$TOP_SIM_BASENAME" \
                 +fixture_dir="$FIXTURE_DIR" \
                 +sample_name="$sample" \
                 +sample_root_dir="$SAMPLE_ROOT_DIR" \
@@ -252,7 +254,7 @@ sum_cluster_active = sum(int(r["total_cluster_active"] or 0) for r in rows)
 sum_cluster_stall = sum(int(r["total_cluster_stall"] or 0) for r in rows)
 
 summary = {
-    "level": "subsystem",
+    "level": "top",
     "run_label": run_label,
     "simulator": simulator,
     "eval_mode": eval_mode,
@@ -281,7 +283,7 @@ summary_md.write_text(
     "\n".join([
         "# MNIST Full Eval Summary",
         "",
-        f"- level: `subsystem`",
+        f"- level: `top`",
         f"- run_label: `{run_label}`",
         f"- simulator: `{simulator}`",
         f"- eval_mode: `{eval_mode}`",
@@ -338,10 +340,10 @@ run_batch() {
         else
             run_rc=$?
         fi
-        result_line="$(grep '^SUBSYS_RESULT ' "$tmp_log" | tail -n1 || true)"
+        result_line="$(grep '^TOP_RESULT ' "$tmp_log" | tail -n1 || true)"
         if [[ -z "$result_line" ]]; then
             rm -f "$tmp_log"
-            echo "ERROR: subsystem simulation aborted before producing SUBSYS_RESULT for $sample" >&2
+            echo "ERROR: top-level simulation aborted before producing TOP_RESULT for $sample" >&2
             return "${run_rc:-1}"
         fi
         if [[ -n "$csv_path" ]]; then
@@ -391,9 +393,9 @@ case "${1:-}" in
         echo "  INPUT_MEMH_NAME=<name>  sample input memh file (default: input.memh)"
         echo "  EXPECTED_FILE_NAME=<name> expected label/prediction file (default: argmax.txt)"
         echo "  EVAL_MODE=<0|1>         0=strict golden compare, 1=classification/perf eval only"
-        echo "  SKIP_PERF_READS=<0|1>   skip layer-end perf register reads inside testbench"
+        echo "  ACCURACY_ONLY=<0|1>     sets EVAL_MODE=1 SKIP_PERF_READS=1 quiet logging"
+        echo "  SKIP_PERF_READS=<0|1>   skip layer-end perf register reads"
         echo "  RQ_* overrides          requant params; default from fixture summary.json"
-        echo "  ACCURACY_ONLY=<0|1>     force eval-mode full-eval defaults for batch/full-set runs"
         echo "  COUNT=<n> OFFSET=<n>    slicing for batch mode"
         echo "  RESULTS_DIR=<dir>       emit per_sample.csv / summary.json / perf_summary.md"
         echo "  SIMULATOR=<vcs|iverilog> PROGRESS=<0|1> VERBOSE_LIMIT=<n>"

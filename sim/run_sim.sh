@@ -1,7 +1,9 @@
 #!/bin/bash
 # run_sim.sh — unified simulation entry point for NPU verification
+# Formal SoC entries use the 16x16 cluster baseline.
+# Legacy micro-tests are local debug/regression assets, not formal array baseline evidence.
 # Usage: ./sim/run_sim.sh <test_name>
-#   test_name: tb_npu_top | tb_task1 | tb_task2 | tb_task3 | tb_task6 | tb_fc | tb_top | tb_top_lenet | tb_shared | tb_system | tb_checker | tb_perf_counter | tb_cluster_perf
+#   test_name: tb_npu_top | tb_task1 | tb_task2 | tb_task3 | tb_task6 | tb_fc | tb_top | tb_top_lenet | tb_top_cluster_modes | tb_shared | tb_system | tb_checker | tb_perf_counter | tb_cluster_perf | tb_requant | tb_task_requant
 set -e
 
 cd "$(dirname "$0")/.."
@@ -20,6 +22,10 @@ case "$1" in
     tb_npu_top)
         $IVERILOG -o "$SIMDIR/tb_npu_top.vvp" $SOC_RTL $NPU_RTL tb/integration/tb_npu_top.v
         $VVP "$SIMDIR/tb_npu_top.vvp"
+        ;;
+    tb_task_requant)
+        $IVERILOG -o "$SIMDIR/tb_task_requant.vvp" $SOC_RTL $NPU_RTL tb/integration/tb_task_requant.v
+        $VVP "$SIMDIR/tb_task_requant.vvp"
         ;;
     tb_task1)
         $IVERILOG -o "$SIMDIR/tb_task1.vvp" rtl/soc/axi4_ram.v $NPU_RTL tb/integration/tb_task1_illegal.v
@@ -49,8 +55,15 @@ case "$1" in
         $IVERILOG -o "$SIMDIR/tb_perf_counter.vvp" rtl/npu/perf_counter.v tb/unit/tb_perf_counter.v
         $VVP "$SIMDIR/tb_perf_counter.vvp"
         ;;
+    tb_requant)
+        $IVERILOG -o "$SIMDIR/tb_requant_i32_to_i8.vvp" rtl/npu/requant_i32_to_i8.v tb/unit/tb_requant_i32_to_i8.v
+        $VVP "$SIMDIR/tb_requant_i32_to_i8.vvp"
+        ;;
     tb_cluster_perf)
-        $IVERILOG -o "$SIMDIR/tb_cluster_perf.vvp" $NPU_RTL tb/unit/tb_cluster_perf_modes.v
+        $IVERILOG -o "$SIMDIR/tb_cluster_perf.vvp" \
+            rtl/npu/array_top.v rtl/npu/cluster_16x16.v rtl/npu/cluster_scheduler.v \
+            rtl/npu/compute_core_6cluster.v rtl/npu/mac_pe.v rtl/npu/mac_tile_4x4.v \
+            tb/unit/tb_cluster_perf_modes.v
         $VVP "$SIMDIR/tb_cluster_perf.vvp"
         ;;
     tb_top)
@@ -60,6 +73,10 @@ case "$1" in
     tb_top_lenet)
         $IVERILOG -o "$SIMDIR/tb_top_lenet.vvp" $SOC_RTL $BUS_RTL $NPU_RTL rtl/cpu/picorv32/picorv32.v rtl/soc/top.v tb/integration/tb_top_lenet.v
         $VVP "$SIMDIR/tb_top_lenet.vvp"
+        ;;
+    tb_top_cluster_modes)
+        $IVERILOG -o "$SIMDIR/tb_top_cluster_modes.vvp" $SOC_RTL $BUS_RTL $NPU_RTL rtl/cpu/picorv32/picorv32.v rtl/soc/top.v tb/integration/tb_top_cluster_modes.v
+        $VVP "$SIMDIR/tb_top_cluster_modes.vvp"
         ;;
     tb_shared)
         $IVERILOG -o "$SIMDIR/tb_shared.vvp" rtl/soc/shared_ram.v tb/integration/tb_task4_shared_mem.v
@@ -72,6 +89,7 @@ case "$1" in
     all)
         echo "=== Task 1 ===" && ./sim/run_sim.sh tb_task1
         echo "=== Regression ===" && ./sim/run_sim.sh tb_npu_top
+        echo "=== Requant Task ===" && ./sim/run_sim.sh tb_task_requant
         echo "=== Task 2 ===" && ./sim/run_sim.sh tb_task2
         echo "=== Task 3 ===" && ./sim/run_sim.sh tb_task3
         echo "=== Task 4 (shared) ===" && ./sim/run_sim.sh tb_shared
@@ -80,23 +98,30 @@ case "$1" in
         echo "=== Task 6 ===" && ./sim/run_sim.sh tb_task6
         echo "=== Task Checker Unit ===" && ./sim/run_sim.sh tb_checker
         echo "=== Perf Counter ===" && ./sim/run_sim.sh tb_perf_counter
+        echo "=== Requant Unit ===" && ./sim/run_sim.sh tb_requant
         echo "=== Cluster Perf ===" && ./sim/run_sim.sh tb_cluster_perf
         echo "=== Top SoC ===" && ./sim/run_sim.sh tb_top
+        echo "=== Top Cluster Modes ===" && ./sim/run_sim.sh tb_top_cluster_modes
         echo "=== Done ==="
         ;;
     *)
         echo "Usage: $0 <test_name>"
-        echo "  tb_npu_top  — NPU regression (single-block Conv)"
-        echo "  tb_task1     — Task 1 illegal param check"
-        echo "  tb_task2     — Task 2 multi-block Conv"
-        echo "  tb_task3     — Task 3 AXI-Lite decoupling"
-        echo "  tb_task6     — Task 6 ping-pong bank sequencing"
+        echo "Formal 16x16 entries:"
+        echo "  tb_top       — top-level shared-memory + AXI-Lite system test"
+        echo "  tb_top_lenet — top-level LeNet deterministic sample"
+        echo "  tb_top_cluster_modes — top-level cluster-mode smoke on 16x16 SoC baseline"
+        echo "Legacy micro-tests (not formal array baseline evidence):"
+        echo "  tb_npu_top  — legacy NPU regression (single-block Conv)"
+        echo "  tb_task_requant — legacy requant task smoke"
+        echo "  tb_task1     — legacy Task 1 illegal param check"
+        echo "  tb_task2     — legacy Task 2 multi-block Conv"
+        echo "  tb_task3     — legacy Task 3 AXI-Lite decoupling"
+        echo "  tb_task6     — legacy Task 6 ping-pong bank sequencing"
         echo "  tb_fc        — legacy FC control-path regression"
         echo "  tb_checker   — task_checker unit test"
         echo "  tb_perf_counter — perf counter unit test"
+        echo "  tb_requant   — requant_i32_to_i8 unit test"
         echo "  tb_cluster_perf — cluster mode perf/log test"
-        echo "  tb_top       — top-level shared-memory + AXI-Lite system test"
-        echo "  tb_top_lenet — top-level LeNet deterministic sample"
         echo "  tb_shared    — Task 4 shared memory unit test"
         echo "  tb_system    — Task 4 system-level test"
         echo "  all          — run consolidated regression suite"
