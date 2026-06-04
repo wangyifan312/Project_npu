@@ -4,7 +4,7 @@
 `timescale 1ns / 1ps
 
 module dma_axi_reader #(
-    parameter AXI_DATA_WIDTH = 32,
+    parameter AXI_DATA_WIDTH = 256,
     parameter AXI_ADDR_WIDTH = 32,
     parameter MAX_BURST_LEN  = 16   // max beats per AXI burst
 ) (
@@ -46,7 +46,8 @@ module dma_axi_reader #(
     localparam BEAT_BYTES = AXI_DATA_WIDTH / 8;  // bytes per beat
     localparam BEAT_BYTES_LOG2 = (AXI_DATA_WIDTH == 32)  ? 2 :
                                  (AXI_DATA_WIDTH == 64)  ? 3 :
-                                 (AXI_DATA_WIDTH == 128) ? 4 : 2;
+                                 (AXI_DATA_WIDTH == 128) ? 4 :
+                                 (AXI_DATA_WIDTH == 256) ? 5 : 5;
 
     // ============================================================
     // Error codes
@@ -87,16 +88,14 @@ module dma_axi_reader #(
     // ============================================================
     function [7:0] calc_burst_beats;
         input [31:0] bytes;
-        reg [7:0] raw_beats;
+        reg [31:0] raw_beats;
         begin
             if (bytes >= (MAX_BURST_LEN * BEAT_BYTES))
                 calc_burst_beats = MAX_BURST_LEN[7:0];
             else begin
-                raw_beats = bytes[7:0] / BEAT_BYTES[7:0];
-                // Round up if bytes not aligned to beat boundary
-                if (bytes[BEAT_BYTES_LOG2-1:0] != 0)
-                    raw_beats = raw_beats + 8'h1;
-                calc_burst_beats = raw_beats;
+                // Round partial byte counts up to whole AXI beats.
+                raw_beats = (bytes + BEAT_BYTES - 1) / BEAT_BYTES;
+                calc_burst_beats = raw_beats[7:0];
             end
         end
     endfunction

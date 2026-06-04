@@ -16,6 +16,26 @@
 
 ---
 
+## 0. HB Closure Update
+
+本 review 的早期问题清单中，部分 AXI/shared RAM/buffer/performance 口径风险已经通过 HB 256-bit 重构关闭或降级。
+
+当前已确认：
+
+- `HB1` 完成：256-bit 数据面功能闭环已恢复，top 单样本/top8/top16 在 `predicted_class` 口径下通过
+- `HB2` 按当前边界完成：top16/top32/subsystem8 performance summary 非零且线性自洽
+- shared memory 正式组织为 `32768 x 256-bit beat`，CPU 为 `32-bit AXI-Lite`，NPU DMA 为 `256-bit AXI4 burst`
+- top-level LeNet performance replay 仍是 `single-cluster` 网络级口径
+- multi-cluster 证据来自 util counter 与 compute-core/cluster-mode 运行级覆盖，不代表完整 LeNet dual/full performance replay
+
+因此：
+
+- P1-1 “AXI/Shared RAM 仍是 32-bit 功能模型”在 HB 主线下已关闭
+- P1-2 “npu_buffer 仍是 32-bit 功能模型”在 HB 主线下已关闭到 256-bit beat 接入口径
+- 最终交付层面的 full-set accuracy、固件驱动、FPGA/coverage 报告仍可作为后续交付增强项
+
+---
+
 ## 1. 总体结论
 
 当前仓库已经不是“算子原型”，而是一个**功能较完整的 CPU + NPU SoC 原型**：
@@ -30,8 +50,8 @@
 1. 正式阵列规格与当前 RTL 实例化不一致
 2. `6-cluster` Conv 主路径已完成正式收口
 3. FC 已完成正式阵列化强切
-4. AXI / Shared RAM / buffer 仍明显带有功能模型属性
-5. 性能、低功耗、覆盖率和正式报告证据链尚未完全闭环
+4. AXI / Shared RAM / buffer 的 `256-bit` HB 主线已经收口
+5. 性能计数和 HB2 小批量 replay 已闭环，但低功耗、覆盖率和最终报告证据链仍需后续交付补强
 
 当前最准确的状态定义是：
 
@@ -46,11 +66,11 @@
 | 维度 | 当前评估 | 说明 |
 | --- | --- | --- |
 | 工程结构与目录组织 | `85%` | `rtl/tb/docs/datasets/sim` 边界总体清楚，但历史资产仍偏多 |
-| RTL 功能完整度 | `80%` | Conv/Pool/ReLU/FC/LeNet 主链已具备，requant 新语义已接入 |
-| SoC 集成完整度 | `70%` | shared memory、AXI-Lite、DMA 成立，但 top 仍未完全收敛到正式新主路径 |
-| 验证体系完整度 | `80%` | unit/integration/golden/fixture 比较完整，但 coverage 无正式报告 |
-| 赛题指标匹配度 | `60%` | 理论目标较完整，性能/带宽/多 cluster 证据不够硬 |
-| 最终交付准备度 | `60%` | 文档与链路基础较强，但还没完全达到赛题最终提交标准 |
+| RTL 功能完整度 | `85%` | Conv/Pool/ReLU/FC/LeNet 主链已具备，requant 与 256-bit 数据面已接入 |
+| SoC 集成完整度 | `80%` | shared memory、AXI-Lite、256-bit DMA、top LeNet 小批量 replay 已成立 |
+| 验证体系完整度 | `85%` | unit/integration/golden/fixture/top/subsystem 较完整，但 coverage 无正式报告 |
+| 赛题指标匹配度 | `70%` | 理论目标、HB2 performance replay 和 multi-cluster 运行级覆盖已具备 |
+| 最终交付准备度 | `70%` | HB 主线已收口，但 full-set、FPGA/coverage/报告材料仍需交付补强 |
 
 ---
 
@@ -60,12 +80,12 @@
 | --- | --- | --- | --- | --- |
 | `CPU + NPU` 异构处理器 | `top.v` 中 PicoRV32 + NPU + shared RAM 已成立 | `rtl/soc/top.v` | 基本满足 | 仍主要依赖 testbench AXI-Lite master 驱动，而非完整固件链 |
 | 以 `4x4` 脉动阵列为基础 | `mac_pe -> mac_tile_4x4 -> array_top` 明确存在 | `rtl/npu/mac_pe.v`, `mac_tile_4x4.v`, `array_top.v` | 满足 | 无 |
-| AXI-Lite + AXI Burst | 控制面和 DMA 面都存在 | `rtl/bus/axi_interconnect.v`, `rtl/npu/dma_axi_reader.v`, `dma_axi_writer.v` | 基本满足 | 宽总线参数化不完整 |
-| CPU/NPU 共享一份 memory | CPU port 和 NPU DMA port 指向同一 `ram[]` | `rtl/soc/shared_ram.v` | 满足 | 当前实现更偏功能模型 |
-| 支持卷积/矩阵/FC 推理 | Conv/Pool/ReLU/FC 都能跑 | `rtl/npu/npu_top.v`, `docs/LENET_MNIST_SPEC.md` | 基本满足 | 完整小批量真实样本闭环仍属 P0-4 |
+| AXI-Lite + AXI Burst | CPU 控制面为 `32-bit AXI-Lite`，NPU DMA 为 `256-bit AXI4 burst` | `rtl/bus/axi_interconnect.v`, `rtl/npu/dma_axi_reader.v`, `dma_axi_writer.v` | 满足当前 HB 口径 | 后续仍可补更完整压力/coverage 报告 |
+| CPU/NPU 共享一份 memory | CPU port 和 NPU DMA port 指向同一 `32768 x 256-bit beat` shared memory | `rtl/soc/shared_ram.v` | 满足当前 HB 口径 | 后续仍可补综合/FPGA 语义说明 |
+| 支持卷积/矩阵/FC 推理 | Conv/Pool/ReLU/FC 都能跑，FC 已阵列化 | `rtl/npu/npu_top.v`, `docs/LENET_MNIST_SPEC.md` | 基本满足 | 完整 full-set/交付报告仍需后续补强 |
 | 标准测试集推理 | MNIST 已有完整链路 | `datasets/mnist`, `tb_top_lenet.v`, `tb_lenet_network.v` | 部分满足 | CIFAR-10 尚无完整闭环 |
 | `>=0.5 TOPS @ INT8 @ 200MHz` | 文档理论值满足 | `ARCHITECTURE_SPEC.md`, `docs/PERFORMANCE_SUMMARY.md` | 理论满足 | 必须与正式 `16x16 / 1536 PE` RTL 基线收敛 |
-| Burst 带宽利用率 `>=60%` | 有相关计数器和文档 | `rtl/npu/perf_counter.v`, `docs/PERFORMANCE_SUMMARY.md` | 证据不足 | 缺正式最终证明 |
+| Burst 带宽利用率 `>=60%` | read bandwidth util 在 top/subsystem replay 下已非零且达到当前引用口径 | `rtl/npu/perf_counter.v`, `docs/PERFORMANCE_SUMMARY.md` | 满足当前 HB2 边界 | write util 反映当前 store 形态，不作为单独优化结论 |
 | 低功耗设计 | tile/cluster 级 enable/gating 语义存在 | `rtl/npu/array_top.v`, `cluster_scheduler.v` | 部分满足 | 仍非正式可论证实现 |
 | 详细文档、RTL、仿真/FPGA 报告 | 文档与仿真材料较多 | `docs/`, `tb/`, `sim/` | 基本满足 | 仍需继续统一口径并补正式覆盖率/性能报告 |
 
@@ -140,7 +160,7 @@ P0-1 入口分层口径：
   - P0-3 不重写 requant 算法
   - P0-4 继续负责 top 小批量真实样本闭环
 
-### P0-4 当前仍不能宣称 SoC 级最终交付完全收敛
+### P0-4 SoC 级 HB 小批量已收敛，但最终交付仍需补强
 
 - 涉及：
   - `tb/integration/tb_top_lenet.v`
@@ -148,26 +168,30 @@ P0-1 入口分层口径：
   - `docs/PERFORMANCE_SUMMARY.md`
 - 代码事实：
   - requant 软件 gate 已通过
-  - subsystem 小批量 sanity 已恢复
-  - 但 top 小批量 sanity 和更大规模 SoC 级回归还未全部完成
+  - subsystem8 performance replay 已恢复
+  - top 单样本、top8、top16、top32 小批量 replay 已恢复
+  - top16/top32 使用 `predicted_class` 口径与 software/fixture 对齐
 - 原因：
-  - 当前收口重心仍偏 subsystem/debug 链
+  - HB 主线已经完成小批量功能/性能闭环
+  - 最终赛题交付仍需要 full-set、报告、coverage/FPGA 等材料补强
 - 影响：
-  - 当前不能将仓库状态描述为“最终赛题版已完全收敛”
+  - 当前可以描述为“HB1/HB2 已按既定范围收敛”
+  - 当前仍不能描述为“最终赛题交付全量材料已完成”
 - 正式修改策略：
   - SoC 级收敛采用**严格最终收敛**
-  - 但当前验收规模先锁成：
-    - `top` 层在正式 `16x16 + 6-cluster + 阵列化 FC + requant` 新路径下完成**小批量真实样本闭环**
-  - 不把 full-set、最终性能大统计强绑在本条
+  - HB 阶段验收规模锁定为：
+    - `top` 层在正式 `16x16 + 6-cluster + 阵列化 FC + requant + 256-bit data plane` 路径下完成小批量真实样本闭环
+    - top/subsystem performance summary 非零且线性自洽
+  - full-set、FPGA、coverage 和最终报告作为交付补强项继续跟踪
 - 建议验收：
-  - `top` 小批量真实样本结果与 subsystem/software 逐样本一致
-  - 在此之前不得宣称 SoC 级正式收敛
+  - 已完成：`top` 小批量真实样本结果与 subsystem/software `predicted_class` 口径一致
+  - 后续：不得把小批量 replay 包装成完整 MNIST full-set 或完整 LeNet dual/full-cluster 性能结论
 
 ---
 
 ## 5. P1 问题清单
 
-### P1-1 AXI/Shared RAM 的位宽参数化不完整，当前 `32-bit` 更像功能模型
+### P1-1 AXI/Shared RAM 的位宽参数化不完整，当前 `32-bit` 更像功能模型（HB 后已关闭）
 
 - 涉及：
   - `rtl/soc/shared_ram.v`
@@ -175,13 +199,13 @@ P0-1 入口分层口径：
   - `rtl/npu/dma_axi_writer.v`
   - `rtl/soc/top.v`
 - 代码事实：
-  - 虽有 `AXI_DATA_W` 参数
-  - 但实现中大量逻辑仍写死 `32-bit` 和 `4-bit wstrb`
+  - HB 前：虽有 `AXI_DATA_W` 参数，但实现中大量逻辑仍写死 `32-bit` 和 `4-bit wstrb`
+  - HB 后：shared memory / AXI4 RAM / interconnect / DMA 已收敛到 `256-bit` beat，CPU 仍为 `32-bit AXI-Lite`
 - 原因：
   - 现阶段以功能验证为主，宽总线性能版未真正落地
 - 影响：
-  - 当前不可直接用“改参数”方式升级到 `128/256-bit`
-  - 性能版实现仍需要实质性重构
+  - HB 前不可直接用“改参数”方式升级到 `128/256-bit`
+  - 当前 HB 主线已完成 `256-bit` 正式数据面，不再以 `32-bit` 功能模型作为性能基线
 - 正式修改策略：
   - **宽 AXI / Shared RAM 整改并入当前主线**
   - 不再接受 `32-bit` 长期作为正式性能基线
@@ -192,27 +216,28 @@ P0-1 入口分层口径：
     - DMA beat packing
     - RAM 模型
 - 建议验收：
-  - 宽 AXI smoke/burst 回归通过
-  - 正式性能结论不再建立在 `32-bit` 功能模型之上
+  - 已完成：宽 AXI smoke/burst 回归通过
+  - 已完成：正式性能结论不再建立在 `32-bit` 功能模型之上
 
-### P1-2 `npu_buffer` 更偏功能模型，不像大阵列供数子系统
+### P1-2 `npu_buffer` 更偏功能模型，不像大阵列供数子系统（HB 后已关闭到 256-bit beat 接入口径）
 
 - 涉及：
   - `rtl/npu/npu_buffer.v`
 - 代码事实：
-  - 当前是双 bank 32-bit 数组 + 组合读
-  - 编译时已有大数组组合敏感表 warning
+  - HB 前：双 bank 32-bit 数组 + 组合读
+  - HB 后：默认 entry 已切到 `256-bit` beat，正式读路径和 feeder 接入按宽 beat 语义工作
 - 原因：
   - 设计目标更偏功能模型
 - 影响：
-  - 性能真实性、lint 质量、可综合性表达较弱
+  - HB 前性能真实性、lint 质量、可综合性表达较弱
+  - 当前 HB 范围已解决正式数据面带宽接入问题；更深层 SRAM 宏/综合质量仍可作为后续实现质量增强
 - 正式修改策略：
   - **`npu_buffer` 并入当前主线重构**
   - 不再接受大数组组合读的 `32-bit` 功能模型作为正式基线
   - 必须重构成更接近真实片上供数子系统的模型
 - 建议验收：
-  - 去除大数组组合读问题
-  - 供数带宽语义与大阵列/宽 AXI 正式匹配
+  - 已完成：供数带宽语义与大阵列/宽 AXI 正式匹配
+  - 后续增强：若进入综合/FPGA 阶段，再补 SRAM 宏化与 lint/coverage 收敛
 
 ### P1-3 Conv 能力当前主要适配 LeNet，而非通用 CNN
 

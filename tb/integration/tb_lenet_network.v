@@ -17,16 +17,17 @@ module tb_lenet_network;
     wire npu_busy, npu_done, npu_error;
     wire [7:0] npu_error_code;
     wire npu_arvalid, npu_awvalid, npu_wvalid, npu_wlast;
-    wire [31:0] npu_araddr, npu_awaddr, npu_wdata;
+    wire [31:0] npu_araddr, npu_awaddr;
+    wire [255:0] npu_wdata;
     wire [7:0] npu_arlen, npu_awlen;
     wire [2:0] npu_arsize, npu_awsize;
     wire [1:0] npu_arburst, npu_awburst;
-    wire [3:0] npu_wstrb;
+    wire [31:0] npu_wstrb;
     wire npu_rready, npu_bready;
     wire ram_awready, ram_wready, ram_bvalid, ram_arready;
     wire [1:0] ram_bresp, ram_rresp;
     wire ram_rvalid, ram_rlast;
-    wire [31:0] ram_rdata;
+    wire [255:0] ram_rdata;
 
     localparam INPUT_ADDR     = 32'h0000_0100;
     localparam CONV1_WGT_ADDR = 32'h0000_1000;
@@ -110,7 +111,8 @@ module tb_lenet_network;
         .npu_busy(npu_busy), .npu_done(npu_done), .npu_error(npu_error), .npu_error_code(npu_error_code)
     );
 
-    axi4_ram #(.RAM_DEPTH(262144)) u_ram (
+    // Formal HB data plane RAM model: 1 MB = 32768 x 256-bit beats.
+    axi4_ram #(.RAM_DEPTH(32768)) u_ram (
         .clk(clk), .rst_n(rst_n),
         .s_axi_awvalid(npu_awvalid), .s_axi_awready(ram_awready),
         .s_axi_awaddr(npu_awaddr), .s_axi_awlen(npu_awlen),
@@ -195,16 +197,35 @@ module tb_lenet_network;
     task axi_read;
         input  [31:0] addr;
         output [31:0] data;
+        integer guard;
         begin
-            s_axi_arvalid = 1'b1;
-            s_axi_araddr  = addr;
-            @(posedge clk);
-            while (!s_axi_arready)
-                @(posedge clk);
             s_axi_arvalid = 1'b0;
             s_axi_rready  = 1'b1;
-            wait (s_axi_rvalid);
+            repeat (2) @(posedge clk);
+            s_axi_rready  = 1'b0;
+
+            s_axi_arvalid = 1'b1;
+            s_axi_araddr  = addr;
+            guard = 0;
+            @(posedge clk);
+            while (!s_axi_arready && !s_axi_rvalid) begin
+                @(posedge clk);
+                guard = guard + 1;
+                if (guard > 1000)
+                    $fatal(1, "AXI read address timeout addr=0x%08x arready=%b arvalid=%b rready=%b",
+                           addr, s_axi_arready, s_axi_arvalid, s_axi_rready);
+            end
+            s_axi_arvalid = 1'b0;
+            guard = 0;
+            while (!s_axi_rvalid) begin
+                @(posedge clk);
+                guard = guard + 1;
+                if (guard > 1000)
+                    $fatal(1, "AXI read data timeout addr=0x%08x arready=%b arvalid=%b rready=%b",
+                           addr, s_axi_arready, s_axi_arvalid, s_axi_rready);
+            end
             data = s_axi_rdata;
+            s_axi_rready  = 1'b1;
             @(posedge clk);
             s_axi_rready  = 1'b0;
         end
@@ -230,9 +251,35 @@ module tb_lenet_network;
         begin
             $readmemh(path, file_words);
             for (i = 0; i < word_count; i = i + 1)
-                u_ram.ram[(base_addr >> 2) + i] = file_words[i];
+                ram_write_word(base_addr + (i * 4), file_words[i]);
         end
     endtask
+
+    task ram_write_word;
+        input [31:0] byte_addr;
+        input [31:0] data;
+        integer beat_idx;
+        integer word_idx;
+        begin
+            // Hierarchical preload uses the same 256-bit beat address split as shared_ram:
+            // beat_addr=addr[19:5], word_in_beat=addr[4:2].
+            beat_idx = byte_addr[19:5];
+            word_idx = byte_addr[4:2];
+            u_ram.ram[beat_idx][word_idx*32 +: 32] = data;
+        end
+    endtask
+
+    function [31:0] ram_read_word;
+        input [31:0] byte_addr;
+        integer beat_idx;
+        integer word_idx;
+        begin
+            // Hierarchical readback mirrors the formal 256-bit beat organization.
+            beat_idx = byte_addr[19:5];
+            word_idx = byte_addr[4:2];
+            ram_read_word = u_ram.ram[beat_idx][word_idx*32 +: 32];
+        end
+    endfunction
 
     task compare_region_memh;
         input string path;
@@ -246,7 +293,7 @@ module tb_lenet_network;
             local_errs = 0;
             $readmemh(path, file_words);
             for (i = 0; i < word_count; i = i + 1) begin
-                actual = u_ram.ram[(base_addr >> 2) + i];
+                actual = ram_read_word(base_addr + (i * 4));
                 if (actual !== file_words[i]) begin
                     local_errs = local_errs + 1;
                     if (local_errs <= 8)
@@ -470,8 +517,8 @@ module tb_lenet_network;
                         conv2_act_debug_done = 1;
                     end
                     if (!conv2_wgt_debug_done && (u_npu.fsm_state == 5'd8)) begin
-                        $display("  Conv2 debug weights: blk_wgt_per_cin=%0d wgt_per_cin=%0d wgt_words_per_cin=%0d wgt_dma_bytes=%0d cin_idx=%0d",
-                                 u_npu.blk_wgt_per_cin, u_npu.wgt_per_cin, u_npu.wgt_words_per_cin, u_npu.wgt_dma_bytes, u_npu.cin_idx);
+                        $display("  Conv2 debug weights: blk_wgt_per_cin=%0d wgt_per_cin=%0d wgt_dma_bytes=%0d cin_idx=%0d",
+                                 u_npu.blk_wgt_per_cin, u_npu.wgt_per_cin, u_npu.wgt_dma_bytes, u_npu.cin_idx);
                         compare_wgt_buffer_memh_slice(path_conv2_w, 0, 313, "Conv2 wgt_buffer cin0", errs);
                         conv2_wgt_debug_done = 1;
                     end
@@ -520,9 +567,9 @@ module tb_lenet_network;
         reg signed [31:0] best_v, cur_v;
         begin
             best_i = 0;
-            best_v = u_ram.ram[(base_addr >> 2)];
+            best_v = ram_read_word(base_addr);
             for (i = 1; i < count; i = i + 1) begin
-                cur_v = u_ram.ram[(base_addr >> 2) + i];
+                cur_v = ram_read_word(base_addr + (i * 4));
                 if (cur_v > best_v) begin
                     best_v = cur_v;
                     best_i = i;
@@ -670,15 +717,17 @@ module tb_lenet_network;
         end
 
         if (errs != 0) begin
-            $display("SUBSYS_RESULT sample=%0s predicted=%0d expected=%0d status=FAIL total_cycles=%0d total_mac=%0d total_read_beats=%0d total_write_beats=%0d total_array_active=%0d total_array_stall=%0d total_cluster_active=%0d total_cluster_stall=%0d",
+            $display("SUBSYS_RESULT sample=%0s predicted=%0d expected=%0d status=FAIL total_cycles=%0d total_mac=%0d total_read_beats=%0d total_write_beats=%0d total_read_active=%0d total_write_active=%0d total_array_active=%0d total_array_stall=%0d total_cluster_active=%0d total_cluster_stall=%0d",
                      sample_name, pred, expected_pred,
                      sample_total_cycles, sample_total_mac, sample_total_read_beats, sample_total_write_beats,
+                     sample_total_read_active, sample_total_write_active,
                      sample_total_array_active, sample_total_array_stall, sample_total_cluster_active, sample_total_cluster_stall);
             $fatal(1, "LeNet network FAILED with %0d total mismatches", errs);
         end else begin
-            $display("SUBSYS_RESULT sample=%0s predicted=%0d expected=%0d status=PASS total_cycles=%0d total_mac=%0d total_read_beats=%0d total_write_beats=%0d total_array_active=%0d total_array_stall=%0d total_cluster_active=%0d total_cluster_stall=%0d",
+            $display("SUBSYS_RESULT sample=%0s predicted=%0d expected=%0d status=PASS total_cycles=%0d total_mac=%0d total_read_beats=%0d total_write_beats=%0d total_read_active=%0d total_write_active=%0d total_array_active=%0d total_array_stall=%0d total_cluster_active=%0d total_cluster_stall=%0d",
                      sample_name, pred, expected_pred,
                      sample_total_cycles, sample_total_mac, sample_total_read_beats, sample_total_write_beats,
+                     sample_total_read_active, sample_total_write_active,
                      sample_total_array_active, sample_total_array_stall, sample_total_cluster_active, sample_total_cluster_stall);
             $display("LeNet network PASSED for %0s", sample_name);
         end

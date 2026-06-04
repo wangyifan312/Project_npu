@@ -5,8 +5,8 @@
 
 module weight_read_path #(
     parameter AXI_ADDR_W = 32,
-    parameter AXI_DATA_W = 32,
-    parameter BUF_DATA_W  = 32,
+    parameter AXI_DATA_W = 256,
+    parameter BUF_DATA_W  = 256,
     parameter BUF_ADDR_W  = 10
 ) (
     input  wire        clk,

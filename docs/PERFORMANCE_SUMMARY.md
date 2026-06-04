@@ -7,8 +7,31 @@
 - 理论值
 - compute-core / cluster-level 测得结果
 - SoC `top`-level 测得结果
+- subsystem `npu_top + axi4_ram` 测得结果
 
 不得混写。
+
+## 0. 测试入口分层
+
+当前性能证据必须按入口分层引用：
+
+| 层级 | 入口 | 用途 | 引用限制 |
+| --- | --- | --- | --- |
+| 正式 SoC top | `tb/integration/tb_top_lenet.v`, `sim/run_top_lenet.sh` | top-level LeNet 正确性与 performance replay | 当前 LeNet replay 是 single-cluster 口径 |
+| subsystem | `tb/integration/tb_lenet_network.v`, `sim/run_lenet_fixture.sh` | `npu_top + axi4_ram` 网络级交叉验证 | 不包含 CPU/shared_ram/interconnect top wrapper |
+| cluster/unit | `tb/unit/tb_cluster_perf_modes.v`, `tb/unit/tb_hb2_cluster_util_counter.v` | multi-cluster compute/util 运行级覆盖 | 不等同于完整 LeNet dual/full 性能 replay |
+| legacy/debug | 历史 `tb_task*`, `tb_npu_top`, 局部小阵列测试 | 定位与回归辅助 | 不作为正式功能或性能基线 |
+
+当前 HB2 可引用结论：
+
+- top16/top32：正式 top single-cluster LeNet performance replay
+- subsystem8：subsystem single-cluster LeNet performance replay
+- multi-cluster：unit/compute-core 运行级 coverage
+
+当前不可引用结论：
+
+- 不能宣称完整 top-level LeNet dual/full-cluster performance replay 已完成
+- 不能用 legacy 小阵列测试推导正式 `16x16 x 6-cluster` 网络级性能
 
 ---
 
@@ -147,6 +170,206 @@ bash sim/run_top_lenet.sh sample
   - `top` 层可读取正式性能寄存器
 - 这张表 **不能** 被表述成 `top` 层 full-cluster LeNet 性能结论
 
+### 3.3 HB2 256-bit Top16 Performance Replay
+
+来源：
+
+- testbench: `tb/integration/tb_top_lenet.v`
+- script: `sim/run_top_lenet.sh`
+- 结果目录：`results/hb2_top16_perf_replay`
+- expected 口径：`datasets/mnist/lenet_real_manifest_100/manifest.json` 中的 `predicted_class`
+
+命令：
+
+```bash
+SIMULATOR=vcs ACCURACY_ONLY=1 TIMEOUT_SECS=900 \
+RUN_LABEL=hb2_top16_perf_replay \
+RESULTS_DIR=results/hb2_top16_perf_replay \
+FIXTURE_DIR=datasets/mnist/lenet_real_manifest_100 \
+MANIFEST_PATH=datasets/mnist/lenet_real_manifest_100/manifest.json \
+SAMPLE_ROOT_DIR=datasets/mnist/exports_full \
+WEIGHTS_ROOT_DIR=datasets/mnist/lenet_real_manifest_100/weights \
+INPUT_MEMH_NAME=packed_words.memh EXPECTED_FILE_NAME=label.txt \
+EXPECTED_MANIFEST_FIELD=predicted_class COUNT=16 \
+bash sim/run_top_lenet.sh batch
+```
+
+结果：
+
+| Metric | Value |
+| --- | ---: |
+| samples | `16/16 PASS` |
+| total_cycles | `15,604,224` |
+| avg_cycles | `975,264` |
+| total_mac | `36,688,000` |
+| avg_mac | `2,293,000` |
+| read_beats | `255,872` |
+| write_beats | `39,936` |
+| beat_bytes | `32` |
+| read_bytes | `8,187,904` |
+| write_bytes | `1,277,952` |
+| read_active | `273,328` |
+| write_active | `679,008` |
+| read_bw_util | `0.936135` |
+| write_bw_util | `0.058815` |
+| array_active | `6,144,960` |
+| array_stall | `994,304` |
+| cluster_active | `6,144,960` |
+| cluster_stall | `994,304` |
+| array_util | `0.393801` |
+| cluster_util | `0.393801` |
+
+说明：
+
+- `read_beats/write_beats` 使用 `256-bit` AXI beat 口径，`1 beat = 32 bytes`
+- `read_bw_util/write_bw_util` 为 `beats / active_cycles`
+- 当前 top-level LeNet 使用 `CLUSTER_MODE=single`，因此 `array_active` 与 `cluster_active` 数值一致是预期结果
+- 该 replay 证明 256-bit 数据面下 top16 正确性与性能计数口径同时闭环
+
+### 3.4 HB2 256-bit Subsystem8 Performance Replay
+
+来源：
+
+- testbench: `tb/integration/tb_lenet_network.v`
+- script: `sim/run_lenet_fixture.sh`
+- 结果目录：`results/hb2_subsystem8_perf_replay`
+
+命令：
+
+```bash
+SIMULATOR=vcs ACCURACY_ONLY=1 TIMEOUT_SECS=900 \
+RUN_LABEL=hb2_subsystem8_perf_replay \
+RESULTS_DIR=results/hb2_subsystem8_perf_replay \
+FIXTURE_DIR=datasets/mnist/lenet_real_fixture COUNT=8 \
+bash sim/run_lenet_fixture.sh batch
+```
+
+结果：
+
+| Metric | Value |
+| --- | ---: |
+| samples | `8/8 PASS` |
+| total_cycles | `7,802,112` |
+| avg_cycles | `975,264` |
+| total_mac | `18,344,000` |
+| avg_mac | `2,293,000` |
+| read_beats | `127,936` |
+| write_beats | `19,968` |
+| beat_bytes | `32` |
+| read_bytes | `4,093,952` |
+| write_bytes | `638,976` |
+| read_active | `136,664` |
+| write_active | `339,504` |
+| read_bw_util | `0.936135` |
+| write_bw_util | `0.058815` |
+| array_active | `3,072,480` |
+| array_stall | `497,152` |
+| cluster_active | `3,072,480` |
+| cluster_stall | `497,152` |
+| array_util | `0.393801` |
+| cluster_util | `0.393801` |
+
+说明：
+
+- subsystem 入口直接实例化 `npu_top + axi4_ram`，用于和 SoC `top` 入口交叉验证性能口径
+- 该入口的 hierarchical RAM preload/readback 已按 256-bit beat 组织修正为 `addr[19:5] / addr[4:2]`
+- subsystem LeNet 仍为 single-cluster 配置，因此 `array_active == cluster_active` 是预期结果
+
+### 3.5 HB2 Multi-Cluster Util Coverage
+
+来源：
+
+- `tb/unit/tb_hb2_cluster_util_counter.v`
+- `tb/unit/tb_cluster_perf_modes.v`
+
+命令：
+
+```bash
+iverilog -g2012 -I rtl/npu -o /tmp/tb_hb2_cluster_util_counter.vvp \
+  rtl/npu/cluster_scheduler.v rtl/npu/perf_counter.v \
+  tb/unit/tb_hb2_cluster_util_counter.v && \
+vvp /tmp/tb_hb2_cluster_util_counter.vvp
+```
+
+```bash
+iverilog -g2012 -I rtl/npu -o /tmp/tb_cluster_perf_modes.vvp \
+  rtl/npu/cluster_scheduler.v rtl/npu/compute_core_6cluster.v \
+  rtl/npu/cluster_16x16.v rtl/npu/array_top.v \
+  rtl/npu/mac_tile_4x4.v rtl/npu/mac_pe.v \
+  tb/unit/tb_cluster_perf_modes.v && \
+timeout 60s vvp /tmp/tb_cluster_perf_modes.vvp
+```
+
+结果：
+
+| Case | Enabled Mask | cluster_count | array_active | cluster_active | Status |
+| --- | --- | ---: | ---: | ---: | --- |
+| `single` | `000001` | `1` | `4` | `4` | PASS |
+| `dual` | `000011` | `2` | `4` | `8` | PASS |
+| `full` | `111111` | `6` | `4` | `24` | PASS |
+| `masked_full` | `101011` | `4` | `4` | `16` | PASS |
+
+说明：
+
+- 该覆盖证明 perf counter 的 `cluster_active` 按 enabled cluster 数缩放，不会在 multi-cluster 下机械等于 `array_active`
+- `tb_cluster_perf_modes` 同时证明 `cluster_scheduler + compute_core_6cluster` 在 single/dual/full/masked 模式下可运行
+- 该覆盖属于 cluster/perf 运行级证据，不等同于 top-level LeNet multi-cluster 性能结论
+
+### 3.6 HB2 256-bit Top32 Performance Replay
+
+来源：
+
+- testbench: `tb/integration/tb_top_lenet.v`
+- script: `sim/run_top_lenet.sh`
+- 结果目录：`results/hb2_top32_perf_replay`
+- expected 口径：`datasets/mnist/lenet_real_manifest_100/manifest.json` 中的 `predicted_class`
+
+命令：
+
+```bash
+SIMULATOR=vcs ACCURACY_ONLY=1 TIMEOUT_SECS=900 \
+RUN_LABEL=hb2_top32_perf_replay \
+RESULTS_DIR=results/hb2_top32_perf_replay \
+FIXTURE_DIR=datasets/mnist/lenet_real_manifest_100 \
+MANIFEST_PATH=datasets/mnist/lenet_real_manifest_100/manifest.json \
+SAMPLE_ROOT_DIR=datasets/mnist/exports_full \
+WEIGHTS_ROOT_DIR=datasets/mnist/lenet_real_manifest_100/weights \
+INPUT_MEMH_NAME=packed_words.memh EXPECTED_FILE_NAME=label.txt \
+EXPECTED_MANIFEST_FIELD=predicted_class COUNT=32 \
+bash sim/run_top_lenet.sh batch
+```
+
+结果：
+
+| Metric | Value |
+| --- | ---: |
+| samples | `32/32 PASS` |
+| total_cycles | `31,208,448` |
+| avg_cycles | `975,264` |
+| total_mac | `73,376,000` |
+| avg_mac | `2,293,000` |
+| read_beats | `511,744` |
+| write_beats | `79,872` |
+| beat_bytes | `32` |
+| read_bytes | `16,375,808` |
+| write_bytes | `2,555,904` |
+| read_active | `546,656` |
+| write_active | `1,358,016` |
+| read_bw_util | `0.936135` |
+| write_bw_util | `0.058815` |
+| array_active | `12,289,920` |
+| array_stall | `1,988,608` |
+| cluster_active | `12,289,920` |
+| cluster_stall | `1,988,608` |
+| array_util | `0.393801` |
+| cluster_util | `0.393801` |
+
+说明：
+
+- top32 与 top16/subsystem8 的 per-sample 指标线性一致
+- `read_beats/write_beats` 均为 256-bit beat 口径，`beat_bytes=32`
+- 当前 top-level LeNet 仍为 single-cluster replay，因此 `array_active == cluster_active` 是预期结果
+
 ---
 
 ## 4. 当前可用于答辩的严格结论
@@ -157,6 +380,8 @@ bash sim/run_top_lenet.sh sample
 2. Conv / FC 已从 `npu_top` 正式接入 `cluster_scheduler / compute_core_6cluster / output_arbiter`
 3. `top` 层已经补到一组真实 `dual-cluster` Conv 证据，能给出 `cluster_cfg / cycles / mac / utilization / 功能结果`
 4. `top` 层完整 LeNet 已通过真实权重样本闭环，并能输出分层性能日志
+5. HB2 256-bit 口径下，top32 与 subsystem8 均可输出非零且线性自洽的 read/write beat、bandwidth utilization、array/cluster utilization summary
+6. multi-cluster util counter 覆盖证明 `cluster_active` 在 dual/full/masked 模式下按 enabled cluster 数缩放
 
 当前不能过度表述的结论：
 

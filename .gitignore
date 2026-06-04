@@ -25,6 +25,7 @@ sim/*.vvp
 sim/*.vcd
 sim/*.fsdb
 sim/*.log
+sim/csrc*/
 sim/simv*
 sim/*.daidir/
 sim/simv_lenet

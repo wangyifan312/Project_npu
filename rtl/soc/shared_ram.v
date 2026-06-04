@@ -1,22 +1,23 @@
-// shared_ram: unified memory with CPU AXI-Lite port + NPU AXI4 DMA port
-// Both ports access the same physical memory array. CPU gets priority.
+// shared_ram: unified 1MB memory with CPU AXI-Lite + NPU 256-bit AXI4 DMA ports
+// CPU and NPU access the same physical 32768 x 256-bit beat array.
 `timescale 1ns / 1ps
 
 module shared_ram #(
-    parameter AXI_ADDR_W = 32,
-    parameter AXI_DATA_W = 32,
-    parameter RAM_DEPTH   = 262144  // 1 MB @ 32-bit words
+    parameter AXI_ADDR_W     = 32,
+    parameter CPU_AXI_DATA_W = 32,
+    parameter NPU_AXI_DATA_W = 256,
+    parameter RAM_DEPTH      = 32768   // 1 MB @ 256-bit beats
 ) (
     input  wire        clk,
     input  wire        rst_n,
 
-    // === CPU AXI-Lite port ===
+    // === CPU AXI-Lite port (32-bit word lane in a 256-bit beat) ===
     input  wire                        cpu_awvalid,
     output wire                        cpu_awready,
     input  wire [AXI_ADDR_W-1:0]       cpu_awaddr,
     input  wire                        cpu_wvalid,
     output wire                        cpu_wready,
-    input  wire [AXI_DATA_W-1:0]       cpu_wdata,
+    input  wire [CPU_AXI_DATA_W-1:0]   cpu_wdata,
     input  wire [3:0]                  cpu_wstrb,
     output wire                        cpu_bvalid,
     input  wire                        cpu_bready,
@@ -26,10 +27,10 @@ module shared_ram #(
     input  wire [AXI_ADDR_W-1:0]       cpu_araddr,
     output wire                        cpu_rvalid,
     input  wire                        cpu_rready,
-    output wire [AXI_DATA_W-1:0]       cpu_rdata,
+    output wire [CPU_AXI_DATA_W-1:0]   cpu_rdata,
     output wire [1:0]                  cpu_rresp,
 
-    // === NPU DMA AXI4 port ===
+    // === NPU DMA AXI4 port (256-bit beat) ===
     input  wire                        npu_awvalid,
     output wire                        npu_awready,
     input  wire [AXI_ADDR_W-1:0]       npu_awaddr,
@@ -38,9 +39,9 @@ module shared_ram #(
     input  wire [1:0]                  npu_awburst,
     input  wire                        npu_wvalid,
     output wire                        npu_wready,
-    input  wire [AXI_DATA_W-1:0]       npu_wdata,
+    input  wire [NPU_AXI_DATA_W-1:0]   npu_wdata,
     input  wire                        npu_wlast,
-    input  wire [3:0]                  npu_wstrb,
+    input  wire [(NPU_AXI_DATA_W/8)-1:0] npu_wstrb,
     output wire                        npu_bvalid,
     input  wire                        npu_bready,
     output wire [1:0]                  npu_bresp,
@@ -52,33 +53,60 @@ module shared_ram #(
     input  wire [1:0]                  npu_arburst,
     output wire                        npu_rvalid,
     input  wire                        npu_rready,
-    output wire [AXI_DATA_W-1:0]       npu_rdata,
+    output wire [NPU_AXI_DATA_W-1:0]   npu_rdata,
     output wire                        npu_rlast,
     output wire [1:0]                  npu_rresp
 );
 
-    localparam ADDR_BITS = $clog2(RAM_DEPTH);
+    localparam NPU_STRB_W = NPU_AXI_DATA_W / 8;
+    localparam ADDR_BITS  = $clog2(RAM_DEPTH);
 
-    // Shared memory array
-    reg [AXI_DATA_W-1:0] ram [0:RAM_DEPTH-1];
+    // Address split follows HB_256BIT_REFACTOR_SPEC.md:
+    // beat_addr=addr[19:5], word_in_beat=addr[4:2], byte_in_word=addr[1:0].
+    reg [NPU_AXI_DATA_W-1:0] ram [0:RAM_DEPTH-1];
+
+    function [ADDR_BITS-1:0] beat_index;
+        input [AXI_ADDR_W-1:0] addr;
+        begin
+            beat_index = addr[ADDR_BITS+4:5];
+        end
+    endfunction
+
+    function [CPU_AXI_DATA_W-1:0] extract_cpu_word;
+        input [NPU_AXI_DATA_W-1:0] beat;
+        input [2:0] word_sel;
+        begin
+            case (word_sel)
+                3'd0: extract_cpu_word = beat[ 31:  0];
+                3'd1: extract_cpu_word = beat[ 63: 32];
+                3'd2: extract_cpu_word = beat[ 95: 64];
+                3'd3: extract_cpu_word = beat[127: 96];
+                3'd4: extract_cpu_word = beat[159:128];
+                3'd5: extract_cpu_word = beat[191:160];
+                3'd6: extract_cpu_word = beat[223:192];
+                default: extract_cpu_word = beat[255:224];
+            endcase
+        end
+    endfunction
 
     // ============================================================
-    // Arbitration: CPU priority over NPU (per-transaction)
-    // CPU write path
+    // CPU AXI-Lite write path
     // ============================================================
     reg         cpu_aw_valid_r;
-    reg  [31:0] cpu_aw_addr_r;
+    reg  [AXI_ADDR_W-1:0] cpu_aw_addr_r;
 
     wire cpu_aw_hs = cpu_awvalid && cpu_awready;
     wire cpu_w_hs  = cpu_wvalid  && cpu_wready;
 
-    // CPU write: single cycle AW+W (AXI-Lite is non-burst)
     assign cpu_awready = !cpu_aw_valid_r;
     assign cpu_wready  = cpu_aw_valid_r;
 
+    integer cpu_byte_i;
+    integer cpu_byte_lane;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             cpu_aw_valid_r <= 1'b0;
+            cpu_aw_addr_r  <= {AXI_ADDR_W{1'b0}};
         end else begin
             if (cpu_aw_hs) begin
                 cpu_aw_valid_r <= 1'b1;
@@ -86,17 +114,18 @@ module shared_ram #(
             end else if (cpu_w_hs) begin
                 cpu_aw_valid_r <= 1'b0;
             end
-            // CPU write to shared RAM
+
             if (cpu_w_hs) begin
-                if (cpu_wstrb[0]) ram[cpu_aw_addr_r[ADDR_BITS+1:2]][ 7: 0] <= cpu_wdata[ 7: 0];
-                if (cpu_wstrb[1]) ram[cpu_aw_addr_r[ADDR_BITS+1:2]][15: 8] <= cpu_wdata[15: 8];
-                if (cpu_wstrb[2]) ram[cpu_aw_addr_r[ADDR_BITS+1:2]][23:16] <= cpu_wdata[23:16];
-                if (cpu_wstrb[3]) ram[cpu_aw_addr_r[ADDR_BITS+1:2]][31:24] <= cpu_wdata[31:24];
+                for (cpu_byte_i = 0; cpu_byte_i < 4; cpu_byte_i = cpu_byte_i + 1) begin
+                    if (cpu_wstrb[cpu_byte_i]) begin
+                        cpu_byte_lane = ({29'h0, cpu_aw_addr_r[4:2]} << 2) + cpu_byte_i;
+                        ram[beat_index(cpu_aw_addr_r)][cpu_byte_lane*8 +: 8] <= cpu_wdata[cpu_byte_i*8 +: 8];
+                    end
+                end
             end
         end
     end
 
-    // CPU B response
     reg cpu_bvalid_r;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n)
@@ -109,11 +138,12 @@ module shared_ram #(
     assign cpu_bvalid = cpu_bvalid_r;
     assign cpu_bresp  = 2'b00;
 
-    // CPU read
+    // ============================================================
+    // CPU AXI-Lite read path
+    // ============================================================
     reg         cpu_ar_valid_r;
-    reg  [31:0] cpu_ar_addr_r;
     reg         cpu_rvalid_r;
-    reg  [31:0] cpu_rdata_r;
+    reg [CPU_AXI_DATA_W-1:0] cpu_rdata_r;
 
     wire cpu_ar_hs = cpu_arvalid && cpu_arready;
     assign cpu_arready = !cpu_ar_valid_r;
@@ -122,11 +152,11 @@ module shared_ram #(
         if (!rst_n) begin
             cpu_ar_valid_r <= 1'b0;
             cpu_rvalid_r   <= 1'b0;
+            cpu_rdata_r    <= {CPU_AXI_DATA_W{1'b0}};
         end else begin
             if (cpu_ar_hs) begin
                 cpu_ar_valid_r <= 1'b1;
-                cpu_ar_addr_r  <= cpu_araddr;
-                cpu_rdata_r    <= ram[cpu_araddr[ADDR_BITS+1:2]];
+                cpu_rdata_r    <= extract_cpu_word(ram[beat_index(cpu_araddr)], cpu_araddr[4:2]);
                 cpu_rvalid_r   <= 1'b1;
             end else begin
                 cpu_ar_valid_r <= 1'b0;
@@ -140,10 +170,10 @@ module shared_ram #(
     assign cpu_rresp  = 2'b00;
 
     // ============================================================
-    // NPU DMA write path (burst-capable, same as axi4_ram)
+    // NPU AXI4 write path
     // ============================================================
     reg         npu_aw_valid_r;
-    reg  [31:0] npu_aw_addr_r;
+    reg  [AXI_ADDR_W-1:0] npu_aw_addr_r;
     reg  [7:0]  npu_aw_len_r;
     reg  [7:0]  npu_w_beat_cnt;
     reg         npu_w_active;
@@ -153,9 +183,12 @@ module shared_ram #(
     assign npu_awready = !npu_aw_valid_r && !npu_w_active;
     assign npu_wready  = npu_w_active;
 
+    integer npu_byte_i;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             npu_aw_valid_r <= 1'b0;
+            npu_aw_addr_r  <= {AXI_ADDR_W{1'b0}};
+            npu_aw_len_r   <= 8'h0;
             npu_w_active   <= 1'b0;
             npu_w_beat_cnt <= 8'h0;
         end else begin
@@ -167,10 +200,12 @@ module shared_ram #(
                 npu_w_active   <= 1'b1;
             end
             if (npu_w_hs) begin
-                if (npu_wstrb[0]) ram[npu_aw_addr_r[ADDR_BITS+1:2] + npu_w_beat_cnt][ 7: 0] <= npu_wdata[ 7: 0];
-                if (npu_wstrb[1]) ram[npu_aw_addr_r[ADDR_BITS+1:2] + npu_w_beat_cnt][15: 8] <= npu_wdata[15: 8];
-                if (npu_wstrb[2]) ram[npu_aw_addr_r[ADDR_BITS+1:2] + npu_w_beat_cnt][23:16] <= npu_wdata[23:16];
-                if (npu_wstrb[3]) ram[npu_aw_addr_r[ADDR_BITS+1:2] + npu_w_beat_cnt][31:24] <= npu_wdata[31:24];
+                for (npu_byte_i = 0; npu_byte_i < NPU_STRB_W; npu_byte_i = npu_byte_i + 1) begin
+                    if (npu_wstrb[npu_byte_i]) begin
+                        ram[beat_index(npu_aw_addr_r) + npu_w_beat_cnt][npu_byte_i*8 +: 8] <=
+                            npu_wdata[npu_byte_i*8 +: 8];
+                    end
+                end
                 if (npu_wlast || npu_w_beat_cnt == npu_aw_len_r) begin
                     npu_w_active   <= 1'b0;
                     npu_aw_valid_r <= 1'b0;
@@ -193,19 +228,21 @@ module shared_ram #(
     assign npu_bvalid = npu_bvalid_r;
     assign npu_bresp  = 2'b00;
 
-    // NPU read path: match axi4_ram timing/beat semantics
+    // ============================================================
+    // NPU AXI4 read path
+    // ============================================================
     reg         npu_ar_valid_r;
-    reg  [31:0] npu_ar_addr_r;
+    reg  [AXI_ADDR_W-1:0] npu_ar_addr_r;
     reg  [7:0]  npu_ar_len_r;
     reg  [7:0]  npu_r_beat_cnt;
     reg         npu_r_active;
     reg         npu_rvalid_r;
-    reg  [31:0] npu_rdata_r;
+    reg [NPU_AXI_DATA_W-1:0] npu_rdata_r;
 
     wire npu_ar_hs = npu_arvalid && npu_arready;
     wire npu_r_hs  = npu_rvalid && npu_rready;
-    wire [31:0] npu_rd_base = npu_ar_hs ? npu_araddr : npu_ar_addr_r;
-    wire [7:0]  npu_rd_beat = npu_ar_hs ? 8'h0 :
+    wire [AXI_ADDR_W-1:0] npu_rd_base = npu_ar_hs ? npu_araddr : npu_ar_addr_r;
+    wire [7:0] npu_rd_beat = npu_ar_hs ? 8'h0 :
                               (npu_r_hs ? (npu_r_beat_cnt + 8'h1) : npu_r_beat_cnt);
 
     assign npu_arready = !npu_ar_valid_r && !npu_r_active;
@@ -213,6 +250,8 @@ module shared_ram #(
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             npu_ar_valid_r <= 1'b0;
+            npu_ar_addr_r  <= {AXI_ADDR_W{1'b0}};
+            npu_ar_len_r   <= 8'h0;
             npu_r_active   <= 1'b0;
             npu_r_beat_cnt <= 8'h0;
         end else begin
@@ -238,16 +277,15 @@ module shared_ram #(
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             npu_rvalid_r <= 1'b0;
+            npu_rdata_r  <= {NPU_AXI_DATA_W{1'b0}};
         end else if (npu_ar_hs) begin
             npu_rvalid_r <= 1'b1;
-        end else if (npu_r_hs && (npu_r_beat_cnt == npu_ar_len_r)) begin
-            npu_rvalid_r <= 1'b0;
-        end
-    end
-
-    always @(posedge clk) begin
-        if (npu_r_active || npu_ar_hs) begin
-            npu_rdata_r <= ram[(npu_rd_base[ADDR_BITS+1:2]) + npu_rd_beat];
+            npu_rdata_r  <= ram[beat_index(npu_araddr)];
+        end else begin
+            if (npu_r_hs && (npu_r_beat_cnt == npu_ar_len_r))
+                npu_rvalid_r <= 1'b0;
+            if (npu_r_active || (npu_r_hs && (npu_r_beat_cnt != npu_ar_len_r)))
+                npu_rdata_r <= ram[beat_index(npu_rd_base) + npu_rd_beat];
         end
     end
 

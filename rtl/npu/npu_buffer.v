@@ -1,10 +1,10 @@
 // npu_buffer: generic double-buffer with bank state machine
-// Two banks (A/B) support load/compute overlap via ping-pong
-// DMA writes via addr/data/wr_en; compute reads via addr → data
+// Two banks (A/B) support load/compute overlap via ping-pong.
+// HB1-B formal path uses 256-bit beat entries and synchronous reads.
 `timescale 1ns / 1ps
 
 module npu_buffer #(
-    parameter DATA_WIDTH  = 32,
+    parameter DATA_WIDTH  = 256,
     parameter ENTRIES     = 256,   // entries per bank
     parameter ADDR_WIDTH  = 8      // log2(ENTRIES)
 ) (
@@ -17,7 +17,7 @@ module npu_buffer #(
     input  wire                    wr_en,
     input  wire                    wr_bank_sel,  // 0=bank A, 1=bank B
 
-    // === Compute read port (combinational read) ===
+    // === Compute read port (synchronous beat read) ===
     input  wire [ADDR_WIDTH-1:0]   rd_addr,
     output wire [DATA_WIDTH-1:0]   rd_data,
     input  wire                    rd_bank_sel,  // 0=bank A, 1=bank B
@@ -122,15 +122,15 @@ module npu_buffer #(
     end
 
     // ============================================================
-    // Compute read (combinational)
+    // Compute read (synchronous)
     // ============================================================
     reg [DATA_WIDTH-1:0] rd_data_r;
 
-    always @(*) begin
+    always @(posedge clk) begin
         if (rd_bank_sel == 1'b0)
-            rd_data_r = bank_a[rd_addr];
+            rd_data_r <= bank_a[rd_addr];
         else
-            rd_data_r = bank_b[rd_addr];
+            rd_data_r <= bank_b[rd_addr];
     end
 
     assign rd_data = rd_data_r;

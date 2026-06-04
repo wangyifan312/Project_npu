@@ -6,7 +6,8 @@
 module top #(
     parameter AXI_ADDR_W = 32,
     parameter AXI_DATA_W = 32,
-    parameter SHARED_RAM_DEPTH = 262144,
+    parameter AXI_DMA_DATA_W = 256,
+    parameter SHARED_RAM_DEPTH = 32768,  // 1 MB shared memory: 32768 x 256-bit beats
     parameter NPU_BUF_ENTRIES = 16384,
     parameter NPU_BUF_ADDR_W = 14,
     parameter NPU_TILE_ROWS = 16,
@@ -187,7 +188,7 @@ module top #(
     wire [2:0]  npu_m_arsize;
     wire [1:0]  npu_m_arburst;
     wire        npu_m_rvalid, npu_m_rready;
-    wire [31:0] npu_m_rdata;
+    wire [AXI_DMA_DATA_W-1:0] npu_m_rdata;
     wire        npu_m_rlast;
     wire [1:0]  npu_m_rresp;
 
@@ -197,9 +198,9 @@ module top #(
     wire [2:0]  npu_m_awsize;
     wire [1:0]  npu_m_awburst;
     wire        npu_m_wvalid, npu_m_wready;
-    wire [31:0] npu_m_wdata;
+    wire [AXI_DMA_DATA_W-1:0] npu_m_wdata;
     wire        npu_m_wlast;
-    wire [3:0]  npu_m_wstrb;
+    wire [(AXI_DMA_DATA_W/8)-1:0] npu_m_wstrb;
     wire        npu_m_bvalid, npu_m_bready;
     wire [1:0]  npu_m_bresp;
 
@@ -210,9 +211,9 @@ module top #(
     wire [2:0]  mem4_awsize;
     wire [1:0]  mem4_awburst;
     wire        mem4_wvalid, mem4_wready;
-    wire [31:0] mem4_wdata;
+    wire [AXI_DMA_DATA_W-1:0] mem4_wdata;
     wire        mem4_wlast;
-    wire [3:0]  mem4_wstrb;
+    wire [(AXI_DMA_DATA_W/8)-1:0] mem4_wstrb;
     wire        mem4_bvalid, mem4_bready;
     wire [1:0]  mem4_bresp;
     wire        mem4_arvalid, mem4_arready;
@@ -221,7 +222,7 @@ module top #(
     wire [2:0]  mem4_arsize;
     wire [1:0]  mem4_arburst;
     wire        mem4_rvalid, mem4_rready;
-    wire [31:0] mem4_rdata;
+    wire [AXI_DMA_DATA_W-1:0] mem4_rdata;
     wire        mem4_rlast;
     wire [1:0]  mem4_rresp;
 
@@ -232,7 +233,10 @@ module top #(
     // ============================================================
     // AXI Interconnect
     // ============================================================
-    axi_interconnect u_interconnect (
+    axi_interconnect #(
+        .CPU_AXI_DATA_W(AXI_DATA_W),
+        .DMA_AXI_DATA_W(AXI_DMA_DATA_W)
+    ) u_interconnect (
         .clk          (clk),
         .rst_n        (rst_n),
         // CPU side
@@ -347,7 +351,11 @@ module top #(
     // ============================================================
     // Unified Shared Memory (CPU + NPU DMA access same physical RAM)
     // ============================================================
-    shared_ram #(.RAM_DEPTH(SHARED_RAM_DEPTH)) u_shared_ram (
+    shared_ram #(
+        .CPU_AXI_DATA_W(AXI_DATA_W),
+        .NPU_AXI_DATA_W(AXI_DMA_DATA_W),
+        .RAM_DEPTH(SHARED_RAM_DEPTH)
+    ) u_shared_ram (
         .clk            (clk),
         .rst_n          (rst_n),
         // CPU AXI-Lite port
@@ -400,6 +408,8 @@ module top #(
     // NPU Top-Level (register file + task_checker + DMA + buffers + compute)
     // ============================================================
     npu_top #(
+        .AXI_DATA_W(AXI_DATA_W),
+        .AXI_DMA_DATA_W(AXI_DMA_DATA_W),
         .BUF_ENTRIES(NPU_BUF_ENTRIES),
         .BUF_ADDR_W(NPU_BUF_ADDR_W),
         .TILE_ROWS(NPU_TILE_ROWS),

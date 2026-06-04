@@ -8,9 +8,24 @@
 - 每个 cluster = `16x16 PE`
 - 总计 `1536 PE`
 - `200MHz` 理论峰值 `0.6144 TOPS`
-- `top` 层 shared memory 默认覆盖完整 LeNet 地址图
+- `top` 层 shared memory 默认口径为 `32768 x 256-bit beat`，容量 `1 MB`，覆盖完整 LeNet 地址图
 - SoC 级验证采用 testbench `AXI-Lite master` + shared memory preload 模拟 CPU 软件行为
 - FC 正式执行流已强切到 `6-cluster` compute hierarchy
+
+## HB 256-bit 当前状态
+
+当前高带宽主线已经收口：
+
+- `HB1` 完成：256-bit 数据面功能闭环恢复，top 单样本/top8/top16 在 `predicted_class` 口径下通过
+- `HB2` 按当前边界完成：top16/top32/subsystem8 performance summary 非零且线性自洽
+- CPU 访问模式为 `32-bit AXI-Lite`
+- NPU DMA 访问模式为 `256-bit AXI4 burst`
+- shared memory 物理组织为 `32768 x 256-bit beat`
+
+引用限制：
+
+- top-level LeNet performance replay 仍是 `single-cluster` 网络级口径
+- multi-cluster 证据来自 util counter 与 compute-core/cluster-mode 运行级覆盖，不等同于完整 LeNet dual/full performance replay
 
 ## 阵列规格与入口分层
 
@@ -93,7 +108,10 @@
   - AXI-Lite 配置与状态回读
   - 完整 LeNet 地址图闭环
   - Conv / FC 正式主路径使用 `cluster_scheduler -> compute_core_6cluster -> output_arbiter`
-  - `single / dual / full / mask` cluster mode 通过同一正式 compute 主路径生效
+  - 当前 LeNet performance replay 是 `single-cluster` 口径
+- `unit / micro`
+  - `tb_cluster_perf_modes` 覆盖 compute-core `single / dual / full / dynamic mask`
+  - `tb_hb2_cluster_util_counter` 覆盖 util counter 在 multi-cluster 下按 enabled cluster 数缩放
 
 本轮最终要求同时保留：
 
@@ -156,8 +174,9 @@ SIMULATOR=vcs bash sim/run_top_lenet.sh all
 说明：
 
 - deterministic fixture 继续作为快速 smoke/regression 路径
-- 如果目标是完整测试集 accuracy，请优先走 `ACCURACY_ONLY=1` 的 subsystem batch 路径；该模式会跳过层后 perf 寄存器读取和逐层 compare
-- `accuracy-only` 模式仍统计 `total_cycles / total_mac`，但不采集 `read/write beats` 与 utilization
+- 如果目标是完整测试集 accuracy，请优先走 `ACCURACY_ONLY=1` 的 subsystem batch 路径；该模式跳过逐层 golden compare，但默认仍保留 perf register reads
+- 如需显式跳过性能寄存器读取，使用 `SKIP_PERF_READS=1`
+- `accuracy-only` 模式当前可统计 `total_cycles / total_mac / read/write beats / utilization`
 - 真实权重流、性能表和答辩固定回归入口分别见：
   - [docs/REAL_WEIGHT_FLOW.md](docs/REAL_WEIGHT_FLOW.md)
   - [docs/PERFORMANCE_SUMMARY.md](docs/PERFORMANCE_SUMMARY.md)

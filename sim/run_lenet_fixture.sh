@@ -21,6 +21,7 @@ SKIP_PERF_READS="${SKIP_PERF_READS:-0}"
 COUNT="${COUNT:-0}"
 OFFSET="${OFFSET:-0}"
 VERBOSE_LIMIT="${VERBOSE_LIMIT:-16}"
+STOP_AFTER_LAYER="${STOP_AFTER_LAYER:-}"
 RESULTS_DIR="${RESULTS_DIR:-}"
 RUN_LABEL="${RUN_LABEL:-subsystem}"
 RQ_CONV2_MULT="${RQ_CONV2_MULT:-}"
@@ -90,7 +91,6 @@ compile() {
 apply_accuracy_only_defaults() {
     if [[ "${ACCURACY_ONLY:-0}" == "1" ]]; then
         EVAL_MODE="1"
-        SKIP_PERF_READS="1"
         PROGRESS="0"
         VERBOSE_LIMIT="0"
         if [[ "$RUN_LABEL" == "subsystem" ]]; then
@@ -133,7 +133,8 @@ run_one() {
                 +rq_fc2_shift="$RQ_FC2_SHIFT" \
                 +sample_ordinal="$ordinal" \
                 +verbose_limit="$VERBOSE_LIMIT" \
-                +progress="$PROGRESS"
+                +progress="$PROGRESS" \
+                +stop_after_layer="$STOP_AFTER_LAYER"
             ;;
         vcs)
             timeout "${TIMEOUT_SECS:-600}s" \
@@ -154,7 +155,8 @@ run_one() {
                 +rq_fc2_shift="$RQ_FC2_SHIFT" \
                 +sample_ordinal="$ordinal" \
                 +verbose_limit="$VERBOSE_LIMIT" \
-                +progress="$PROGRESS"
+                +progress="$PROGRESS" \
+                +stop_after_layer="$STOP_AFTER_LAYER"
             ;;
     esac
 }
@@ -197,6 +199,7 @@ fields = dict(re.findall(r'(\w+)=([^\s]+)', line))
 fieldnames = [
     "sample_name", "expected", "predicted", "status", "pass_fail",
     "total_cycles", "total_mac", "total_read_beats", "total_write_beats",
+    "total_read_active", "total_write_active",
     "total_array_active", "total_array_stall", "total_cluster_active", "total_cluster_stall",
 ]
 exists = os.path.exists(csv_path)
@@ -214,6 +217,8 @@ with open(csv_path, "a", newline="", encoding="ascii") as f:
         "total_mac": fields.get("total_mac", "0"),
         "total_read_beats": fields.get("total_read_beats", "0"),
         "total_write_beats": fields.get("total_write_beats", "0"),
+        "total_read_active": fields.get("total_read_active", "0"),
+        "total_write_active": fields.get("total_write_active", "0"),
         "total_array_active": fields.get("total_array_active", "0"),
         "total_array_stall": fields.get("total_array_stall", "0"),
         "total_cluster_active": fields.get("total_cluster_active", "0"),
@@ -246,6 +251,8 @@ sum_cycles = sum(int(r["total_cycles"] or 0) for r in rows)
 sum_mac = sum(int(r["total_mac"] or 0) for r in rows)
 sum_read_beats = sum(int(r["total_read_beats"] or 0) for r in rows)
 sum_write_beats = sum(int(r["total_write_beats"] or 0) for r in rows)
+sum_read_active = sum(int(r.get("total_read_active", "0") or 0) for r in rows)
+sum_write_active = sum(int(r.get("total_write_active", "0") or 0) for r in rows)
 sum_array_active = sum(int(r["total_array_active"] or 0) for r in rows)
 sum_array_stall = sum(int(r["total_array_stall"] or 0) for r in rows)
 sum_cluster_active = sum(int(r["total_cluster_active"] or 0) for r in rows)
@@ -269,6 +276,13 @@ summary = {
     "avg_read_beats": (sum_read_beats / total) if total else 0.0,
     "total_write_beats": sum_write_beats,
     "avg_write_beats": (sum_write_beats / total) if total else 0.0,
+    "beat_bytes": 32,
+    "total_read_bytes": sum_read_beats * 32,
+    "total_write_bytes": sum_write_beats * 32,
+    "total_read_active": sum_read_active,
+    "total_write_active": sum_write_active,
+    "avg_read_bw_util": (sum_read_beats / sum_read_active) if sum_read_active else 0.0,
+    "avg_write_bw_util": (sum_write_beats / sum_write_active) if sum_write_active else 0.0,
     "total_array_active": sum_array_active,
     "total_array_stall": sum_array_stall,
     "total_cluster_active": sum_cluster_active,
@@ -299,6 +313,13 @@ summary_md.write_text(
         f"| avg_mac | {summary['avg_mac']:.2f} |",
         f"| total_read_beats | {sum_read_beats} |",
         f"| total_write_beats | {sum_write_beats} |",
+        f"| beat_bytes | 32 |",
+        f"| total_read_bytes | {sum_read_beats * 32} |",
+        f"| total_write_bytes | {sum_write_beats * 32} |",
+        f"| total_read_active | {sum_read_active} |",
+        f"| total_write_active | {sum_write_active} |",
+        f"| avg_read_bw_util | {summary['avg_read_bw_util']:.6f} |",
+        f"| avg_write_bw_util | {summary['avg_write_bw_util']:.6f} |",
         f"| avg_array_util | {summary['avg_array_util']:.6f} |",
         f"| avg_cluster_util | {summary['avg_cluster_util']:.6f} |",
         "",
@@ -392,8 +413,9 @@ case "${1:-}" in
         echo "  EXPECTED_FILE_NAME=<name> expected label/prediction file (default: argmax.txt)"
         echo "  EVAL_MODE=<0|1>         0=strict golden compare, 1=classification/perf eval only"
         echo "  SKIP_PERF_READS=<0|1>   skip layer-end perf register reads inside testbench"
+        echo "  STOP_AFTER_LAYER=<name> stop after conv1/pool1/conv2/pool2/fc1/fc2 and print cumulative perf"
         echo "  RQ_* overrides          requant params; default from fixture summary.json"
-        echo "  ACCURACY_ONLY=<0|1>     force eval-mode full-eval defaults for batch/full-set runs"
+        echo "  ACCURACY_ONLY=<0|1>     force eval-mode defaults; perf reads stay enabled unless SKIP_PERF_READS=1"
         echo "  COUNT=<n> OFFSET=<n>    slicing for batch mode"
         echo "  RESULTS_DIR=<dir>       emit per_sample.csv / summary.json / perf_summary.md"
         echo "  SIMULATOR=<vcs|iverilog> PROGRESS=<0|1> VERBOSE_LIMIT=<n>"

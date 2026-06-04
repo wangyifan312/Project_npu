@@ -4,7 +4,7 @@
 `timescale 1ns / 1ps
 
 module dma_axi_writer #(
-    parameter AXI_DATA_WIDTH = 32,
+    parameter AXI_DATA_WIDTH = 256,
     parameter AXI_ADDR_WIDTH = 32,
     parameter MAX_BURST_LEN  = 16
 ) (
@@ -37,7 +37,7 @@ module dma_axi_writer #(
     output wire                        m_axi_wvalid,
     input  wire                        m_axi_wready,
     output wire                        m_axi_wlast,
-    output wire [3:0]                  m_axi_wstrb,
+    output wire [(AXI_DATA_WIDTH/8)-1:0] m_axi_wstrb,
 
     input  wire [1:0]                  m_axi_bresp,
     input  wire                        m_axi_bvalid,
@@ -45,9 +45,11 @@ module dma_axi_writer #(
 );
 
     localparam BEAT_BYTES = AXI_DATA_WIDTH / 8;
+    localparam STRB_W     = AXI_DATA_WIDTH / 8;
     localparam BEAT_BYTES_LOG2 = (AXI_DATA_WIDTH == 32)  ? 2 :
                                  (AXI_DATA_WIDTH == 64)  ? 3 :
-                                 (AXI_DATA_WIDTH == 128) ? 4 : 2;
+                                 (AXI_DATA_WIDTH == 128) ? 4 :
+                                 (AXI_DATA_WIDTH == 256) ? 5 : 5;
 
     localparam ERR_NONE    = 8'h00;
     localparam ERR_BRESP   = 8'h30;
@@ -70,15 +72,25 @@ module dma_axi_writer #(
     // ============================================================
     function [7:0] calc_burst_beats;
         input [31:0] bytes;
-        reg [7:0] raw_beats;
+        reg [31:0] raw_beats;
         begin
             if (bytes >= (MAX_BURST_LEN * BEAT_BYTES))
                 calc_burst_beats = MAX_BURST_LEN[7:0];
             else begin
-                raw_beats = bytes[7:0] / BEAT_BYTES[7:0];
-                if (bytes[BEAT_BYTES_LOG2-1:0] != 0)
-                    raw_beats = raw_beats + 8'h1;
-                calc_burst_beats = raw_beats;
+                raw_beats = (bytes + BEAT_BYTES - 1) / BEAT_BYTES;
+                calc_burst_beats = raw_beats[7:0];
+            end
+        end
+    endfunction
+
+    function [STRB_W-1:0] calc_wstrb;
+        input [31:0] valid_bytes;
+        integer i;
+        begin
+            calc_wstrb = {STRB_W{1'b0}};
+            for (i = 0; i < STRB_W; i = i + 1) begin
+                if (valid_bytes > i)
+                    calc_wstrb[i] = 1'b1;
             end
         end
     endfunction
@@ -102,6 +114,13 @@ module dma_axi_writer #(
     wire [31:0] remaining_after_burst = (bytes_remaining <= burst_byte_count)
                                         ? 32'h0
                                         : (bytes_remaining - burst_byte_count);
+    wire [31:0] bytes_sent_in_burst = {24'h0, beat_counter} * BEAT_BYTES;
+    wire [31:0] bytes_left_for_beat = (bytes_remaining <= bytes_sent_in_burst)
+                                      ? 32'h0
+                                      : (bytes_remaining - bytes_sent_in_burst);
+    wire [31:0] valid_bytes_this_beat = (bytes_left_for_beat >= BEAT_BYTES)
+                                        ? BEAT_BYTES
+                                        : bytes_left_for_beat;
 
     // ============================================================
     // AXI4 AW channel
@@ -122,7 +141,7 @@ module dma_axi_writer #(
     assign m_axi_wdata  = data_in;
     assign m_axi_wvalid = (state == S_WDATA) && data_valid && !w_done;
     assign m_axi_wlast  = (beat_counter == burst_len);  // last beat in burst
-    assign m_axi_wstrb  = 4'hF;  // all bytes valid
+    assign m_axi_wstrb  = calc_wstrb(valid_bytes_this_beat);
     assign data_ready   = (state == S_WDATA) && m_axi_wready && !w_done;
 
     // ============================================================

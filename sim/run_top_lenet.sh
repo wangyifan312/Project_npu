@@ -17,6 +17,7 @@ PROGRESS="${PROGRESS:-0}"
 TOP_SIM_BASENAME="${TOP_SIM_BASENAME:-simv_top_lenet_run}"
 INPUT_MEMH_NAME="${INPUT_MEMH_NAME:-input.memh}"
 EXPECTED_FILE_NAME="${EXPECTED_FILE_NAME:-argmax.txt}"
+EXPECTED_MANIFEST_FIELD="${EXPECTED_MANIFEST_FIELD:-}"
 EVAL_MODE="${EVAL_MODE:-0}"
 SKIP_PERF_READS="${SKIP_PERF_READS:-0}"
 COUNT="${COUNT:-0}"
@@ -92,7 +93,6 @@ compile() {
 apply_accuracy_only_defaults() {
     if [[ "${ACCURACY_ONLY:-0}" == "1" ]]; then
         EVAL_MODE="1"
-        SKIP_PERF_READS="1"
         PROGRESS="0"
         VERBOSE_LIMIT="0"
         if [[ "$RUN_LABEL" == "top" ]]; then
@@ -115,6 +115,7 @@ load_requant_defaults() {
 run_one() {
     local sample="$1"
     local ordinal="$2"
+    local expected_override="${3:--1}"
     case "$SIMULATOR" in
         iverilog)
             timeout "${TIMEOUT_SECS:-600}s" \
@@ -125,6 +126,7 @@ run_one() {
                 +weights_root_dir="$WEIGHTS_ROOT_DIR" \
                 +input_memh_name="$INPUT_MEMH_NAME" \
                 +expected_file_name="$EXPECTED_FILE_NAME" \
+                +expected_class_override="$expected_override" \
                 +eval_mode="$EVAL_MODE" \
                 +skip_perf_reads="$SKIP_PERF_READS" \
                 +rq_conv2_mult="$RQ_CONV2_MULT" \
@@ -146,6 +148,7 @@ run_one() {
                 +weights_root_dir="$WEIGHTS_ROOT_DIR" \
                 +input_memh_name="$INPUT_MEMH_NAME" \
                 +expected_file_name="$EXPECTED_FILE_NAME" \
+                +expected_class_override="$expected_override" \
                 +eval_mode="$EVAL_MODE" \
                 +skip_perf_reads="$SKIP_PERF_READS" \
                 +rq_conv2_mult="$RQ_CONV2_MULT" \
@@ -159,6 +162,28 @@ run_one() {
                 +progress="$PROGRESS"
             ;;
     esac
+}
+
+manifest_expected() {
+    local sample="$1"
+    if [[ -z "$EXPECTED_MANIFEST_FIELD" ]]; then
+        echo "-1"
+        return
+    fi
+    python3 - <<'PY' "$MANIFEST_PATH" "$sample" "$EXPECTED_MANIFEST_FIELD"
+import json, pathlib, sys
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+sample = sys.argv[2]
+field = sys.argv[3]
+for entry in manifest:
+    if entry.get("dir") == sample:
+        if field not in entry:
+            raise SystemExit(f"manifest entry for {sample} lacks {field}")
+        print(int(entry[field]))
+        break
+else:
+    raise SystemExit(f"sample {sample} not found in manifest")
+PY
 }
 
 manifest_samples() {
@@ -199,6 +224,7 @@ fields = dict(re.findall(r'(\w+)=([^\s]+)', line))
 fieldnames = [
     "sample_name", "expected", "predicted", "status", "pass_fail",
     "total_cycles", "total_mac", "total_read_beats", "total_write_beats",
+    "total_read_active", "total_write_active",
     "total_array_active", "total_array_stall", "total_cluster_active", "total_cluster_stall",
 ]
 exists = os.path.exists(csv_path)
@@ -216,6 +242,8 @@ with open(csv_path, "a", newline="", encoding="ascii") as f:
         "total_mac": fields.get("total_mac", "0"),
         "total_read_beats": fields.get("total_read_beats", "0"),
         "total_write_beats": fields.get("total_write_beats", "0"),
+        "total_read_active": fields.get("total_read_active", "0"),
+        "total_write_active": fields.get("total_write_active", "0"),
         "total_array_active": fields.get("total_array_active", "0"),
         "total_array_stall": fields.get("total_array_stall", "0"),
         "total_cluster_active": fields.get("total_cluster_active", "0"),
@@ -248,6 +276,8 @@ sum_cycles = sum(int(r["total_cycles"] or 0) for r in rows)
 sum_mac = sum(int(r["total_mac"] or 0) for r in rows)
 sum_read_beats = sum(int(r["total_read_beats"] or 0) for r in rows)
 sum_write_beats = sum(int(r["total_write_beats"] or 0) for r in rows)
+sum_read_active = sum(int(r.get("total_read_active", "0") or 0) for r in rows)
+sum_write_active = sum(int(r.get("total_write_active", "0") or 0) for r in rows)
 sum_array_active = sum(int(r["total_array_active"] or 0) for r in rows)
 sum_array_stall = sum(int(r["total_array_stall"] or 0) for r in rows)
 sum_cluster_active = sum(int(r["total_cluster_active"] or 0) for r in rows)
@@ -271,6 +301,13 @@ summary = {
     "avg_read_beats": (sum_read_beats / total) if total else 0.0,
     "total_write_beats": sum_write_beats,
     "avg_write_beats": (sum_write_beats / total) if total else 0.0,
+    "beat_bytes": 32,
+    "total_read_bytes": sum_read_beats * 32,
+    "total_write_bytes": sum_write_beats * 32,
+    "total_read_active": sum_read_active,
+    "total_write_active": sum_write_active,
+    "avg_read_bw_util": (sum_read_beats / sum_read_active) if sum_read_active else 0.0,
+    "avg_write_bw_util": (sum_write_beats / sum_write_active) if sum_write_active else 0.0,
     "total_array_active": sum_array_active,
     "total_array_stall": sum_array_stall,
     "total_cluster_active": sum_cluster_active,
@@ -301,6 +338,13 @@ summary_md.write_text(
         f"| avg_mac | {summary['avg_mac']:.2f} |",
         f"| total_read_beats | {sum_read_beats} |",
         f"| total_write_beats | {sum_write_beats} |",
+        f"| beat_bytes | 32 |",
+        f"| total_read_bytes | {sum_read_beats * 32} |",
+        f"| total_write_bytes | {sum_write_beats * 32} |",
+        f"| total_read_active | {sum_read_active} |",
+        f"| total_write_active | {sum_write_active} |",
+        f"| avg_read_bw_util | {summary['avg_read_bw_util']:.6f} |",
+        f"| avg_write_bw_util | {summary['avg_write_bw_util']:.6f} |",
         f"| avg_array_util | {summary['avg_array_util']:.6f} |",
         f"| avg_cluster_util | {summary['avg_cluster_util']:.6f} |",
         "",
@@ -335,7 +379,7 @@ run_batch() {
         echo "=== $sample ==="
         tmp_log="$(mktemp)"
         run_rc=0
-        if run_one "$sample" "$ordinal" | tee "$tmp_log"; then
+        if run_one "$sample" "$ordinal" "$(manifest_expected "$sample")" | tee "$tmp_log"; then
             run_rc=0
         else
             run_rc=$?
@@ -368,7 +412,7 @@ case "${1:-}" in
         apply_accuracy_only_defaults
         load_requant_defaults
         compile
-        run_one "$SAMPLE_NAME" 0
+        run_one "$SAMPLE_NAME" 0 "$(manifest_expected "$SAMPLE_NAME")"
         ;;
     batch)
         apply_accuracy_only_defaults
@@ -392,8 +436,9 @@ case "${1:-}" in
         echo "  WEIGHTS_ROOT_DIR=<dir>  weight memh root (default: \$FIXTURE_DIR/weights)"
         echo "  INPUT_MEMH_NAME=<name>  sample input memh file (default: input.memh)"
         echo "  EXPECTED_FILE_NAME=<name> expected label/prediction file (default: argmax.txt)"
+        echo "  EXPECTED_MANIFEST_FIELD=<field> use manifest field as expected class"
         echo "  EVAL_MODE=<0|1>         0=strict golden compare, 1=classification/perf eval only"
-        echo "  ACCURACY_ONLY=<0|1>     sets EVAL_MODE=1 SKIP_PERF_READS=1 quiet logging"
+        echo "  ACCURACY_ONLY=<0|1>     sets EVAL_MODE=1 quiet logging; perf reads stay enabled unless SKIP_PERF_READS=1"
         echo "  SKIP_PERF_READS=<0|1>   skip layer-end perf register reads"
         echo "  RQ_* overrides          requant params; default from fixture summary.json"
         echo "  COUNT=<n> OFFSET=<n>    slicing for batch mode"

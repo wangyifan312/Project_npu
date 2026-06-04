@@ -6,7 +6,9 @@
 module npu_top #(
     parameter AXI_ADDR_W = 32,
     parameter AXI_DATA_W = 32,
-    parameter BUF_DATA_W  = 32,
+    parameter AXI_DMA_DATA_W = 256,
+    parameter BUF_DATA_W  = 256,
+    parameter ACC_DATA_W  = 32,
     parameter BUF_ENTRIES = 1024,
     parameter BUF_ADDR_W  = 10,
     parameter TILE_ROWS   = 16,
@@ -43,7 +45,7 @@ module npu_top #(
     output wire [7:0]                  m_axi_arlen,
     output wire [2:0]                  m_axi_arsize,
     output wire [1:0]                  m_axi_arburst,
-    input  wire [AXI_DATA_W-1:0]       m_axi_rdata,
+    input  wire [AXI_DMA_DATA_W-1:0]   m_axi_rdata,
     input  wire                        m_axi_rvalid,
     output wire                        m_axi_rready,
     input  wire                        m_axi_rlast,
@@ -56,11 +58,11 @@ module npu_top #(
     output wire [7:0]                  m_axi_awlen,
     output wire [2:0]                  m_axi_awsize,
     output wire [1:0]                  m_axi_awburst,
-    output wire [AXI_DATA_W-1:0]       m_axi_wdata,
+    output wire [AXI_DMA_DATA_W-1:0]   m_axi_wdata,
     output wire                        m_axi_wvalid,
     input  wire                        m_axi_wready,
     output wire                        m_axi_wlast,
-    output wire [3:0]                  m_axi_wstrb,
+    output wire [(AXI_DMA_DATA_W/8)-1:0] m_axi_wstrb,
     input  wire [1:0]                  m_axi_bresp,
     input  wire                        m_axi_bvalid,
     output wire                        m_axi_bready,
@@ -82,6 +84,8 @@ module npu_top #(
     localparam CLUSTER_WGT_W = N_TILES * 16 * 8;
     localparam CLUSTER_TILE_EN_W = N_TILES;
     localparam WGT_REG_BITS = PE_ROWS * PE_COLS * 8;
+    localparam HB_BEAT_BYTES = BUF_DATA_W / 8;
+    localparam HB_BEAT_BYTE_BITS = 5; // 256-bit beat = 32 byte lanes
     localparam [15:0] PE_ROWS_16 = PE_ROWS;
     localparam [15:0] PE_COLS_16 = PE_COLS;
     localparam [15:0] KERNEL_SPATIAL_16 = KERNEL_SPATIAL;
@@ -108,6 +112,22 @@ module npu_top #(
     localparam FSM_REQUANT_COMPUTE = 5'd21;
     localparam FSM_TASK_SETUP  = 5'd22;
     localparam FSM_DONE        = 5'd15;
+
+    function [7:0] hb_beat_byte;
+        input [BUF_DATA_W-1:0] beat;
+        input [HB_BEAT_BYTE_BITS-1:0] byte_sel;
+        begin
+            hb_beat_byte = beat[byte_sel * 8 +: 8];
+        end
+    endfunction
+
+    function [31:0] hb_beat_word;
+        input [BUF_DATA_W-1:0] beat;
+        input [2:0] word_sel;
+        begin
+            hb_beat_word = beat[word_sel * 32 +: 32];
+        end
+    endfunction
     localparam FSM_ERROR       = 5'd14;
 
     // COMPUTE sub-states
@@ -125,6 +145,7 @@ module npu_top #(
     reg [15:0] comp_drain_cnt;
     reg [WGT_REG_BITS-1:0] wgt_load_reg;
     reg [31:0] wgt_load_phase;
+    reg        wgt_load_wait;
 
     // ============================================================
     // npu_ctrl signals
@@ -234,7 +255,7 @@ module npu_top #(
     wire                  act_rready, wgt_rready;
     wire read_sel_act;
 
-    act_read_path #(.AXI_ADDR_W(AXI_ADDR_W), .AXI_DATA_W(AXI_DATA_W),
+    act_read_path #(.AXI_ADDR_W(AXI_ADDR_W), .AXI_DATA_W(AXI_DMA_DATA_W),
                     .BUF_DATA_W(BUF_DATA_W), .BUF_ADDR_W(BUF_ADDR_W))
     u_act_dma (
         .clk(clk), .rst_n(rst_n), .start(act_dma_start),
@@ -250,13 +271,14 @@ module npu_top #(
     reg         wgt_dma_start;
     reg  [31:0] wgt_dma_addr;
     reg  [31:0] wgt_dma_bytes;
+    reg  [4:0]  wgt_dma_byte_offset;
     wire        wgt_dma_done, wgt_dma_error, wgt_dma_busy;
     wire [7:0]  wgt_dma_error_code;
     wire [BUF_ADDR_W-1:0] wgt_buf_wr_addr;
     wire [BUF_DATA_W-1:0] wgt_buf_wr_data;
     wire                  wgt_buf_wr_en;
 
-    weight_read_path #(.AXI_ADDR_W(AXI_ADDR_W), .AXI_DATA_W(AXI_DATA_W),
+    weight_read_path #(.AXI_ADDR_W(AXI_ADDR_W), .AXI_DATA_W(AXI_DMA_DATA_W),
                        .BUF_DATA_W(BUF_DATA_W), .BUF_ADDR_W(BUF_ADDR_W))
     u_wgt_dma (
         .clk(clk), .rst_n(rst_n), .start(wgt_dma_start),
@@ -287,10 +309,13 @@ module npu_top #(
     reg  [31:0] dma_wr_addr, dma_wr_bytes;
     wire        dma_wr_done, dma_wr_error, dma_wr_busy;
     wire [7:0]  dma_wr_error_code;
-    wire [31:0] dma_wr_data;
+    wire [AXI_DMA_DATA_W-1:0] dma_wr_data;
     wire        dma_wr_valid, dma_wr_ready;
 
-    dma_axi_writer u_dma_writer (
+    dma_axi_writer #(
+        .AXI_DATA_WIDTH(AXI_DMA_DATA_W),
+        .AXI_ADDR_WIDTH(AXI_ADDR_W)
+    ) u_dma_writer (
         .clk(clk), .rst_n(rst_n), .start(dma_wr_start),
         .base_addr(dma_wr_addr), .byte_count(dma_wr_bytes),
         .done(dma_wr_done), .error(dma_wr_error), .error_code(dma_wr_error_code), .busy(dma_wr_busy),
@@ -338,12 +363,12 @@ module npu_top #(
     );
 
     wire [BUF_ADDR_W-1:0] acc_wr_addr, acc_rd_addr;
-    wire [BUF_DATA_W-1:0] acc_wr_data, acc_rd_data;
+    wire [ACC_DATA_W-1:0] acc_wr_data, acc_rd_data;
     wire                  acc_wr_en, acc_rd_bank, acc_wr_bank;
     reg  acc_load_start, acc_load_done, acc_comp_start, acc_comp_done;
     reg  acc_load_bank, acc_comp_bank;
 
-    npu_buffer #(.DATA_WIDTH(BUF_DATA_W), .ENTRIES(BUF_ENTRIES), .ADDR_WIDTH(BUF_ADDR_W))
+    npu_buffer #(.DATA_WIDTH(ACC_DATA_W), .ENTRIES(BUF_ENTRIES), .ADDR_WIDTH(BUF_ADDR_W))
     u_acc_buffer (
         .clk(clk), .rst_n(rst_n),
         .wr_addr(acc_wr_addr), .wr_data(acc_wr_data), .wr_en(acc_wr_en), .wr_bank_sel(acc_wr_bank),
@@ -614,8 +639,7 @@ module npu_top #(
     // Per-input-channel tracking
     reg [15:0] cin_idx;             // current input channel (0..input_c-1)
     reg [15:0] cin_total;           // total input channels for this task
-    reg [31:0] wgt_per_cin;         // weight bytes per input channel (25 * output_c)
-    reg [31:0] wgt_words_per_cin;   // 32-bit words per input channel weight load
+    reg [31:0] wgt_per_cin;         // padded byte stride per input channel
 
     // Per-row activation hold: latched during FEED_ACT, driven continuously
     // This allows activation to propagate through all columns (not just col 0)
@@ -623,6 +647,7 @@ module npu_top #(
 
     // Accumulation: per-window column accumulator (collect one column per cycle)
     reg [15:0] acc_col_idx;         // which output column to accumulate
+    reg        acc_collect_wait;     // wait for synchronous acc_buffer read
     reg [31:0] col_results [0:63];  // latched array column results (max 64 columns)
     reg                 rq_acc_wr_en_r;
     reg [BUF_ADDR_W-1:0] rq_acc_wr_addr_r;
@@ -633,6 +658,7 @@ module npu_top #(
     reg [31:0]          rq_pack_word;
     reg [31:0]          rq_store_addr;
     reg [31:0]          rq_store_bytes;
+    reg                 rq_src_wait;
 
     // ============================================================
     // perf counter
@@ -685,7 +711,7 @@ module npu_top #(
         .cluster_active_cycles(perf_cluster_active), .cluster_stall_cycles(perf_cluster_stall)
     );
 
-    wire [15:0] fc_tile_capacity_raw = ((BUF_ENTRIES * 4) / input_c);
+    wire [15:0] fc_tile_capacity_raw = ((BUF_ENTRIES * HB_BEAT_BYTES) / input_c);
     wire [15:0] fc_tile_capacity_buf = (fc_tile_capacity_raw == 16'd0) ? 16'd1 : fc_tile_capacity_raw;
     wire [15:0] fc_tile_capacity = (fc_tile_capacity_buf > PE_COLS_16) ? PE_COLS_16 : fc_tile_capacity_buf;
     wire [15:0] fc_out_remaining = output_c - fc_out_start;
@@ -696,20 +722,31 @@ module npu_top #(
     wire [31:0] fc_load_out_idx = (fc_chunk_inputs == 16'd0) ? 32'd0 : (fc_load_byte_idx / {16'd0, fc_chunk_inputs});
     wire [31:0] fc_load_row_idx = (fc_chunk_inputs == 16'd0) ? 32'd0 : (fc_load_byte_idx % {16'd0, fc_chunk_inputs});
     wire [31:0] fc_load_buf_byte_idx = fc_load_out_idx * input_c + fc_in_base + fc_load_row_idx;
-    wire [BUF_ADDR_W-1:0] fc_weight_word_addr = fc_load_buf_byte_idx[BUF_ADDR_W+1:2];
-    wire [1:0] fc_weight_byte_sel = fc_load_buf_byte_idx[1:0];
+    wire [31:0] fc_weight_dma_byte_idx = fc_load_buf_byte_idx + {27'd0, wgt_dma_byte_offset};
+    wire [31:0] fc_next_load_byte_idx = wgt_load_phase + 32'd1;
+    wire [31:0] fc_next_load_out_idx = (fc_chunk_inputs == 16'd0) ? 32'd0 : (fc_next_load_byte_idx / {16'd0, fc_chunk_inputs});
+    wire [31:0] fc_next_load_row_idx = (fc_chunk_inputs == 16'd0) ? 32'd0 : (fc_next_load_byte_idx % {16'd0, fc_chunk_inputs});
+    wire [31:0] fc_next_load_buf_byte_idx = fc_next_load_out_idx * input_c + fc_in_base + fc_next_load_row_idx;
+    wire [31:0] fc_next_weight_dma_byte_idx = fc_next_load_buf_byte_idx + {27'd0, wgt_dma_byte_offset};
+    wire [BUF_ADDR_W-1:0] fc_weight_beat_addr = fc_weight_dma_byte_idx[BUF_ADDR_W+4:5];
+    wire [BUF_ADDR_W-1:0] fc_next_weight_beat_addr = fc_next_weight_dma_byte_idx[BUF_ADDR_W+4:5];
+    wire [HB_BEAT_BYTE_BITS-1:0] fc_weight_byte_sel = fc_weight_dma_byte_idx[4:0];
     wire [31:0] fc_act_byte_idx = fc_in_base + comp_feed_cnt;
-    wire [BUF_ADDR_W-1:0] fc_act_word_addr = fc_act_byte_idx[BUF_ADDR_W+1:2];
-    wire [1:0] fc_act_byte_sel = fc_act_byte_idx[1:0];
-    wire [7:0] fc_weight_byte =
-        (fc_weight_byte_sel == 2'd0) ? wgt_rd_data[7:0]   :
-        (fc_weight_byte_sel == 2'd1) ? wgt_rd_data[15:8]  :
-        (fc_weight_byte_sel == 2'd2) ? wgt_rd_data[23:16] :
-                                       wgt_rd_data[31:24];
+    wire [31:0] fc_act_rd_byte_idx =
+        (is_fc_mode && (fsm_state == FSM_WGT_LD)) ? {16'd0, fc_in_base} :
+        (is_fc_mode && (fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_FEED_ACT)) ?
+        (fc_act_byte_idx + 32'd1) : fc_act_byte_idx;
+    wire [BUF_ADDR_W-1:0] fc_act_beat_addr = fc_act_rd_byte_idx[BUF_ADDR_W+4:5];
+    wire [HB_BEAT_BYTE_BITS-1:0] fc_act_byte_sel = fc_act_byte_idx[4:0];
+    wire [7:0] fc_weight_byte = hb_beat_byte(wgt_rd_data, fc_weight_byte_sel);
+    wire [31:0] conv_weight_dma_byte_idx = wgt_load_phase + {27'd0, wgt_dma_byte_offset};
+    wire [BUF_ADDR_W-1:0] rq_src_beat_addr = rq_src_idx[BUF_ADDR_W+2:3];
+    wire [2:0] rq_src_word_sel = rq_src_idx[2:0];
+    wire [31:0] rq_src_word = hb_beat_word(act_rd_data, rq_src_word_sel);
     wire signed [7:0] rq_q;
 
     requant_i32_to_i8 u_requant (
-        .acc_i($signed(act_rd_data)),
+        .acc_i($signed(rq_src_word)),
         .multiplier_i(requant_multiplier),
         .shift_i(requant_shift),
         .q_o(rq_q)
@@ -720,29 +757,34 @@ module npu_top #(
     assign cf_window_hold = !(fsm_state == FSM_COMPUTE && comp_sub_state == CP_WAIT_WIN && !cf_new_window);
 
     // Activation feeder
-    reg [BUF_ADDR_W-1:0] act_feed_ptr;
+    reg [31:0]           act_feed_ptr;
     reg [1:0]            act_feed_byte;
+    reg                  act_feed_wait;
     reg [15:0]           act_feed_done_cnt;
-    wire [BUF_ADDR_W-1:0] act_feed_waddr = act_feed_ptr[BUF_ADDR_W-1:2];
-    wire [1:0] act_byte_sel = is_fc_mode ? fc_act_byte_sel : act_feed_ptr[1:0];
+    wire [BUF_ADDR_W-1:0] act_feed_beat_addr = act_feed_ptr[BUF_ADDR_W+4:5];
+    wire [BUF_ADDR_W-1:0] act_pool_beat_addr = act_feed_ptr[BUF_ADDR_W+2:3];
+    wire [2:0] act_pool_word_sel = act_feed_ptr[2:0];
+    wire [31:0] act_pool_word = hb_beat_word(act_rd_data, act_pool_word_sel);
+    wire [HB_BEAT_BYTE_BITS-1:0] act_byte_sel = is_fc_mode ? fc_act_byte_sel : act_feed_ptr[4:0];
 
-    assign cf_act_data  = (act_byte_sel == 2'd0) ? act_rd_data[7:0]   :
-                          (act_byte_sel == 2'd1) ? act_rd_data[15:8]  :
-                          (act_byte_sel == 2'd2) ? act_rd_data[23:16] :
-                                                   act_rd_data[31:24];
+    assign cf_act_data  = hb_beat_byte(act_rd_data, act_byte_sel);
     assign act_rd_bank  = act_comp_bank;
 
-    assign act_rd_addr  = is_pool_mode    ? act_feed_ptr[BUF_ADDR_W-1:0] :
-                          is_fc_mode      ? fc_act_word_addr :
-                          is_requant_mode ? rq_src_idx[BUF_ADDR_W-1:0] :
-                                            act_feed_waddr;
+    assign act_rd_addr  = is_pool_mode    ? act_pool_beat_addr :
+                          is_fc_mode      ? fc_act_beat_addr :
+                          is_requant_mode ? rq_src_beat_addr :
+                                            act_feed_beat_addr;
 
     // Feed activations during WAIT_WIN (conv_frontend consumes them)
-    assign cf_act_valid = is_conv_mode && (fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_WAIT_WIN) && !cf_done && (act_feed_done_cnt < blk_in_bytes[15:0]);
+    assign cf_act_valid = is_conv_mode && (fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_WAIT_WIN) &&
+                          !act_feed_wait && !cf_done && (act_feed_done_cnt < blk_in_bytes[15:0]);
 
     // Weight buffer read
     wire [BUF_ADDR_W-1:0] wgt_mac_addr;
-    assign wgt_rd_addr  = (is_fc_mode && (fsm_state == FSM_LOAD_ARRAY)) ? fc_weight_word_addr : wgt_mac_addr;
+    wire [31:0] fc_wgt_dma_base = blk_wgt_addr + fc_out_start * input_c;
+    wire [31:0] conv_wgt_dma_base = blk_wgt_addr + cin_idx * wgt_per_cin;
+    wire [31:0] conv_wgt_valid_bytes = 32'd25 * output_c;
+    assign wgt_rd_addr  = (is_fc_mode && (fsm_state == FSM_LOAD_ARRAY)) ? fc_weight_beat_addr : wgt_mac_addr;
     assign wgt_rd_bank  = wgt_load_bank;
 
     // ============================================================
@@ -820,12 +862,13 @@ module npu_top #(
     // postproc connection
     // ============================================================
     reg [31:0] pp_result;
-    assign pp_data_in   = is_pool_mode ? act_rd_data : pp_result;
+
+    assign pp_data_in   = is_pool_mode ? act_pool_word : pp_result;
     // Conv: write directly to acc_buffer via acc_partial (bypass postproc)
     // Pool: feed postproc; FC: feed postproc (for ReLU after FC1)
     assign pp_data_valid = is_conv_mode ? 1'b0 :
                            is_pool_mode ? ((fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_WAIT_WIN) &&
-                                           !pp_start && (act_feed_done_cnt < blk_in_bytes[15:0])) :
+                                           !act_feed_wait && !pp_start && (act_feed_done_cnt < blk_in_bytes[15:0])) :
                            ((fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_COLLECT));
     assign pp_data_ready = 1'b1;
     // pp_start: pulse at start of compute (PRE_COMP for Conv/FC, COMPUTE entry for Pool)
@@ -858,7 +901,7 @@ module npu_top #(
                          is_requant_mode ? rq_acc_wr_data_r :
                                            pp_data_out;
     assign acc_wr_en   = (is_conv_mode || is_fc_mode)
-        ? ((fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_COLLECT))
+        ? ((fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_COLLECT) && !acc_collect_wait)
         : is_requant_mode ? rq_acc_wr_en_r
         : pp_data_valid_o;
     assign acc_wr_bank = acc_load_bank;
@@ -902,16 +945,32 @@ module npu_top #(
 
     // DMA writer: stream from acc_buffer during STORE
     // During CP_COLLECT: read the current column's old partial sum.
+    localparam STORE_PACK_IDLE = 2'd0;
+    localparam STORE_PACK_WAIT = 2'd1;
+    localparam STORE_PACK_CAPTURE = 2'd2;
+    localparam STORE_PACK_SEND = 2'd3;
+
     reg [BUF_ADDR_W-1:0] dma_rd_ptr;
+    reg [1:0] store_pack_state;
+    reg [2:0] store_pack_lane;
+    reg [31:0] store_word_idx;
+    reg [AXI_DMA_DATA_W-1:0] store_pack_data;
+    reg [AXI_DMA_DATA_W-1:0] dma_wr_data_r;
+    reg dma_wr_valid_r;
+
     assign acc_rd_addr = ((fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_COLLECT))
                          ? acc_partial_addr
                          : dma_rd_ptr;
     assign acc_rd_bank = acc_load_bank;
-    assign dma_wr_data = acc_rd_data;
+    assign dma_wr_data = dma_wr_data_r;
     wire [31:0] store_bytes_active = is_fc_mode ? fc_store_bytes :
                                      is_requant_mode ? rq_store_bytes :
                                                        blk_out_bytes;
-    assign dma_wr_valid = (fsm_state == FSM_STORE) && ({dma_rd_ptr, 2'b00} < store_bytes_active);
+    wire [31:0] store_words_active = (store_bytes_active + 32'd3) >> 2;
+    wire [AXI_DMA_DATA_W-1:0] store_lane_word =
+        {{(AXI_DMA_DATA_W-ACC_DATA_W){1'b0}}, acc_rd_data} << (store_pack_lane * ACC_DATA_W);
+    wire [AXI_DMA_DATA_W-1:0] store_pack_data_next = store_pack_data | store_lane_word;
+    assign dma_wr_valid = dma_wr_valid_r;
 
     // perf control
     reg task_active_r;
@@ -929,15 +988,21 @@ module npu_top #(
             fsm_state <= FSM_IDLE;  comp_sub_state <= CP_WAIT_WIN;
             comp_total_wins <= 16'd0; comp_win_idx <= 16'd0;
             comp_feed_cnt <= 7'd0; comp_drain_cnt <= 16'd0;
-            act_feed_ptr <= 0; act_feed_done_cnt <= 16'd0;
+            act_feed_ptr <= 0; act_feed_wait <= 1'b0; act_feed_done_cnt <= 16'd0;
             pp_result <= 32'd0; task_active_r <= 1'b0;
             task_done_r <= 1'b0; task_error_r <= 1'b0; task_error_code_r <= 8'h0;
             act_dma_start <= 1'b0; act_dma_addr <= 32'h0; act_dma_bytes <= 32'h0;
-            wgt_dma_start <= 1'b0; wgt_dma_addr <= 32'h0; wgt_dma_bytes <= 32'h0;
+            wgt_dma_start <= 1'b0; wgt_dma_addr <= 32'h0; wgt_dma_bytes <= 32'h0; wgt_dma_byte_offset <= 5'd0;
             dma_wr_start <= 1'b0; dma_wr_started <= 1'b0;
             block_bank <= 1'b0; dma_wr_addr <= 32'h0; dma_wr_bytes <= 32'h0;
             dma_rd_ptr <= 0;
-            wgt_load_phase <= 32'd0; wgt_load_done_r <= 1'b0;
+            store_pack_state <= STORE_PACK_IDLE;
+            store_pack_lane <= 3'd0;
+            store_word_idx <= 32'd0;
+            store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
+            dma_wr_data_r <= {AXI_DMA_DATA_W{1'b0}};
+            dma_wr_valid_r <= 1'b0;
+            wgt_load_phase <= 32'd0; wgt_load_wait <= 1'b0; wgt_load_done_r <= 1'b0;
             wgt_load_reg <= 0;
             wgt_buf_flush <= 1'b0;
             act_load_start <= 1'b0; act_load_done <= 1'b0;
@@ -951,13 +1016,14 @@ module npu_top #(
             cf_last_row <= 16'hFFFF; cf_last_col <= 16'hFFFF;
             cf_channel_sel <= 6'd0;
             cin_idx <= 16'd0; cin_total <= 16'd0;
-            wgt_per_cin <= 32'd0; wgt_words_per_cin <= 32'd0;
+            wgt_per_cin <= 32'd0;
             acc_col_idx <= 16'd0;
+            acc_collect_wait <= 1'b0;
             fc_out_start <= 16'd0; fc_tile_outputs <= 16'd0;
             fc_in_base <= 16'd0; fc_chunk_inputs <= 16'd0;
             fc_store_addr <= 32'd0; fc_store_bytes <= 32'd0;
             rq_acc_wr_en_r <= 1'b0; rq_acc_wr_addr_r <= {BUF_ADDR_W{1'b0}}; rq_acc_wr_data_r <= 32'd0;
-            rq_src_idx <= 32'd0; rq_total_words <= 32'd0; rq_pack_idx <= 2'd0; rq_pack_word <= 32'd0;
+            rq_src_idx <= 32'd0; rq_src_wait <= 1'b0; rq_total_words <= 32'd0; rq_pack_idx <= 2'd0; rq_pack_word <= 32'd0;
             rq_store_addr <= 32'd0; rq_store_bytes <= 32'd0;
         end else begin
             // Default: pulse signals low
@@ -994,7 +1060,6 @@ module npu_top #(
                         // Capture per-task block parameters after block_scheduler has advanced
                         cin_total <= blk_cin_total;
                         wgt_per_cin <= blk_wgt_per_cin;
-                        wgt_words_per_cin <= blk_wgt_per_cin[31:2];
                         act_dma_start <= 1'b1;
                         act_dma_addr <= blk_in_addr;
                         act_dma_bytes <= blk_in_bytes;
@@ -1014,6 +1079,7 @@ module npu_top #(
                         act_comp_bank <= act_load_bank;
                         acc_load_bank <= act_load_bank;
                         act_feed_ptr <= 0;
+                        act_feed_wait <= 1'b1;
                         act_feed_done_cnt <= 16'd0;
                         if (is_pool_mode) begin
                             fsm_state <= FSM_COMPUTE;
@@ -1022,6 +1088,7 @@ module npu_top #(
                             comp_win_idx <= 16'd0;
                         end else if (is_requant_mode) begin
                             rq_src_idx <= 32'd0;
+                            rq_src_wait <= 1'b1;
                             rq_total_words <= (blk_in_bytes >> 2);
                             rq_pack_idx <= 2'd0;
                             rq_pack_word <= 32'd0;
@@ -1068,8 +1135,9 @@ module npu_top #(
 
                 FSM_FC_LOAD_WGT: begin
                     wgt_dma_start <= 1'b1;
-                    wgt_dma_addr <= blk_wgt_addr + fc_out_start * input_c;
-                    wgt_dma_bytes <= fc_tile_outputs * input_c;
+                    wgt_dma_addr <= fc_wgt_dma_base;
+                    wgt_dma_byte_offset <= fc_wgt_dma_base[4:0];
+                    wgt_dma_bytes <= (fc_tile_outputs * input_c) + {27'd0, fc_wgt_dma_base[4:0]};
                     wgt_load_start <= 1'b1;
                     wgt_load_bank <= block_bank;
                     fsm_state <= FSM_FC_LOAD_WAIT;
@@ -1079,6 +1147,7 @@ module npu_top #(
                     if (wgt_dma_done) begin
                         wgt_load_done <= 1'b1;
                         wgt_load_phase <= 32'd0;
+                        wgt_load_wait <= 1'b1;
                         wgt_load_reg <= 0;
                         fsm_state <= FSM_LOAD_ARRAY;
                     end else if (wgt_dma_error) begin
@@ -1089,31 +1158,38 @@ module npu_top #(
 
                 FSM_REQUANT_COMPUTE: begin
                     reg [31:0] rq_pack_word_next;
-                    rq_pack_word_next = rq_pack_word;
-                    case (rq_pack_idx)
-                        2'd0: rq_pack_word_next[7:0]   = rq_q;
-                        2'd1: rq_pack_word_next[15:8]  = rq_q;
-                        2'd2: rq_pack_word_next[23:16] = rq_q;
-                        default: rq_pack_word_next[31:24] = rq_q;
-                    endcase
-
-                    if ((rq_pack_idx == 2'd3) || (rq_src_idx + 32'd1 >= rq_total_words)) begin
-                        rq_acc_wr_en_r <= 1'b1;
-                        rq_acc_wr_addr_r <= rq_src_idx[BUF_ADDR_W+1:2];
-                        rq_acc_wr_data_r <= rq_pack_word_next;
-                        rq_pack_idx <= 2'd0;
-                        rq_pack_word <= 32'd0;
+                    if (rq_src_wait) begin
+                        rq_src_wait <= 1'b0;
                     end else begin
-                        rq_pack_idx <= rq_pack_idx + 2'd1;
-                        rq_pack_word <= rq_pack_word_next;
-                    end
+                        rq_pack_word_next = rq_pack_word;
+                        case (rq_pack_idx)
+                            2'd0: rq_pack_word_next[7:0]   = rq_q;
+                            2'd1: rq_pack_word_next[15:8]  = rq_q;
+                            2'd2: rq_pack_word_next[23:16] = rq_q;
+                            default: rq_pack_word_next[31:24] = rq_q;
+                        endcase
 
-                    if (rq_src_idx + 32'd1 < rq_total_words) begin
-                        rq_src_idx <= rq_src_idx + 32'd1;
-                    end else begin
-                        acc_load_start <= 1'b1;
-                        act_comp_done <= 1'b1;
-                        fsm_state <= FSM_STORE;
+                        if ((rq_pack_idx == 2'd3) || (rq_src_idx + 32'd1 >= rq_total_words)) begin
+                            rq_acc_wr_en_r <= 1'b1;
+                            rq_acc_wr_addr_r <= rq_src_idx[BUF_ADDR_W+1:2];
+                            rq_acc_wr_data_r <= rq_pack_word_next;
+                            rq_pack_idx <= 2'd0;
+                            rq_pack_word <= 32'd0;
+                        end else begin
+                            rq_pack_idx <= rq_pack_idx + 2'd1;
+                            rq_pack_word <= rq_pack_word_next;
+                        end
+
+                        if (rq_src_idx + 32'd1 < rq_total_words) begin
+                            if ((rq_src_idx[2:0] == 3'd7) &&
+                                (rq_src_idx + 32'd1 < rq_total_words))
+                                rq_src_wait <= 1'b1;
+                            rq_src_idx <= rq_src_idx + 32'd1;
+                        end else begin
+                            acc_load_start <= 1'b1;
+                            act_comp_done <= 1'b1;
+                            fsm_state <= FSM_STORE;
+                        end
                     end
                 end
 
@@ -1127,8 +1203,9 @@ module npu_top #(
                         cf_channel_sel <= cin_idx[5:0];
                         comp_win_idx <= 16'd0;
                         wgt_dma_start <= 1'b1;
-                        wgt_dma_addr <= blk_wgt_addr + cin_idx * wgt_per_cin;
-                        wgt_dma_bytes <= wgt_per_cin;
+                        wgt_dma_addr <= conv_wgt_dma_base;
+                        wgt_dma_byte_offset <= conv_wgt_dma_base[4:0];
+                        wgt_dma_bytes <= conv_wgt_valid_bytes + {27'd0, conv_wgt_dma_base[4:0]};
                         wgt_load_start <= 1'b1;
                         wgt_load_bank <= block_bank;
                         wgt_load_phase <= 32'd0;
@@ -1151,6 +1228,7 @@ module npu_top #(
                 end
 
                 FSM_CIN_LOAD_DONE: begin
+                    wgt_load_wait <= 1'b1;
                     fsm_state <= FSM_LOAD_ARRAY;
                 end
 
@@ -1159,41 +1237,34 @@ module npu_top #(
                 // ============================================================
                 FSM_LOAD_ARRAY: begin
                     if (is_fc_mode) begin
-                        if (wgt_load_phase < (fc_tile_outputs * fc_chunk_inputs)) begin
+                        if (wgt_load_wait) begin
+                            wgt_load_wait <= 1'b0;
+                        end else if (wgt_load_phase < (fc_tile_outputs * fc_chunk_inputs)) begin
                             wgt_load_reg[(fc_load_row_idx * PE_COLS + fc_load_out_idx)*8 +: 8] <= fc_weight_byte;
+                            if ((fc_next_weight_beat_addr != fc_weight_beat_addr) &&
+                                (wgt_load_phase + 32'd1 < (fc_tile_outputs * fc_chunk_inputs)))
+                                wgt_load_wait <= 1'b1;
                             wgt_load_phase <= wgt_load_phase + 32'd1;
                         end else begin
                             wgt_load_done_r <= 1'b1;
                             fsm_state <= FSM_WGT_LD;
                         end
-                    end else if (wgt_load_phase < wgt_words_per_cin) begin
+                    end else if (wgt_load_wait) begin
+                        wgt_load_wait <= 1'b0;
+                    end else if (wgt_load_phase < conv_wgt_valid_bytes) begin
                         // Map memory byte idx to wgt_load_reg byte idx:
                         // memory: spatial_pos * C_out + out_c  (sequential)
                         // wgt_reg: spatial_pos * 64 + out_c   (strided for array columns)
-                        // For each of 4 bytes in current word:
-                        //   byte_in_mem = phase*4 + bi
-                        //   sp = byte_in_mem / C_out
-                        //   oc = byte_in_mem % C_out
-                        //   wgt_byte = sp * 64 + oc
-                        reg [15:0] sp0, sp1, sp2, sp3;
-                        reg [5:0]  oc0, oc1, oc2, oc3;
-                        reg [31:0] bim0, bim1, bim2, bim3;
-                        bim0 = wgt_load_phase * 4 + 0;
-                        bim1 = wgt_load_phase * 4 + 1;
-                        bim2 = wgt_load_phase * 4 + 2;
-                        bim3 = wgt_load_phase * 4 + 3;
-                        sp0 = bim0 / {16'd0, output_c};
-                        sp1 = bim1 / {16'd0, output_c};
-                        sp2 = bim2 / {16'd0, output_c};
-                        sp3 = bim3 / {16'd0, output_c};
-                        oc0 = bim0 % {16'd0, output_c};
-                        oc1 = bim1 % {16'd0, output_c};
-                        oc2 = bim2 % {16'd0, output_c};
-                        oc3 = bim3 % {16'd0, output_c};
-                        wgt_load_reg[(sp0 * PE_COLS + oc0)*8 +: 8] <= wgt_rd_data[ 7: 0];
-                        wgt_load_reg[(sp1 * PE_COLS + oc1)*8 +: 8] <= wgt_rd_data[15: 8];
-                        wgt_load_reg[(sp2 * PE_COLS + oc2)*8 +: 8] <= wgt_rd_data[23:16];
-                        wgt_load_reg[(sp3 * PE_COLS + oc3)*8 +: 8] <= wgt_rd_data[31:24];
+                        // HB1-B: phase is a byte index; beat address and byte lane
+                        // use the same 256-bit extraction rule as FC weights.
+                        reg [15:0] sp0;
+                        reg [5:0]  oc0;
+                        sp0 = wgt_load_phase / {16'd0, output_c};
+                        oc0 = wgt_load_phase % {16'd0, output_c};
+                        wgt_load_reg[(sp0 * PE_COLS + oc0)*8 +: 8] <= hb_beat_byte(wgt_rd_data, conv_weight_dma_byte_idx[4:0]);
+                        if ((conv_weight_dma_byte_idx[4:0] == 5'd31) &&
+                            (wgt_load_phase + 32'd1 < conv_wgt_valid_bytes))
+                            wgt_load_wait <= 1'b1;
                         wgt_load_phase <= wgt_load_phase + 32'd1;
                     end else begin
                         wgt_load_done_r <= 1'b1;
@@ -1220,7 +1291,12 @@ module npu_top #(
                                 comp_sub_state <= CP_FEED_ACT;
                             end else if (is_pool_mode) begin
                                 // Pool: feed INT32 words, wait for postproc to finish
-                                if (!pp_start && (act_feed_done_cnt < blk_in_bytes[15:0])) begin
+                                if (act_feed_wait) begin
+                                    act_feed_wait <= 1'b0;
+                                end else if (!pp_start && (act_feed_done_cnt < blk_in_bytes[15:0])) begin
+                                    if ((act_feed_ptr[2:0] == 3'd7) &&
+                                        (act_feed_done_cnt + 16'd4 < blk_in_bytes[15:0]))
+                                        act_feed_wait <= 1'b1;
                                     act_feed_ptr <= act_feed_ptr + 1;
                                     act_feed_done_cnt <= act_feed_done_cnt + 16'd4;
                                 end
@@ -1231,7 +1307,12 @@ module npu_top #(
                                 end
                             end else begin
                                 // Conv: feed activations to conv_frontend
-                                if (conv_act_ready && (act_feed_done_cnt < blk_in_bytes[15:0])) begin
+                                if (act_feed_wait) begin
+                                    act_feed_wait <= 1'b0;
+                                end else if (conv_act_ready && (act_feed_done_cnt < blk_in_bytes[15:0])) begin
+                                    if ((act_feed_ptr[4:0] == 5'd31) &&
+                                        (act_feed_done_cnt + 16'd1 < blk_in_bytes[15:0]))
+                                        act_feed_wait <= 1'b1;
                                     act_feed_ptr <= act_feed_ptr + 1;
                                     act_feed_done_cnt <= act_feed_done_cnt + 16'd1;
                                 end
@@ -1303,15 +1384,19 @@ module npu_top #(
                             end else begin
                                 acc_col_idx <= 16'd0;
                                 acc_partial_addr <= is_fc_mode ? {BUF_ADDR_W{1'b0}} : acc_wr_ptr;
+                                acc_collect_wait <= 1'b1;
                                 comp_sub_state <= CP_COLLECT;
                             end
                         end
 
                         CP_COLLECT: begin
                             // Write accumulated result to acc_buffer (one column per cycle).
-                            if (acc_col_idx + 16'd1 < array_active_cols) begin
+                            if (acc_collect_wait) begin
+                                acc_collect_wait <= 1'b0;
+                            end else if (acc_col_idx + 16'd1 < array_active_cols) begin
                                 acc_col_idx <= acc_col_idx + 16'd1;
                                 acc_partial_addr <= acc_partial_addr + 1;
+                                acc_collect_wait <= 1'b1;
                             end else begin
                                 if (is_fc_mode) begin
                                     if (fc_in_base + fc_chunk_inputs < input_c) begin
@@ -1320,6 +1405,7 @@ module npu_top #(
                                                            PE_ROWS_16 :
                                                            (input_c - (fc_in_base + fc_chunk_inputs));
                                         wgt_load_phase <= 32'd0;
+                                        wgt_load_wait <= 1'b1;
                                         wgt_load_reg <= 0;
                                         fsm_state <= FSM_LOAD_ARRAY;
                                     end else begin
@@ -1357,6 +1443,7 @@ module npu_top #(
                         cin_idx <= cin_idx + 16'd1;
                         // Restart conv_frontend and reset feed pointers for next c_in
                         act_feed_ptr <= 0;
+                        act_feed_wait <= 1'b1;
                         act_feed_done_cnt <= 16'd0;
                         comp_win_idx <= 16'd0;
                         fsm_state <= FSM_CIN_RESTART;
@@ -1389,16 +1476,72 @@ module npu_top #(
                     if (!dma_wr_started) begin
                         dma_wr_start <= 1'b1;
                         dma_wr_started <= 1'b1;
+                        dma_rd_ptr <= 0;
+                        store_pack_state <= STORE_PACK_IDLE;
+                        store_pack_lane <= 3'd0;
+                        store_word_idx <= 32'd0;
+                        store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
+                        dma_wr_data_r <= {AXI_DMA_DATA_W{1'b0}};
+                        dma_wr_valid_r <= 1'b0;
                     end
-                    if (dma_wr_done) begin
-                        dma_wr_started <= 1'b0;
-                    end
-                    if (dma_wr_valid && dma_wr_ready)
-                        dma_rd_ptr <= dma_rd_ptr + 1;
-                    if (dma_wr_done) begin
-                        if (is_fc_mode) begin
-                            dma_wr_started <= 1'b0;
+
+                    case (store_pack_state)
+                        STORE_PACK_IDLE: begin
+                            dma_wr_valid_r <= 1'b0;
                             dma_rd_ptr <= 0;
+                            store_pack_lane <= 3'd0;
+                            store_word_idx <= 32'd0;
+                            store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
+                            if (dma_wr_started)
+                                store_pack_state <= STORE_PACK_WAIT;
+                        end
+
+                        STORE_PACK_WAIT: begin
+                            store_pack_state <= STORE_PACK_CAPTURE;
+                        end
+
+                        STORE_PACK_CAPTURE: begin
+                            if (store_word_idx < store_words_active) begin
+                                if ((store_pack_lane == 3'd7) ||
+                                    (store_word_idx + 32'd1 >= store_words_active)) begin
+                                    dma_wr_data_r <= store_pack_data_next;
+                                    dma_wr_valid_r <= 1'b1;
+                                    store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
+                                    store_pack_lane <= 3'd0;
+                                    store_word_idx <= store_word_idx + 32'd1;
+                                    store_pack_state <= STORE_PACK_SEND;
+                                end else begin
+                                    store_pack_data <= store_pack_data_next;
+                                    store_pack_lane <= store_pack_lane + 3'd1;
+                                    store_word_idx <= store_word_idx + 32'd1;
+                                    dma_rd_ptr <= dma_rd_ptr + 1;
+                                    store_pack_state <= STORE_PACK_WAIT;
+                                end
+                            end
+                        end
+
+                        STORE_PACK_SEND: begin
+                            if (dma_wr_valid_r && dma_wr_ready) begin
+                                dma_wr_valid_r <= 1'b0;
+                                if (store_word_idx < store_words_active) begin
+                                    dma_rd_ptr <= dma_rd_ptr + 1;
+                                    store_pack_state <= STORE_PACK_WAIT;
+                                end
+                            end
+                        end
+
+                        default: store_pack_state <= STORE_PACK_IDLE;
+                    endcase
+
+                    if (dma_wr_done) begin
+                        dma_wr_valid_r <= 1'b0;
+                        dma_wr_started <= 1'b0;
+                        dma_rd_ptr <= 0;
+                        store_pack_state <= STORE_PACK_IDLE;
+                        store_pack_lane <= 3'd0;
+                        store_word_idx <= 32'd0;
+                        store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
+                        if (is_fc_mode) begin
                             if (fc_out_start + fc_tile_outputs < output_c) begin
                                 fc_out_start <= fc_out_start + fc_tile_outputs;
                                 fsm_state <= FSM_FC_TILE_PREP;
@@ -1484,6 +1627,6 @@ module npu_top #(
     assign task_error_code_fb = task_error_code_r;
 
     // weight_mac_addr
-    assign wgt_mac_addr = {BUF_ADDR_W{1'b0}} | wgt_load_phase;
+    assign wgt_mac_addr = conv_weight_dma_byte_idx[BUF_ADDR_W+4:5];
 
 endmodule

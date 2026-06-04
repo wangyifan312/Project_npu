@@ -4,8 +4,9 @@
 `timescale 1ns / 1ps
 
 module axi_interconnect #(
-    parameter AXI_ADDR_W = 32,
-    parameter AXI_DATA_W = 32,
+    parameter AXI_ADDR_W      = 32,
+    parameter CPU_AXI_DATA_W  = 32,
+    parameter DMA_AXI_DATA_W  = 256,
     parameter NPU_BASE   = 32'h1000_0000,
     parameter NPU_MASK   = 32'hFFFF_FF00  // 256B NPU register space
 ) (
@@ -19,7 +20,7 @@ module axi_interconnect #(
     input  wire [2:0]                  cpu_awprot,
     input  wire                        cpu_wvalid,
     output wire                        cpu_wready,
-    input  wire [AXI_DATA_W-1:0]       cpu_wdata,
+    input  wire [CPU_AXI_DATA_W-1:0]   cpu_wdata,
     input  wire [3:0]                  cpu_wstrb,
     output wire                        cpu_bvalid,
     input  wire                        cpu_bready,
@@ -30,7 +31,7 @@ module axi_interconnect #(
     input  wire [2:0]                  cpu_arprot,
     output wire                        cpu_rvalid,
     input  wire                        cpu_rready,
-    output wire [AXI_DATA_W-1:0]       cpu_rdata,
+    output wire [CPU_AXI_DATA_W-1:0]   cpu_rdata,
     output wire [1:0]                  cpu_rresp,
 
     // === NPU Register Slave (connected to npu_ctrl) ===
@@ -39,7 +40,7 @@ module axi_interconnect #(
     output wire [AXI_ADDR_W-1:0]       npu_awaddr,
     output wire                        npu_wvalid,
     input  wire                        npu_wready,
-    output wire [AXI_DATA_W-1:0]       npu_wdata,
+    output wire [CPU_AXI_DATA_W-1:0]   npu_wdata,
     output wire [3:0]                  npu_wstrb,
     input  wire                        npu_bvalid,
     output wire                        npu_bready,
@@ -49,7 +50,7 @@ module axi_interconnect #(
     output wire [AXI_ADDR_W-1:0]       npu_araddr,
     input  wire                        npu_rvalid,
     output wire                        npu_rready,
-    input  wire [AXI_DATA_W-1:0]       npu_rdata,
+    input  wire [CPU_AXI_DATA_W-1:0]   npu_rdata,
     input  wire [1:0]                  npu_rresp,
 
     // === Memory Slave (AXI-Lite) ===
@@ -58,7 +59,7 @@ module axi_interconnect #(
     output wire [AXI_ADDR_W-1:0]       mem_awaddr,
     output wire                        mem_wvalid,
     input  wire                        mem_wready,
-    output wire [AXI_DATA_W-1:0]       mem_wdata,
+    output wire [CPU_AXI_DATA_W-1:0]   mem_wdata,
     output wire [3:0]                  mem_wstrb,
     input  wire                        mem_bvalid,
     output wire                        mem_bready,
@@ -68,7 +69,7 @@ module axi_interconnect #(
     output wire [AXI_ADDR_W-1:0]       mem_araddr,
     input  wire                        mem_rvalid,
     output wire                        mem_rready,
-    input  wire [AXI_DATA_W-1:0]       mem_rdata,
+    input  wire [CPU_AXI_DATA_W-1:0]   mem_rdata,
     input  wire [1:0]                  mem_rresp,
 
     // === NPU DMA AXI4 Master (pass-through to memory) ===
@@ -81,7 +82,7 @@ module axi_interconnect #(
     input  wire [1:0]                  dma_arburst,
     output wire                        dma_rvalid,
     input  wire                        dma_rready,
-    output wire [AXI_DATA_W-1:0]       dma_rdata,
+    output wire [DMA_AXI_DATA_W-1:0]   dma_rdata,
     output wire                        dma_rlast,
     output wire [1:0]                  dma_rresp,
 
@@ -94,9 +95,9 @@ module axi_interconnect #(
     input  wire [1:0]                  dma_awburst,
     input  wire                        dma_wvalid,
     output wire                        dma_wready,
-    input  wire [AXI_DATA_W-1:0]       dma_wdata,
+    input  wire [DMA_AXI_DATA_W-1:0]   dma_wdata,
     input  wire                        dma_wlast,
-    input  wire [3:0]                  dma_wstrb,
+    input  wire [(DMA_AXI_DATA_W/8)-1:0] dma_wstrb,
     output wire                        dma_bvalid,
     input  wire                        dma_bready,
     output wire [1:0]                  dma_bresp,
@@ -110,9 +111,9 @@ module axi_interconnect #(
     output wire [1:0]                  mem4_awburst,
     output wire                        mem4_wvalid,
     input  wire                        mem4_wready,
-    output wire [AXI_DATA_W-1:0]       mem4_wdata,
+    output wire [DMA_AXI_DATA_W-1:0]   mem4_wdata,
     output wire                        mem4_wlast,
-    output wire [3:0]                  mem4_wstrb,
+    output wire [(DMA_AXI_DATA_W/8)-1:0] mem4_wstrb,
     input  wire                        mem4_bvalid,
     output wire                        mem4_bready,
     input  wire [1:0]                  mem4_bresp,
@@ -124,7 +125,7 @@ module axi_interconnect #(
     output wire [1:0]                  mem4_arburst,
     input  wire                        mem4_rvalid,
     output wire                        mem4_rready,
-    input  wire [AXI_DATA_W-1:0]       mem4_rdata,
+    input  wire [DMA_AXI_DATA_W-1:0]   mem4_rdata,
     input  wire                        mem4_rlast,
     input  wire [1:0]                  mem4_rresp
 );

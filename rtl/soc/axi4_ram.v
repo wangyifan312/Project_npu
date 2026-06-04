@@ -1,11 +1,11 @@
-// axi4_ram: AXI4-capable RAM for DMA burst read/write
-// Supports INCR bursts up to 256 beats, 32-bit data width
+// axi4_ram: AXI4-capable RAM model for 256-bit DMA burst read/write
+// Supports INCR bursts; ARLEN/AWLEN count 256-bit beats.
 `timescale 1ns / 1ps
 
 module axi4_ram #(
     parameter AXI_ADDR_W = 32,
-    parameter AXI_DATA_W = 32,
-    parameter RAM_DEPTH   = 16384  // 64 KB
+    parameter AXI_DATA_W = 256,
+    parameter RAM_DEPTH  = 32768   // 1 MB @ 256-bit beats
 ) (
     input  wire        clk,
     input  wire        rst_n,
@@ -22,7 +22,7 @@ module axi4_ram #(
     input  wire                        s_axi_wvalid,
     output wire                        s_axi_wready,
     input  wire [AXI_DATA_W-1:0]       s_axi_wdata,
-    input  wire [3:0]                  s_axi_wstrb,
+    input  wire [(AXI_DATA_W/8)-1:0]   s_axi_wstrb,
     input  wire                        s_axi_wlast,
 
     // AXI4 Write Response
@@ -47,15 +47,27 @@ module axi4_ram #(
 );
 
     localparam BYTES_PER_BEAT = AXI_DATA_W / 8;
-    localparam ADDR_BITS = $clog2(RAM_DEPTH);  // word address bits
+    localparam STRB_W         = AXI_DATA_W / 8;
+    localparam ADDR_BITS      = $clog2(RAM_DEPTH);
+    localparam BEAT_ADDR_LSB  = (AXI_DATA_W == 32)  ? 2 :
+                                (AXI_DATA_W == 64)  ? 3 :
+                                (AXI_DATA_W == 128) ? 4 :
+                                (AXI_DATA_W == 256) ? 5 : 5;
 
     reg [AXI_DATA_W-1:0] ram [0:RAM_DEPTH-1];
+
+    function [ADDR_BITS-1:0] beat_index;
+        input [AXI_ADDR_W-1:0] addr;
+        begin
+            beat_index = addr[ADDR_BITS+BEAT_ADDR_LSB-1:BEAT_ADDR_LSB];
+        end
+    endfunction
 
     // ============================================================
     // Write path
     // ============================================================
     reg         aw_valid_r;
-    reg  [31:0] aw_addr_r;
+    reg  [AXI_ADDR_W-1:0] aw_addr_r;
     reg  [7:0]  aw_len_r;
     reg  [7:0]  w_beat_cnt;
     reg         w_active;
@@ -65,13 +77,15 @@ module axi4_ram #(
     assign s_axi_awready = !aw_valid_r && !w_active;
     assign s_axi_wready  = w_active;
 
+    integer byte_i;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             aw_valid_r <= 1'b0;
+            aw_addr_r  <= {AXI_ADDR_W{1'b0}};
+            aw_len_r   <= 8'h0;
             w_active   <= 1'b0;
             w_beat_cnt <= 8'h0;
         end else begin
-            // Latch AW
             if (s_axi_awvalid && s_axi_awready) begin
                 aw_valid_r <= 1'b1;
                 aw_addr_r  <= s_axi_awaddr;
@@ -80,13 +94,11 @@ module axi4_ram #(
                 w_active   <= 1'b1;
             end
 
-            // Write data beats
             if (w_hs) begin
-                // Write to RAM
-                if (s_axi_wstrb[0]) ram[aw_addr_r[ADDR_BITS+1:2] + w_beat_cnt][ 7: 0] <= s_axi_wdata[ 7: 0];
-                if (s_axi_wstrb[1]) ram[aw_addr_r[ADDR_BITS+1:2] + w_beat_cnt][15: 8] <= s_axi_wdata[15: 8];
-                if (s_axi_wstrb[2]) ram[aw_addr_r[ADDR_BITS+1:2] + w_beat_cnt][23:16] <= s_axi_wdata[23:16];
-                if (s_axi_wstrb[3]) ram[aw_addr_r[ADDR_BITS+1:2] + w_beat_cnt][31:24] <= s_axi_wdata[31:24];
+                for (byte_i = 0; byte_i < STRB_W; byte_i = byte_i + 1) begin
+                    if (s_axi_wstrb[byte_i])
+                        ram[beat_index(aw_addr_r) + w_beat_cnt][byte_i*8 +: 8] <= s_axi_wdata[byte_i*8 +: 8];
+                end
 
                 if (s_axi_wlast || w_beat_cnt == aw_len_r) begin
                     w_active   <= 1'b0;
@@ -98,16 +110,14 @@ module axi4_ram #(
         end
     end
 
-    // BVALID: asserted after last write beat (when w_active drops)
     reg bvalid;
     always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
+        if (!rst_n)
             bvalid <= 1'b0;
-        end else if (w_hs && (s_axi_wlast || w_beat_cnt == aw_len_r)) begin
+        else if (w_hs && (s_axi_wlast || w_beat_cnt == aw_len_r))
             bvalid <= 1'b1;
-        end else if (s_axi_bready) begin
+        else if (s_axi_bready)
             bvalid <= 1'b0;
-        end
     end
     assign s_axi_bvalid = bvalid;
     assign s_axi_bresp  = 2'b00;
@@ -116,23 +126,30 @@ module axi4_ram #(
     // Read path
     // ============================================================
     reg         ar_valid_r;
-    reg  [31:0] ar_addr_r;
+    reg  [AXI_ADDR_W-1:0] ar_addr_r;
     reg  [7:0]  ar_len_r;
     reg  [7:0]  r_beat_cnt;
     reg         r_active;
+    reg         rvalid;
+    reg [AXI_DATA_W-1:0] rdata_r;
 
     assign s_axi_arready = !ar_valid_r && !r_active;
 
-    wire r_hs = s_axi_rvalid && s_axi_rready;
+    wire ar_hs = s_axi_arvalid && s_axi_arready;
+    wire r_hs  = s_axi_rvalid && s_axi_rready;
+    wire [AXI_ADDR_W-1:0] rd_base = ar_hs ? s_axi_araddr : ar_addr_r;
+    wire [7:0] rd_beat = ar_hs ? 8'h0 :
+                         (r_hs ? (r_beat_cnt + 8'h1) : r_beat_cnt);
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            ar_valid_r  <= 1'b0;
-            r_active    <= 1'b0;
-            r_beat_cnt  <= 8'h0;
+            ar_valid_r <= 1'b0;
+            ar_addr_r  <= {AXI_ADDR_W{1'b0}};
+            ar_len_r   <= 8'h0;
+            r_active   <= 1'b0;
+            r_beat_cnt <= 8'h0;
         end else begin
-            // Latch AR
-            if (s_axi_arvalid && s_axi_arready) begin
+            if (ar_hs) begin
                 ar_valid_r <= 1'b1;
                 ar_addr_r  <= s_axi_araddr;
                 ar_len_r   <= s_axi_arlen;
@@ -140,7 +157,6 @@ module axi4_ram #(
                 r_active   <= 1'b1;
             end
 
-            // Read data handshake
             if (r_hs) begin
                 if (r_beat_cnt == ar_len_r) begin
                     r_active   <= 1'b0;
@@ -152,35 +168,24 @@ module axi4_ram #(
         end
     end
 
-    // RVALID: asserted while active (data available next cycle after AR)
-    reg rvalid;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            rvalid <= 1'b0;
-        end else if (s_axi_arvalid && s_axi_arready) begin
-            rvalid <= 1'b1;
-        end else if (r_hs && (r_beat_cnt == ar_len_r)) begin
-            rvalid <= 1'b0;
+            rvalid  <= 1'b0;
+            rdata_r <= {AXI_DATA_W{1'b0}};
+        end else if (ar_hs) begin
+            rvalid  <= 1'b1;
+            rdata_r <= ram[beat_index(s_axi_araddr)];
+        end else begin
+            if (r_hs && (r_beat_cnt == ar_len_r))
+                rvalid <= 1'b0;
+            if (r_active || (r_hs && (r_beat_cnt != ar_len_r)))
+                rdata_r <= ram[beat_index(rd_base) + rd_beat];
         end
     end
 
     assign s_axi_rvalid = rvalid;
-
-    // Pre-compute next read address (use incoming AR during handshake, latched + incremented otherwise)
-    wire        ar_hs_sig = s_axi_arvalid && s_axi_arready;
-    wire [31:0] rd_base   = ar_hs_sig ? s_axi_araddr : ar_addr_r;
-    wire [7:0]  rd_beat   = ar_hs_sig ? 8'h0 :
-                            (r_hs ? (r_beat_cnt + 8'h1) : r_beat_cnt);
-
-    // Read data (registered)
-    reg [AXI_DATA_W-1:0] rdata_r;
-    always @(posedge clk) begin
-        if (r_active || ar_hs_sig) begin
-            rdata_r <= ram[rd_base[ADDR_BITS+1:2] + rd_beat];
-        end
-    end
-    assign s_axi_rdata = rdata_r;
-    assign s_axi_rlast = (r_beat_cnt == ar_len_r);
-    assign s_axi_rresp = 2'b00;
+    assign s_axi_rdata  = rdata_r;
+    assign s_axi_rlast  = (r_beat_cnt == ar_len_r);
+    assign s_axi_rresp  = 2'b00;
 
 endmodule

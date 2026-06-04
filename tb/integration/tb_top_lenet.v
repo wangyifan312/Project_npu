@@ -67,6 +67,7 @@ module tb_top_lenet;
     string path_pool2_g, path_fc1_g, path_fc2_g, path_expected;
     string input_memh_name, expected_file_name;
     integer show_progress, eval_mode, sample_ordinal, verbose_limit, verbose_this_sample, skip_perf_reads;
+    integer expected_class_override;
     integer debug_axil, debug_trace, debug_trace_period, debug_cycle_count;
     integer debug_compute, debug_stop_cycle;
     integer debug_arbiter_window, debug_force_drain_threshold;
@@ -86,6 +87,7 @@ module tb_top_lenet;
     integer debug_stop_on_conv2_cf_window;
     integer debug_stop_on_conv2_arb;
     integer debug_stop_on_conv2_collect;
+    integer debug_dump_conv2_final_collect;
     integer debug_stop_on_conv2_store;
     integer debug_stop_on_conv2_done;
     integer debug_conv2_probe_active;
@@ -97,6 +99,8 @@ module tb_top_lenet;
     integer debug_stop_on_fc1_compute;
     integer debug_stop_on_fc1_arb;
     integer debug_stop_on_fc1_collect;
+    integer debug_dump_fc1_final_collect;
+    integer debug_dump_fc1_chunks;
     integer debug_stop_on_fc1_store;
     integer debug_stop_on_fc1_done;
     integer debug_stop_on_fc2_start;
@@ -456,6 +460,22 @@ module tb_top_lenet;
                              u_top.u_npu.cin_total);
                     $finish;
                 end
+                if ((debug_dump_conv2_final_collect != 0) &&
+                    (u_top.u_npu.fsm_state == 5'd9) &&
+                    (u_top.u_npu.comp_sub_state == 3'd3) &&
+                    u_top.u_npu.acc_wr_en &&
+                    (u_top.u_npu.cin_idx + 16'd1 == u_top.u_npu.cin_total) &&
+                    (u_top.u_npu.acc_col_idx < 16'd8)) begin
+                    $display("DBG_CONV2_FINAL_COLLECT cyc=%0d col=%0d acc_addr=%0d old_acc=%0d col_partial=%0d wr_data=%0d",
+                             debug_cycle_count,
+                             u_top.u_npu.acc_col_idx,
+                             u_top.u_npu.acc_wr_addr,
+                             $signed(u_top.u_npu.acc_rd_data),
+                             $signed(u_top.u_npu.col_results[u_top.u_npu.acc_col_idx]),
+                             $signed(u_top.u_npu.acc_wr_data));
+                    if (u_top.u_npu.acc_col_idx == 16'd7)
+                        $finish;
+                end
                 if ((debug_stop_on_conv2_store != 0) &&
                     (u_top.u_npu.fsm_state == 5'd11)) begin
                     $display("DBG_CONV2_STORE cyc=%0d status=0x%08x sub=%0d task_type=%0d dma_wr_valid=%b dma_wr_ready=%b dma_wr_busy=%b dma_rd_ptr=%0d dma_wr_addr=0x%08x dma_wr_bytes=%0d store_bytes=%0d out=0x%08x out_bytes=%0d done=%b err=%b",
@@ -539,6 +559,41 @@ module tb_top_lenet;
                              u_top.u_npu.fc_tile_outputs, u_top.u_npu.fc_in_base,
                              u_top.u_npu.fc_chunk_inputs);
                     $finish;
+                end
+                if ((debug_dump_fc1_final_collect != 0) &&
+                    (u_top.u_npu.fsm_state == 5'd9) &&
+                    (u_top.u_npu.comp_sub_state == 3'd3) &&
+                    u_top.u_npu.acc_wr_en &&
+                    (u_top.u_npu.fc_in_base + u_top.u_npu.fc_chunk_inputs >= u_top.u_npu.input_c) &&
+                    (u_top.u_npu.acc_col_idx < 16'd12)) begin
+                    $display("DBG_FC1_FINAL_COLLECT cyc=%0d col=%0d fc_out_start=%0d acc_addr=%0d old_acc=%0d col_partial=%0d wr_data=%0d",
+                             debug_cycle_count,
+                             u_top.u_npu.acc_col_idx,
+                             u_top.u_npu.fc_out_start,
+                             u_top.u_npu.acc_wr_addr,
+                             $signed(u_top.u_npu.acc_rd_data),
+                             $signed(u_top.u_npu.col_results[u_top.u_npu.acc_col_idx]),
+                             $signed(u_top.u_npu.acc_wr_data));
+                    if (u_top.u_npu.acc_col_idx == 16'd11)
+                        $finish;
+                end
+                if ((debug_dump_fc1_chunks != 0) &&
+                    (u_top.u_npu.fsm_state == 5'd9) &&
+                    (u_top.u_npu.comp_sub_state == 3'd3) &&
+                    u_top.u_npu.acc_wr_en &&
+                    ((u_top.u_npu.acc_col_idx == 16'd5) ||
+                     (u_top.u_npu.acc_col_idx == 16'd11))) begin
+                    $display("DBG_FC1_CHUNK col=%0d fc_out_start=%0d fc_in_base=%0d chunk=%0d old_acc=%0d col_partial=%0d wr_data=%0d",
+                             u_top.u_npu.acc_col_idx,
+                             u_top.u_npu.fc_out_start,
+                             u_top.u_npu.fc_in_base,
+                             u_top.u_npu.fc_chunk_inputs,
+                             $signed(u_top.u_npu.acc_rd_data),
+                             $signed(u_top.u_npu.col_results[u_top.u_npu.acc_col_idx]),
+                             $signed(u_top.u_npu.acc_wr_data));
+                    if ((u_top.u_npu.fc_in_base + u_top.u_npu.fc_chunk_inputs >= u_top.u_npu.input_c) &&
+                        (u_top.u_npu.acc_col_idx == 16'd11))
+                        $finish;
                 end
                 if ((debug_stop_on_fc1_store != 0) &&
                     (u_top.u_npu.fsm_state == 5'd11)) begin
@@ -758,19 +813,29 @@ module tb_top_lenet;
     function signed [7:0] ram_i8;
         input [31:0] base_addr;
         input integer byte_idx;
-        reg [31:0] word;
-        integer byte_sel;
+        reg [31:0] byte_addr;
         begin
-            word = u_top.u_shared_ram.ram[(base_addr >> 2) + (byte_idx / 4)];
-            byte_sel = byte_idx % 4;
-            case (byte_sel)
-                0: ram_i8 = word[7:0];
-                1: ram_i8 = word[15:8];
-                2: ram_i8 = word[23:16];
-                default: ram_i8 = word[31:24];
-            endcase
+            byte_addr = base_addr + byte_idx;
+            ram_i8 = u_top.u_shared_ram.ram[byte_addr[19:5]][byte_addr[4:0] * 8 +: 8];
         end
     endfunction
+
+    function [31:0] ram_word32;
+        input [31:0] byte_addr;
+        begin
+            ram_word32 = u_top.u_shared_ram.ram[byte_addr[19:5]][byte_addr[4:2] * 32 +: 32];
+        end
+    endfunction
+
+    task write_ram_word32;
+        input [31:0] byte_addr;
+        input [31:0] word;
+        integer b;
+        begin
+            for (b = 0; b < 4; b = b + 1)
+                u_top.u_shared_ram.ram[byte_addr[19:5]][(byte_addr[4:0] + b) * 8 +: 8] = word[b * 8 +: 8];
+        end
+    endtask
 
     function signed [31:0] fc2_sw_partial_sum;
         input integer out_idx;
@@ -893,7 +958,7 @@ module tb_top_lenet;
         begin
             $readmemh(path, file_words);
             for (i = 0; i < word_count; i = i + 1)
-                u_top.u_shared_ram.ram[(base_addr >> 2) + i] = file_words[i];
+                write_ram_word32(base_addr + i * 4, file_words[i]);
         end
     endtask
 
@@ -909,7 +974,7 @@ module tb_top_lenet;
             local_errs = 0;
             $readmemh(path, file_words);
             for (i = 0; i < word_count; i = i + 1) begin
-                actual = u_top.u_shared_ram.ram[(base_addr >> 2) + i];
+                actual = ram_word32(base_addr + i * 4);
                 if (actual !== file_words[i]) begin
                     local_errs = local_errs + 1;
                     if (local_errs <= 8)
@@ -1146,6 +1211,7 @@ module tb_top_lenet;
                  (debug_stop_on_conv2_cf_window != 0) ||
                  (debug_stop_on_conv2_arb != 0) ||
                  (debug_stop_on_conv2_collect != 0) ||
+                 (debug_dump_conv2_final_collect != 0) ||
                  (debug_stop_on_conv2_store != 0) ||
                  (debug_stop_on_conv2_done != 0))) begin
                 debug_conv2_probe_active = 1;
@@ -1157,6 +1223,8 @@ module tb_top_lenet;
                 ((debug_stop_on_fc1_compute != 0) ||
                  (debug_stop_on_fc1_arb != 0) ||
                  (debug_stop_on_fc1_collect != 0) ||
+                 (debug_dump_fc1_final_collect != 0) ||
+                 (debug_dump_fc1_chunks != 0) ||
                  (debug_stop_on_fc1_store != 0) ||
                  (debug_stop_on_fc1_done != 0) ||
                  (debug_stop_on_fc1_progress != 0))) begin
@@ -1328,6 +1396,7 @@ module tb_top_lenet;
         weights_root_dir = "";
         input_memh_name = "input.memh";
         expected_file_name = "argmax.txt";
+        expected_class_override = -1;
         show_progress = 0;
         eval_mode = 0;
         skip_perf_reads = 0;
@@ -1356,6 +1425,7 @@ module tb_top_lenet;
         debug_stop_on_conv2_cf_window = 0;
         debug_stop_on_conv2_arb = 0;
         debug_stop_on_conv2_collect = 0;
+        debug_dump_conv2_final_collect = 0;
         debug_stop_on_conv2_store = 0;
         debug_stop_on_conv2_done = 0;
         debug_conv2_probe_active = 0;
@@ -1367,6 +1437,8 @@ module tb_top_lenet;
         debug_stop_on_fc1_compute = 0;
         debug_stop_on_fc1_arb = 0;
         debug_stop_on_fc1_collect = 0;
+        debug_dump_fc1_final_collect = 0;
+        debug_dump_fc1_chunks = 0;
         debug_stop_on_fc1_store = 0;
         debug_stop_on_fc1_done = 0;
         debug_stop_on_fc2_start = 0;
@@ -1410,6 +1482,7 @@ module tb_top_lenet;
         void'($value$plusargs("weights_root_dir=%s", weights_root_dir));
         void'($value$plusargs("input_memh_name=%s", input_memh_name));
         void'($value$plusargs("expected_file_name=%s", expected_file_name));
+        void'($value$plusargs("expected_class_override=%d", expected_class_override));
         void'($value$plusargs("progress=%d", show_progress));
         void'($value$plusargs("eval_mode=%d", eval_mode));
         void'($value$plusargs("skip_perf_reads=%d", skip_perf_reads));
@@ -1436,6 +1509,7 @@ module tb_top_lenet;
         void'($value$plusargs("debug_stop_on_conv2_cf_window=%d", debug_stop_on_conv2_cf_window));
         void'($value$plusargs("debug_stop_on_conv2_arb=%d", debug_stop_on_conv2_arb));
         void'($value$plusargs("debug_stop_on_conv2_collect=%d", debug_stop_on_conv2_collect));
+        void'($value$plusargs("debug_dump_conv2_final_collect=%d", debug_dump_conv2_final_collect));
         void'($value$plusargs("debug_stop_on_conv2_store=%d", debug_stop_on_conv2_store));
         void'($value$plusargs("debug_stop_on_conv2_done=%d", debug_stop_on_conv2_done));
         void'($value$plusargs("debug_stop_on_pool2_start=%d", debug_stop_on_pool2_start));
@@ -1446,6 +1520,8 @@ module tb_top_lenet;
         void'($value$plusargs("debug_stop_on_fc1_compute=%d", debug_stop_on_fc1_compute));
         void'($value$plusargs("debug_stop_on_fc1_arb=%d", debug_stop_on_fc1_arb));
         void'($value$plusargs("debug_stop_on_fc1_collect=%d", debug_stop_on_fc1_collect));
+        void'($value$plusargs("debug_dump_fc1_final_collect=%d", debug_dump_fc1_final_collect));
+        void'($value$plusargs("debug_dump_fc1_chunks=%d", debug_dump_fc1_chunks));
         void'($value$plusargs("debug_stop_on_fc1_store=%d", debug_stop_on_fc1_store));
         void'($value$plusargs("debug_stop_on_fc1_done=%d", debug_stop_on_fc1_done));
         void'($value$plusargs("debug_stop_on_fc2_start=%d", debug_stop_on_fc2_start));
@@ -1536,7 +1612,7 @@ module tb_top_lenet;
         if (!eval_mode)
             compare_region_memh(path_fc2_g, FC2_OUT_ADDR, 10, "FC2 golden", errs);
 
-        expected_class = read_int_file(path_expected);
+        expected_class = (expected_class_override >= 0) ? expected_class_override : read_int_file(path_expected);
         pred_class = 0;
         best_val = -32'sd2147483648;
         for (i = 0; i < 10; i = i + 1) begin
@@ -1552,7 +1628,7 @@ module tb_top_lenet;
             $readmemh(path_fc2_g, file_words);
             fc2_numeric_errs = 0;
             for (i = 0; i < 10; i = i + 1) begin
-                logits_word = u_top.u_shared_ram.ram[(FC2_OUT_ADDR >> 2) + i];
+                logits_word = ram_word32(FC2_OUT_ADDR + i * 4);
                 if (cpu_logits[i] !== file_words[i])
                     fc2_numeric_errs = fc2_numeric_errs + 1;
                 $display("DBG_FC2_LOGIT idx=%0d axil=%0d ram=%0d golden=%0d axil_hex=0x%08x ram_hex=0x%08x golden_hex=0x%08x match=%0d",
@@ -1585,16 +1661,18 @@ module tb_top_lenet;
         end
 
         if (errs != 0) begin
-            $display("TOP_RESULT sample=%0s predicted=%0d expected=%0d status=FAIL total_cycles=%0d total_mac=%0d total_read_beats=%0d total_write_beats=%0d total_array_active=%0d total_array_stall=%0d total_cluster_active=%0d total_cluster_stall=%0d",
+            $display("TOP_RESULT sample=%0s predicted=%0d expected=%0d status=FAIL total_cycles=%0d total_mac=%0d total_read_beats=%0d total_write_beats=%0d total_read_active=%0d total_write_active=%0d total_array_active=%0d total_array_stall=%0d total_cluster_active=%0d total_cluster_stall=%0d",
                      sample_name, pred_class, expected_class,
                      sample_total_cycles, sample_total_mac, sample_total_read_beats, sample_total_write_beats,
+                     sample_total_read_active, sample_total_write_active,
                      sample_total_array_active, sample_total_array_stall, sample_total_cluster_active, sample_total_cluster_stall);
             $fatal(1, "tb_top_lenet FAILED with %0d mismatches", errs);
         end
 
-        $display("TOP_RESULT sample=%0s predicted=%0d expected=%0d status=PASS total_cycles=%0d total_mac=%0d total_read_beats=%0d total_write_beats=%0d total_array_active=%0d total_array_stall=%0d total_cluster_active=%0d total_cluster_stall=%0d",
+        $display("TOP_RESULT sample=%0s predicted=%0d expected=%0d status=PASS total_cycles=%0d total_mac=%0d total_read_beats=%0d total_write_beats=%0d total_read_active=%0d total_write_active=%0d total_array_active=%0d total_array_stall=%0d total_cluster_active=%0d total_cluster_stall=%0d",
                  sample_name, pred_class, expected_class,
                  sample_total_cycles, sample_total_mac, sample_total_read_beats, sample_total_write_beats,
+                 sample_total_read_active, sample_total_write_active,
                  sample_total_array_active, sample_total_array_stall, sample_total_cluster_active, sample_total_cluster_stall);
         $display("tb_top_lenet PASS for %0s", sample_name);
         $finish;
