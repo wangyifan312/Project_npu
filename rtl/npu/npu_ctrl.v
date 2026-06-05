@@ -118,6 +118,66 @@ module npu_ctrl #(
     localparam ADDR_REQUANT3_MULT       = 6'd32;  // 0x80
     localparam ADDR_REQUANT3_SHIFT      = 6'd33;  // 0x84: [5:0]=shift
 
+    function [31:0] apply_wstrb;
+        input [31:0] old_value;
+        input [31:0] new_value;
+        input [3:0]  strb;
+        integer i;
+        begin
+            apply_wstrb = old_value;
+            for (i = 0; i < 4; i = i + 1) begin
+                if (strb[i])
+                    apply_wstrb[i*8 +: 8] = new_value[i*8 +: 8];
+            end
+        end
+    endfunction
+
+    function is_write_addr_valid;
+        input [5:0] addr;
+        begin
+            case (addr)
+                ADDR_CTRL,
+                ADDR_TASK_TYPE, ADDR_INPUT_ADDR, ADDR_WEIGHT_ADDR, ADDR_OUTPUT_ADDR,
+                ADDR_INPUT_BYTES, ADDR_WEIGHT_BYTES, ADDR_OUTPUT_BYTES,
+                ADDR_DIM_IN, ADDR_DIM_OUT, ADDR_POSTPROC,
+                ADDR_REQUANT_SEL,
+                ADDR_REQUANT0_MULT, ADDR_REQUANT0_SHIFT,
+                ADDR_REQUANT1_MULT, ADDR_REQUANT1_SHIFT,
+                ADDR_REQUANT2_MULT, ADDR_REQUANT2_SHIFT,
+                ADDR_REQUANT3_MULT, ADDR_REQUANT3_SHIFT:
+                    is_write_addr_valid = 1'b1;
+                default:
+                    is_write_addr_valid = 1'b0;
+            endcase
+        end
+    endfunction
+
+    function is_read_addr_valid;
+        input [5:0] addr;
+        begin
+            case (addr)
+                ADDR_CTRL, ADDR_STATUS,
+                ADDR_TASK_TYPE, ADDR_INPUT_ADDR, ADDR_WEIGHT_ADDR, ADDR_OUTPUT_ADDR,
+                ADDR_INPUT_BYTES, ADDR_WEIGHT_BYTES, ADDR_OUTPUT_BYTES,
+                ADDR_DIM_IN, ADDR_DIM_OUT, ADDR_POSTPROC,
+                ADDR_PERF_CYCLE_LO, ADDR_PERF_CYCLE_HI,
+                ADDR_PERF_READ_BEATS, ADDR_PERF_WRITE_BEATS,
+                ADDR_PERF_READ_ACTIVE, ADDR_PERF_WRITE_ACTIVE,
+                ADDR_PERF_ARRAY_ACTIVE, ADDR_PERF_ARRAY_STALL,
+                ADDR_PERF_MAC_LO, ADDR_PERF_MAC_HI,
+                ADDR_PERF_CLUSTER_ACTIVE, ADDR_PERF_CLUSTER_STALL, ADDR_PERF_CLUSTER_CFG,
+                ADDR_REQUANT_SEL,
+                ADDR_REQUANT0_MULT, ADDR_REQUANT0_SHIFT,
+                ADDR_REQUANT1_MULT, ADDR_REQUANT1_SHIFT,
+                ADDR_REQUANT2_MULT, ADDR_REQUANT2_SHIFT,
+                ADDR_REQUANT3_MULT, ADDR_REQUANT3_SHIFT:
+                    is_read_addr_valid = 1'b1;
+                default:
+                    is_read_addr_valid = 1'b0;
+            endcase
+        end
+    endfunction
+
     // ============================================================
     // AXI-Lite write path: AW+W stored separately, write when both ready
     // ============================================================
@@ -125,16 +185,22 @@ module npu_ctrl #(
     reg  [31:0] stored_awaddr;
     reg         w_stored;
     reg  [31:0] stored_wdata;
+    reg  [3:0]  stored_wstrb;
+    reg         bvalid;
+    reg  [1:0]  bresp;
 
     wire aw_hs = s_axi_awvalid && s_axi_awready;
     wire w_hs  = s_axi_wvalid  && s_axi_wready;
 
-    assign s_axi_awready = !aw_stored;
-    assign s_axi_wready  = !w_stored;
+    assign s_axi_awready = !aw_stored && !bvalid;
+    assign s_axi_wready  = !w_stored && !bvalid;
 
-    // Combinational write detection: fires in the SAME cycle as w_hs
-    // (aw_stored is already 1 from a previous AW, w_hs latches W this cycle)
-    wire write_hs = aw_stored && w_stored;
+    wire write_hs = (aw_stored || aw_hs) && (w_stored || w_hs) && !bvalid;
+    wire [31:0] write_addr = aw_hs ? s_axi_awaddr : stored_awaddr;
+    wire [31:0] write_data = w_hs  ? s_axi_wdata  : stored_wdata;
+    wire [3:0]  write_strb = w_hs  ? s_axi_wstrb  : stored_wstrb;
+    wire [5:0]  wr_addr = write_addr[7:2];
+    wire [31:0] ctrl_write_data = apply_wstrb(32'h0, write_data, write_strb);
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -144,7 +210,8 @@ module npu_ctrl #(
             if (aw_hs) begin
                 aw_stored     <= 1'b1;
                 stored_awaddr <= s_axi_awaddr;
-            end else if (write_hs) begin
+            end
+            if (write_hs) begin
                 aw_stored <= 1'b0;
             end
         end
@@ -154,28 +221,33 @@ module npu_ctrl #(
         if (!rst_n) begin
             w_stored     <= 1'b0;
             stored_wdata <= 32'h0;
+            stored_wstrb <= 4'h0;
         end else begin
             if (w_hs) begin
                 w_stored     <= 1'b1;
                 stored_wdata <= s_axi_wdata;
-            end else if (write_hs) begin
+                stored_wstrb <= s_axi_wstrb;
+            end
+            if (write_hs) begin
                 w_stored <= 1'b0;
             end
         end
     end
 
     // BVALID: fires when write completes
-    reg bvalid;
     always @(posedge clk or negedge rst_n) begin
-        if (!rst_n)
+        if (!rst_n) begin
             bvalid <= 1'b0;
-        else if (write_hs)
+            bresp  <= 2'b00;
+        end else if (write_hs) begin
             bvalid <= 1'b1;
-        else if (s_axi_bready)
+            bresp  <= is_write_addr_valid(wr_addr) ? 2'b00 : 2'b10;
+        end else if (bvalid && s_axi_bready) begin
             bvalid <= 1'b0;
+        end
     end
     assign s_axi_bvalid = bvalid;
-    assign s_axi_bresp  = 2'b00;
+    assign s_axi_bresp  = bresp;
 
     // ============================================================
     // AXI-Lite read path
@@ -184,6 +256,8 @@ module npu_ctrl #(
     reg  [31:0] stored_araddr;
     reg         rvalid;
     reg  [31:0] rdata_reg;
+    reg  [1:0]  rresp_reg;
+    wire [5:0]  rd_addr = stored_araddr[7:2];
 
     assign s_axi_arready = !ar_stored;
 
@@ -203,15 +277,17 @@ module npu_ctrl #(
         if (!rst_n) begin
             rvalid    <= 1'b0;
             rdata_reg <= 32'h0;
+            rresp_reg <= 2'b00;
         end else if (ar_stored && !rvalid) begin
             rvalid    <= 1'b1;
+            rresp_reg <= is_read_addr_valid(rd_addr) ? 2'b00 : 2'b10;
         end else if (rvalid && s_axi_rready) begin
             rvalid <= 1'b0;
         end
     end
 
     assign s_axi_rvalid = rvalid;
-    assign s_axi_rresp  = 2'b00;
+    assign s_axi_rresp  = rresp_reg;
 
     // ============================================================
     // Internal registers
@@ -255,10 +331,9 @@ module npu_ctrl #(
     reg  [31:0] requant_multiplier_r;
     reg  [5:0]  requant_shift_r;
 
-    wire [5:0] wr_addr = stored_awaddr[7:2];
     wire wr_allowed = !busy || error;
 
-    // Register write: use stored_wdata at the moment of write_hs
+    // Register write: use the transaction payload selected from live or stored channels.
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             cfg_task_type    <= 32'h0;
@@ -280,27 +355,27 @@ module npu_ctrl #(
             cfg_requant_shift[1] <= 32'd0;
             cfg_requant_shift[2] <= 32'd0;
             cfg_requant_shift[3] <= 32'd0;
-        end else if (write_hs && wr_allowed) begin
+        end else if (write_hs && wr_allowed && is_write_addr_valid(wr_addr)) begin
             case (wr_addr)
-                ADDR_TASK_TYPE:    cfg_task_type    <= stored_wdata;
-                ADDR_INPUT_ADDR:   cfg_input_addr   <= stored_wdata;
-                ADDR_WEIGHT_ADDR:  cfg_weight_addr  <= stored_wdata;
-                ADDR_OUTPUT_ADDR:  cfg_output_addr  <= stored_wdata;
-                ADDR_INPUT_BYTES:  cfg_input_bytes  <= stored_wdata;
-                ADDR_WEIGHT_BYTES: cfg_weight_bytes <= stored_wdata;
-                ADDR_OUTPUT_BYTES: cfg_output_bytes <= stored_wdata;
-                ADDR_DIM_IN:       cfg_dim_in       <= stored_wdata;
-                ADDR_DIM_OUT:      cfg_dim_out      <= stored_wdata;
-                ADDR_POSTPROC:     cfg_postproc     <= stored_wdata;
-                ADDR_REQUANT_SEL:   cfg_requant_sel      <= stored_wdata;
-                ADDR_REQUANT0_MULT: cfg_requant_mult[0]  <= stored_wdata;
-                ADDR_REQUANT0_SHIFT:cfg_requant_shift[0] <= stored_wdata;
-                ADDR_REQUANT1_MULT: cfg_requant_mult[1]  <= stored_wdata;
-                ADDR_REQUANT1_SHIFT:cfg_requant_shift[1] <= stored_wdata;
-                ADDR_REQUANT2_MULT: cfg_requant_mult[2]  <= stored_wdata;
-                ADDR_REQUANT2_SHIFT:cfg_requant_shift[2] <= stored_wdata;
-                ADDR_REQUANT3_MULT: cfg_requant_mult[3]  <= stored_wdata;
-                ADDR_REQUANT3_SHIFT:cfg_requant_shift[3] <= stored_wdata;
+                ADDR_TASK_TYPE:    cfg_task_type    <= apply_wstrb(cfg_task_type, write_data, write_strb);
+                ADDR_INPUT_ADDR:   cfg_input_addr   <= apply_wstrb(cfg_input_addr, write_data, write_strb);
+                ADDR_WEIGHT_ADDR:  cfg_weight_addr  <= apply_wstrb(cfg_weight_addr, write_data, write_strb);
+                ADDR_OUTPUT_ADDR:  cfg_output_addr  <= apply_wstrb(cfg_output_addr, write_data, write_strb);
+                ADDR_INPUT_BYTES:  cfg_input_bytes  <= apply_wstrb(cfg_input_bytes, write_data, write_strb);
+                ADDR_WEIGHT_BYTES: cfg_weight_bytes <= apply_wstrb(cfg_weight_bytes, write_data, write_strb);
+                ADDR_OUTPUT_BYTES: cfg_output_bytes <= apply_wstrb(cfg_output_bytes, write_data, write_strb);
+                ADDR_DIM_IN:       cfg_dim_in       <= apply_wstrb(cfg_dim_in, write_data, write_strb);
+                ADDR_DIM_OUT:      cfg_dim_out      <= apply_wstrb(cfg_dim_out, write_data, write_strb);
+                ADDR_POSTPROC:     cfg_postproc     <= apply_wstrb(cfg_postproc, write_data, write_strb);
+                ADDR_REQUANT_SEL:   cfg_requant_sel      <= apply_wstrb(cfg_requant_sel, write_data, write_strb);
+                ADDR_REQUANT0_MULT: cfg_requant_mult[0]  <= apply_wstrb(cfg_requant_mult[0], write_data, write_strb);
+                ADDR_REQUANT0_SHIFT:cfg_requant_shift[0] <= apply_wstrb(cfg_requant_shift[0], write_data, write_strb);
+                ADDR_REQUANT1_MULT: cfg_requant_mult[1]  <= apply_wstrb(cfg_requant_mult[1], write_data, write_strb);
+                ADDR_REQUANT1_SHIFT:cfg_requant_shift[1] <= apply_wstrb(cfg_requant_shift[1], write_data, write_strb);
+                ADDR_REQUANT2_MULT: cfg_requant_mult[2]  <= apply_wstrb(cfg_requant_mult[2], write_data, write_strb);
+                ADDR_REQUANT2_SHIFT:cfg_requant_shift[2] <= apply_wstrb(cfg_requant_shift[2], write_data, write_strb);
+                ADDR_REQUANT3_MULT: cfg_requant_mult[3]  <= apply_wstrb(cfg_requant_mult[3], write_data, write_strb);
+                ADDR_REQUANT3_SHIFT:cfg_requant_shift[3] <= apply_wstrb(cfg_requant_shift[3], write_data, write_strb);
                 default: ;
             endcase
         end
@@ -310,9 +385,9 @@ module npu_ctrl #(
     // Control FSM: start / check / busy / done / error
     // ============================================================
     wire busy_write_violation = write_hs && busy && !error;
-    wire busy_start_violation = write_hs && busy && !error && (wr_addr == ADDR_CTRL) && stored_wdata[0];
-    wire clear_error_write = write_hs && (wr_addr == ADDR_CTRL) && stored_wdata[4] && !busy;
-    wire write_new_start = write_hs && (wr_addr == ADDR_CTRL) && stored_wdata[0] && !done && !busy && !error;
+    wire busy_start_violation = write_hs && busy && !error && (wr_addr == ADDR_CTRL) && ctrl_write_data[0];
+    wire clear_error_write = write_hs && (wr_addr == ADDR_CTRL) && ctrl_write_data[4] && !busy;
+    wire write_new_start = write_hs && (wr_addr == ADDR_CTRL) && ctrl_write_data[0] && !done && !busy && !error;
 
     reg checking;
 
@@ -446,8 +521,6 @@ module npu_ctrl #(
     // ============================================================
     // AXI read data generation
     // ============================================================
-    wire [5:0] rd_addr = stored_araddr[7:2];
-
     wire [31:0] ctrl_value = {28'h0, error, done, busy, 1'b0};
     wire [31:0] status_value = {24'h0, error_code};
 
@@ -490,7 +563,7 @@ module npu_ctrl #(
 
     always @(posedge clk) begin
         if (ar_stored && !rvalid)
-            rdata_reg <= rd_data_comb;
+            rdata_reg <= is_read_addr_valid(rd_addr) ? rd_data_comb : 32'h0;
     end
 
     assign s_axi_rdata = rdata_reg;

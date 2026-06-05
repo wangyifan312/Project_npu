@@ -35,6 +35,8 @@ RQ_FC2_SHIFT="${RQ_FC2_SHIFT:-}"
 IVERILOG="iverilog -DNO_DUMP -g2012 -I rtl/npu -I rtl/soc -I rtl/bus -I tb/integration"
 TOP_RTL_SOURCES="rtl/soc/axi4_ram.v rtl/soc/shared_ram.v rtl/bus/axi_interconnect.v rtl/npu/*.v rtl/cpu/picorv32/picorv32.v rtl/soc/top.v tb/integration/tb_top_lenet.v"
 VCS_BIN="${VCS_BIN:-vcs}"
+VCS_OPTS="${VCS_OPTS:-}"
+EXTRA_PLUSARGS="${EXTRA_PLUSARGS:-}"
 
 resolve_requant_params() {
     python3 - <<'PY' "$FIXTURE_DIR/summary.json" "$WEIGHTS_ROOT_DIR/summary.json" \
@@ -76,9 +78,13 @@ compile_iverilog() {
 }
 
 compile_vcs() {
+    if [[ "${ENABLE_FSDB_DUMP:-0}" == "1" ]]; then
+        VCS_OPTS="$VCS_OPTS +define+ENABLE_FSDB_DUMP"
+    fi
     $VCS_BIN -full64 -sverilog -timescale=1ns/1ps \
         -o "$SIMDIR/$TOP_SIM_BASENAME" \
         +incdir+rtl/npu +incdir+rtl/soc +incdir+rtl/bus +incdir+tb/integration \
+        $VCS_OPTS \
         $TOP_RTL_SOURCES
 }
 
@@ -137,7 +143,8 @@ run_one() {
                 +rq_fc2_shift="$RQ_FC2_SHIFT" \
                 +sample_ordinal="$ordinal" \
                 +verbose_limit="$VERBOSE_LIMIT" \
-                +progress="$PROGRESS"
+                +progress="$PROGRESS" \
+                $EXTRA_PLUSARGS
             ;;
         vcs)
             timeout "${TIMEOUT_SECS:-600}s" \
@@ -159,7 +166,8 @@ run_one() {
                 +rq_fc2_shift="$RQ_FC2_SHIFT" \
                 +sample_ordinal="$ordinal" \
                 +verbose_limit="$VERBOSE_LIMIT" \
-                +progress="$PROGRESS"
+                +progress="$PROGRESS" \
+                $EXTRA_PLUSARGS
             ;;
     esac
 }
@@ -443,6 +451,9 @@ case "${1:-}" in
         echo "  RQ_* overrides          requant params; default from fixture summary.json"
         echo "  COUNT=<n> OFFSET=<n>    slicing for batch mode"
         echo "  RESULTS_DIR=<dir>       emit per_sample.csv / summary.json / perf_summary.md"
+        echo "  EXTRA_PLUSARGS='<args>' pass extra plusargs, e.g. '+dump_vcd=1 +dump_file=sim/top.vcd'"
+        echo "  ENABLE_FSDB_DUMP=1      add +define+ENABLE_FSDB_DUMP for tb_top_lenet FSDB dump calls"
+        echo "  VCS_OPTS='<opts>'       extra VCS compile options, e.g. '-debug_access+all -kdb'"
         echo "  SIMULATOR=<vcs|iverilog> PROGRESS=<0|1> VERBOSE_LIMIT=<n>"
         exit 1
         ;;

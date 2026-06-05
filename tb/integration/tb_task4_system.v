@@ -1,7 +1,7 @@
-// tb_task4_system: system-level shared memory closed-loop test
-// CPU (stimulus) -> interconnect -> NPU registers + shared_ram
-// NPU DMA -> interconnect -> shared_ram
-// Verifies: CPU writes input to RAM, NPU reads it, NPU writes result, CPU reads result
+// tb_task4_system: legacy Task4 system-level shared memory closed-loop test.
+// This entry still carries historical 32-bit padded wiring/semantics and is
+// retained as a legacy/debug micro-test, not AXI-2 standard AXI-Lite compliance
+// evidence. AXI-2 closure uses tb_axil_*_protocol plus top/subsystem smoke.
 `timescale 1ns / 1ps
 
 module tb_task4_system;

@@ -41,6 +41,9 @@
 - 也就是说：
   - `8` 样本或小批量 real-weight 回归可证明推理链路与 SoC 闭环
   - 但不能替代完整 `MNIST test set` 结果
+  - 如果答辩或交付材料要明确宣称“标准 AXI4 / AXI-Lite 兼容”，则还必须继续执行：
+    - [docs/AXI_COMPLIANCE_SPEC.md](docs/AXI_COMPLIANCE_SPEC.md)
+    - [docs/AXI_COMPLIANCE_EXECUTION_CHECKLIST.md](docs/AXI_COMPLIANCE_EXECUTION_CHECKLIST.md)
 
 ---
 

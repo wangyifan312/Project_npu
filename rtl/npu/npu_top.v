@@ -1135,7 +1135,7 @@ module npu_top #(
 
                 FSM_FC_LOAD_WGT: begin
                     wgt_dma_start <= 1'b1;
-                    wgt_dma_addr <= fc_wgt_dma_base;
+                    wgt_dma_addr <= {fc_wgt_dma_base[31:5], 5'b0};
                     wgt_dma_byte_offset <= fc_wgt_dma_base[4:0];
                     wgt_dma_bytes <= (fc_tile_outputs * input_c) + {27'd0, fc_wgt_dma_base[4:0]};
                     wgt_load_start <= 1'b1;
@@ -1203,7 +1203,7 @@ module npu_top #(
                         cf_channel_sel <= cin_idx[5:0];
                         comp_win_idx <= 16'd0;
                         wgt_dma_start <= 1'b1;
-                        wgt_dma_addr <= conv_wgt_dma_base;
+                        wgt_dma_addr <= {conv_wgt_dma_base[31:5], 5'b0};
                         wgt_dma_byte_offset <= conv_wgt_dma_base[4:0];
                         wgt_dma_bytes <= conv_wgt_valid_bytes + {27'd0, conv_wgt_dma_base[4:0]};
                         wgt_load_start <= 1'b1;

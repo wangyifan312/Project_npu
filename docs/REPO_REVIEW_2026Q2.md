@@ -27,6 +27,7 @@
 - shared memory 正式组织为 `32768 x 256-bit beat`，CPU 为 `32-bit AXI-Lite`，NPU DMA 为 `256-bit AXI4 burst`
 - top-level LeNet performance replay 仍是 `single-cluster` 网络级口径
 - multi-cluster 证据来自 util counter 与 compute-core/cluster-mode 运行级覆盖，不代表完整 LeNet dual/full performance replay
+- 当前 AXI compliance 已完成到项目正式支持边界：控制面为标准化 `AXI-Lite` 项目子集，数据面为标准化 `256-bit AXI4 INCR burst` 项目子集；仍不应直接表述为完整通用 AXI4 / AXI-Lite 兼容 IP
 
 因此：
 
@@ -218,6 +219,33 @@ P0-1 入口分层口径：
 - 建议验收：
   - 已完成：宽 AXI smoke/burst 回归通过
   - 已完成：正式性能结论不再建立在 `32-bit` 功能模型之上
+
+### P1-1A AXI 标准化已完成到项目子集边界
+
+- 涉及：
+  - `rtl/soc/shared_ram.v`
+  - `rtl/soc/axi4_ram.v`
+  - `rtl/bus/axi_interconnect.v`
+  - `rtl/npu/dma_axi_reader.v`
+  - `rtl/npu/dma_axi_writer.v`
+  - `rtl/npu/npu_ctrl.v`
+- 代码事实：
+  - 当前实现已足够支撑 `HB1/HB2` 功能与性能闭环
+  - `AXI-2/AXI-3/AXI-4` 已完成：控制面完成 `AXI-Lite` 标准化，数据面完成 `256-bit AXI4 INCR burst` 标准化，并已有协议级 / 功能级 / 性能级交付证据
+  - 当前支持范围仍主要针对项目内正式访问模式裁剪，不包含完整通用 AXI4 全特性
+- 影响：
+  - 现在可以把当前代码表述为“项目子集范围内已完成标准化 AXI-Lite + AXI4 INCR burst”
+  - 仍不能把当前代码表述为完整通用 AXI4 / AXI-Lite 兼容 IP
+  - 后续若要对接更通用的 VIP/第三方主从，仍需要继续扩展不支持特性
+- 正式修改策略：
+  - 当前阶段已完成并固化到：
+    - `docs/AXI_COMPLIANCE_SPEC.md`
+    - `docs/AXI_COMPLIANCE_EXECUTION_CHECKLIST.md`
+  - 后续如需继续扩 scope，应明确新增阶段，而不是回退当前项目子集结论
+- 建议验收：
+  - 已完成：协议级测试通过
+  - 已完成：top/subsystem/perf 回归不回退
+  - 已完成：文档明确支持范围与限制范围
 
 ### P1-2 `npu_buffer` 更偏功能模型，不像大阵列供数子系统（HB 后已关闭到 256-bit beat 接入口径）
 

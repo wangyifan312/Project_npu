@@ -27,6 +27,26 @@
 - top-level LeNet performance replay 仍是 `single-cluster` 网络级口径
 - multi-cluster 证据来自 util counter 与 compute-core/cluster-mode 运行级覆盖，不等同于完整 LeNet dual/full performance replay
 
+## AXI 当前状态
+
+当前仓库的 AXI compliance plan 已完成到当前项目正式支持边界。当前可准确表述为：
+
+- 控制面：标准化 `AXI-Lite` 项目子集实现
+- 数据面：标准化 `256-bit AXI4 INCR burst` 项目子集实现
+
+这表示：
+
+- 当前正式 top/subsystem/perf 回归已经覆盖上述支持范围
+- 当前协议级、功能级、性能级证据已经可分开引用
+- 当前实现仍不是“完整通用 AXI4 / AXI-Lite 兼容 IP”
+
+如果后续要继续扩展到更通用的 AXI 兼容能力，仍应以：
+
+- [docs/AXI_COMPLIANCE_SPEC.md](docs/AXI_COMPLIANCE_SPEC.md)
+- [docs/AXI_COMPLIANCE_EXECUTION_CHECKLIST.md](docs/AXI_COMPLIANCE_EXECUTION_CHECKLIST.md)
+
+作为支持范围与限制范围的正式基线。当前仍不应把该实现表述为“完整通用 AXI4 / AXI-Lite 兼容 IP”。
+
 ## 阵列规格与入口分层
 
 正式阵列规格固定为 `16x16 cluster / 1536 PE / 0.6144 TOPS @ 200MHz`，正式 RTL 和正式 testbench 入口只认 `16x16` 基线。正式入口文件为 `rtl/soc/top.v`、`tb/integration/tb_lenet_network.v`、`tb/integration/tb_top_lenet.v`、`tb/integration/tb_top.v`、`tb/integration/tb_top_cluster_modes.v`，不得再使用历史 `7/13` 小阵列口径。
@@ -74,6 +94,8 @@
 - [docs/RTL_DEBUG_PLAYBOOK.md](docs/RTL_DEBUG_PLAYBOOK.md)
 - [docs/DELIVERY_CHECKLIST.md](docs/DELIVERY_CHECKLIST.md)
 - [docs/MNIST_FULL_EVAL_PLAN.md](docs/MNIST_FULL_EVAL_PLAN.md)
+- [docs/AXI_COMPLIANCE_SPEC.md](docs/AXI_COMPLIANCE_SPEC.md)
+- [docs/AXI_COMPLIANCE_EXECUTION_CHECKLIST.md](docs/AXI_COMPLIANCE_EXECUTION_CHECKLIST.md)
 
 如果目标是对当前仓库做正式状态评估、逐条清理历史问题和规划整改路线，请优先阅读 [docs/REPO_REVIEW_2026Q2.md](docs/REPO_REVIEW_2026Q2.md)。这份文档是当前仓库级 review 与整改清单基线，高于零散会话结论。
 

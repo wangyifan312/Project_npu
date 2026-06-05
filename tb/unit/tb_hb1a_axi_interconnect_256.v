@@ -201,11 +201,21 @@ module tb_hb1a_axi_interconnect_256;
         cpu_wdata = 32'h1234_5678;
         cpu_wstrb = 4'hF;
         cpu_awvalid = 1'b1;
+        cpu_wvalid = 1'b1;
+        cpu_bready = 1'b1;
         @(posedge clk);
-        if (mem_wdata !== 32'h1234_5678 || mem_wstrb !== 4'hF || mem4_wdata !== dma_wdata) begin
+        cpu_awvalid = 1'b0;
+        cpu_wvalid = 1'b0;
+        while (!(mem_awvalid && mem_wvalid)) @(posedge clk);
+        if (mem_awaddr !== 32'h0000_0040 || mem_wdata !== 32'h1234_5678 ||
+            mem_wstrb !== 4'hF || mem4_wdata !== dma_wdata) begin
             $display("tb_hb1a_axi_interconnect_256 FAIL CPU 32-bit side changed");
             $fatal(1);
         end
+        mem_bvalid = 1'b1;
+        @(posedge clk);
+        mem_bvalid = 1'b0;
+        while (!cpu_bvalid) @(posedge clk);
 
         $display("tb_hb1a_axi_interconnect_256 PASS");
         $finish;

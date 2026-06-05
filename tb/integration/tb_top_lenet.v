@@ -66,6 +66,8 @@ module tb_top_lenet;
     string path_conv1_g, path_pool1_g, path_conv2_input_g, path_conv2_g;
     string path_pool2_g, path_fc1_g, path_fc2_g, path_expected;
     string input_memh_name, expected_file_name;
+    string dump_file, dump_vcd_file, dump_fsdb_file;
+    integer dump_vcd, dump_fsdb;
     integer show_progress, eval_mode, sample_ordinal, verbose_limit, verbose_this_sample, skip_perf_reads;
     integer expected_class_override;
     integer debug_axil, debug_trace, debug_trace_period, debug_cycle_count;
@@ -168,6 +170,37 @@ module tb_top_lenet;
     );
 
     always #2.5 clk = ~clk;
+
+    initial begin
+        dump_vcd = 0;
+        dump_fsdb = 0;
+        dump_file = "";
+        void'($value$plusargs("dump_vcd=%d", dump_vcd));
+        void'($value$plusargs("dump_fsdb=%d", dump_fsdb));
+        void'($value$plusargs("dump_file=%s", dump_file));
+
+        if (dump_vcd != 0) begin
+            dump_vcd_file = "sim/tb_top_lenet.vcd";
+            if (dump_file.len() != 0)
+                dump_vcd_file = dump_file;
+            $display("TB_DUMP vcd file=%0s", dump_vcd_file);
+            $dumpfile(dump_vcd_file);
+            $dumpvars(0, tb_top_lenet);
+        end
+
+        if (dump_fsdb != 0) begin
+`ifdef ENABLE_FSDB_DUMP
+            dump_fsdb_file = "sim/tb_top_lenet.fsdb";
+            if (dump_file.len() != 0)
+                dump_fsdb_file = dump_file;
+            $display("TB_DUMP fsdb file=%0s", dump_fsdb_file);
+            $fsdbDumpfile(dump_fsdb_file);
+            $fsdbDumpvars(0, tb_top_lenet);
+`else
+            $display("TB_DUMP warning: +dump_fsdb=1 ignored; compile with +define+ENABLE_FSDB_DUMP");
+`endif
+        end
+    end
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -937,7 +970,17 @@ module tb_top_lenet;
                     $display("  progress cycles=%0d status=0x%08x fsm=%0d sub=%0d", c, npu_status, u_top.u_npu.fsm_state, u_top.u_npu.comp_sub_state);
             end
             if (npu_status[3])
-                $fatal(1, "top_lenet NPU error");
+                $fatal(1,
+                       "top_lenet NPU error status=0x%08x fsm=%0d sub=%0d task_err_code=0x%02x act_err=%0b act_code=0x%02x act_addr=0x%08x act_bytes=%0d wgt_err=%0b wgt_code=0x%02x wgt_addr=0x%08x wgt_bytes=%0d dma_wr_error=%0b dma_wr_error_code=0x%02x dma_wr_addr=0x%08x dma_wr_bytes=%0d",
+                       npu_status, u_top.u_npu.fsm_state, u_top.u_npu.comp_sub_state,
+                       u_top.u_npu.task_error_code_r,
+                       u_top.u_npu.act_dma_error, u_top.u_npu.act_dma_error_code,
+                       u_top.u_npu.act_dma_addr, u_top.u_npu.act_dma_bytes,
+                       u_top.u_npu.wgt_dma_error, u_top.u_npu.wgt_dma_error_code,
+                       u_top.u_npu.wgt_dma_addr, u_top.u_npu.wgt_dma_bytes,
+                       u_top.u_npu.dma_wr_error,
+                       u_top.u_npu.dma_wr_error_code, u_top.u_npu.dma_wr_addr,
+                       u_top.u_npu.dma_wr_bytes);
             if (!npu_status[2])
                 $fatal(1, "top_lenet timeout");
             while (npu_status[1] && c < maxc) begin

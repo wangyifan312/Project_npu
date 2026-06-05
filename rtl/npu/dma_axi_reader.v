@@ -105,6 +105,8 @@ module dma_axi_reader #(
     wire [31:0] remaining_after_burst = (bytes_remaining <= burst_byte_count)
                                         ? 32'h0
                                         : (bytes_remaining - burst_byte_count);
+    wire start_misaligned = start && (byte_count != 32'h0) &&
+                            (base_addr[BEAT_BYTES_LOG2-1:0] != {BEAT_BYTES_LOG2{1'b0}});
 
     // ============================================================
     // AXI4 AR channel
@@ -122,6 +124,8 @@ module dma_axi_reader #(
     // ============================================================
     // Accept AXI read data when buffer is ready to receive
     assign m_axi_rready = data_ready;
+    wire r_hs = m_axi_rvalid && m_axi_rready;
+    wire expected_rlast = (beat_counter == burst_len);
 
     // ============================================================
     // State machine: sequential
@@ -145,6 +149,8 @@ module dma_axi_reader #(
                     if (start) begin
                         if (byte_count == 32'h0) begin
                             state <= S_DONE;
+                        end else if (start_misaligned) begin
+                            state <= S_ERROR;
                         end else begin
                             bytes_remaining <= byte_count;
                             current_addr    <= base_addr;
@@ -169,9 +175,11 @@ module dma_axi_reader #(
                 end
 
                 S_DATA: begin
-                    if (m_axi_rvalid && m_axi_rready) begin
+                    if (r_hs) begin
                         // Check for RRESP error before accepting data
                         if (m_axi_rresp != 2'b00) begin
+                            state <= S_ERROR;
+                        end else if (m_axi_rlast != expected_rlast) begin
                             state <= S_ERROR;
                         end else begin
                             // Receive a data beat
@@ -180,7 +188,7 @@ module dma_axi_reader #(
                             beat_counter <= beat_counter + 8'h1;
 
                             // Check if last beat in burst
-                            if (m_axi_rlast || (beat_counter == burst_len)) begin
+                            if (expected_rlast) begin
                                 // Update for next burst
                                 current_addr    <= current_addr + ({24'h0, beats_in_burst} * BEAT_BYTES);
                                 bytes_remaining <= remaining_after_burst;
@@ -190,6 +198,7 @@ module dma_axi_reader #(
                                 end else begin
                                     beats_in_burst <= calc_burst_beats(remaining_after_burst);
                                     burst_len      <= calc_burst_beats(remaining_after_burst) - 8'h1;
+                                    beat_counter   <= 8'h0;
                                     ar_done        <= 1'b0;
                                     state <= S_AR;
                                 end
@@ -232,12 +241,18 @@ module dma_axi_reader #(
         if (!rst_n) begin
             error_r      <= 1'b0;
             error_code_r <= 8'h00;
+        end else if (state == S_IDLE && start_misaligned) begin
+            error_r      <= 1'b1;
+            error_code_r <= ERR_ALIGN;
         end else if (state == S_IDLE) begin
             error_r      <= 1'b0;
             error_code_r <= 8'h00;
-        end else if (state == S_DATA && m_axi_rvalid && m_axi_rready && m_axi_rresp != 2'b00) begin
+        end else if (state == S_DATA && r_hs && m_axi_rresp != 2'b00) begin
             error_r      <= 1'b1;
             error_code_r <= ERR_RRESP;
+        end else if (state == S_DATA && r_hs && m_axi_rlast != expected_rlast) begin
+            error_r      <= 1'b1;
+            error_code_r <= ERR_INTERNAL;
         end
     end
 

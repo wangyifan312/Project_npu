@@ -281,6 +281,49 @@ module tb_lenet_network;
         end
     endfunction
 
+    function [7:0] file_memh_byte;
+        input integer byte_idx;
+        integer word_idx;
+        integer byte_in_word;
+        begin
+            word_idx = byte_idx >> 2;
+            byte_in_word = byte_idx & 3;
+            file_memh_byte = file_words[word_idx][byte_in_word*8 +: 8];
+        end
+    endfunction
+
+    function [7:0] act_buffer_byte;
+        input integer byte_idx;
+        integer beat_idx;
+        integer byte_in_beat;
+        reg [255:0] beat_data;
+        begin
+            beat_idx = byte_idx >> 5;
+            byte_in_beat = byte_idx & 31;
+            if (u_npu.act_comp_bank == 1'b0)
+                beat_data = u_npu.u_act_buffer.bank_a[beat_idx];
+            else
+                beat_data = u_npu.u_act_buffer.bank_b[beat_idx];
+            act_buffer_byte = beat_data[byte_in_beat*8 +: 8];
+        end
+    endfunction
+
+    function [7:0] wgt_buffer_byte;
+        input integer byte_idx;
+        integer beat_idx;
+        integer byte_in_beat;
+        reg [255:0] beat_data;
+        begin
+            beat_idx = byte_idx >> 5;
+            byte_in_beat = byte_idx & 31;
+            if (u_npu.wgt_load_bank == 1'b0)
+                beat_data = u_npu.u_wgt_buffer.bank_a[beat_idx];
+            else
+                beat_data = u_npu.u_wgt_buffer.bank_b[beat_idx];
+            wgt_buffer_byte = beat_data[byte_in_beat*8 +: 8];
+        end
+    endfunction
+
     task compare_region_memh;
         input string path;
         input [31:0] base_addr;
@@ -315,20 +358,20 @@ module tb_lenet_network;
         input [127:0] name;
         inout integer total_errs;
         integer i, local_errs;
-        reg [31:0] actual;
+        integer byte_count;
+        reg [7:0] actual, expected;
         begin
             local_errs = 0;
+            byte_count = word_count * 4;
             $readmemh(path, file_words);
-            for (i = 0; i < word_count; i = i + 1) begin
-                if (u_npu.act_comp_bank == 1'b0)
-                    actual = u_npu.u_act_buffer.bank_a[i];
-                else
-                    actual = u_npu.u_act_buffer.bank_b[i];
-                if (actual !== file_words[i]) begin
+            for (i = 0; i < byte_count; i = i + 1) begin
+                actual = act_buffer_byte(i);
+                expected = file_memh_byte(i);
+                if (actual !== expected) begin
                     local_errs = local_errs + 1;
                     if (local_errs <= 8)
-                        $display("  %0s mismatch[%0d]: got 0x%08x exp 0x%08x",
-                                 name, i, actual, file_words[i]);
+                        $display("  %0s byte mismatch[%0d]: got 0x%02x exp 0x%02x",
+                                 name, i, actual, expected);
                 end
             end
             if (local_errs == 0)
@@ -346,20 +389,22 @@ module tb_lenet_network;
         input [127:0] name;
         inout integer total_errs;
         integer i, local_errs;
-        reg [31:0] actual;
+        integer start_byte;
+        integer byte_count;
+        reg [7:0] actual, expected;
         begin
             local_errs = 0;
+            start_byte = word_offset * 4;
+            byte_count = word_count * 4;
             $readmemh(path, file_words);
-            for (i = 0; i < word_count; i = i + 1) begin
-                if (u_npu.wgt_load_bank == 1'b0)
-                    actual = u_npu.u_wgt_buffer.bank_a[i];
-                else
-                    actual = u_npu.u_wgt_buffer.bank_b[i];
-                if (actual !== file_words[word_offset + i]) begin
+            for (i = 0; i < byte_count; i = i + 1) begin
+                actual = wgt_buffer_byte(i);
+                expected = file_memh_byte(start_byte + i);
+                if (actual !== expected) begin
                     local_errs = local_errs + 1;
                     if (local_errs <= 8)
-                        $display("  %0s mismatch[%0d]: got 0x%08x exp 0x%08x",
-                                 name, i, actual, file_words[word_offset + i]);
+                        $display("  %0s byte mismatch[%0d]: got 0x%02x exp 0x%02x",
+                                 name, i, actual, expected);
                 end
             end
             if (local_errs == 0)

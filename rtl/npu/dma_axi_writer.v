@@ -121,6 +121,8 @@ module dma_axi_writer #(
     wire [31:0] valid_bytes_this_beat = (bytes_left_for_beat >= BEAT_BYTES)
                                         ? BEAT_BYTES
                                         : bytes_left_for_beat;
+    wire start_misaligned = start && (byte_count != 32'h0) &&
+                            (base_addr[BEAT_BYTES_LOG2-1:0] != {BEAT_BYTES_LOG2{1'b0}});
 
     // ============================================================
     // AXI4 AW channel
@@ -136,13 +138,19 @@ module dma_axi_writer #(
     // ============================================================
     // AXI4 W channel
     // ============================================================
-    wire w_hs = m_axi_wvalid && m_axi_wready;
+    reg [AXI_DATA_WIDTH-1:0] wdata_r;
+    reg [STRB_W-1:0]         wstrb_r;
+    reg                      wlast_r;
+    reg                      wvalid_r;
 
-    assign m_axi_wdata  = data_in;
-    assign m_axi_wvalid = (state == S_WDATA) && data_valid && !w_done;
-    assign m_axi_wlast  = (beat_counter == burst_len);  // last beat in burst
-    assign m_axi_wstrb  = calc_wstrb(valid_bytes_this_beat);
-    assign data_ready   = (state == S_WDATA) && m_axi_wready && !w_done;
+    wire w_hs = m_axi_wvalid && m_axi_wready;
+    wire load_w_beat = (state == S_WDATA) && !wvalid_r && data_valid && !w_done;
+
+    assign m_axi_wdata  = wdata_r;
+    assign m_axi_wvalid = wvalid_r;
+    assign m_axi_wlast  = wlast_r;
+    assign m_axi_wstrb  = wstrb_r;
+    assign data_ready   = (state == S_WDATA) && !wvalid_r && !w_done;
 
     // ============================================================
     // AXI4 B channel
@@ -162,13 +170,21 @@ module dma_axi_writer #(
             beat_counter    <= 8'h0;
             aw_done         <= 1'b0;
             w_done          <= 1'b0;
+            wdata_r         <= {AXI_DATA_WIDTH{1'b0}};
+            wstrb_r         <= {STRB_W{1'b0}};
+            wlast_r         <= 1'b0;
+            wvalid_r        <= 1'b0;
         end else begin
             case (state)
 
                 S_IDLE: begin
+                    wvalid_r <= 1'b0;
+                    wlast_r  <= 1'b0;
                     if (start) begin
                         if (byte_count == 32'h0) begin
                             state <= S_DONE;
+                        end else if (start_misaligned) begin
+                            state <= S_ERROR;
                         end else begin
                             bytes_remaining <= byte_count;
                             current_addr    <= base_addr;
@@ -190,8 +206,16 @@ module dma_axi_writer #(
                 end
 
                 S_WDATA: begin
+                    if (load_w_beat) begin
+                        wdata_r  <= data_in;
+                        wstrb_r  <= calc_wstrb(valid_bytes_this_beat);
+                        wlast_r  <= (beat_counter == burst_len);
+                        wvalid_r <= 1'b1;
+                    end
+
                     if (w_hs) begin
-                        if (m_axi_wlast) begin
+                        wvalid_r <= 1'b0;
+                        if (wlast_r) begin
                             // Burst W phase complete
                             w_done  <= 1'b1;
                             current_addr    <= current_addr + ({24'h0, beats_in_burst} * BEAT_BYTES);
@@ -228,6 +252,7 @@ module dma_axi_writer #(
                 end
 
                 S_ERROR: begin
+                    wvalid_r <= 1'b0;
                     if (!start)
                         state <= S_IDLE;
                 end
@@ -247,6 +272,9 @@ module dma_axi_writer #(
         if (!rst_n) begin
             error_r      <= 1'b0;
             error_code_r <= 8'h00;
+        end else if (state == S_IDLE && start_misaligned) begin
+            error_r      <= 1'b1;
+            error_code_r <= ERR_ALIGN;
         end else if (state == S_IDLE) begin
             error_r      <= 1'b0;
             error_code_r <= 8'h00;

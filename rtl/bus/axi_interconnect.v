@@ -130,71 +130,213 @@ module axi_interconnect #(
     input  wire [1:0]                  mem4_rresp
 );
 
-    // Address decode: is this an NPU access?
-    wire is_npu_aw = (cpu_awaddr & NPU_MASK) == NPU_BASE;
-    wire is_npu_ar = (cpu_araddr & NPU_MASK) == NPU_BASE;
+    localparam [1:0] AXI_RESP_OKAY   = 2'b00;
+    localparam [1:0] AXI_RESP_DECERR = 2'b11;
+    localparam [1:0] TGT_MEM         = 2'd0;
+    localparam [1:0] TGT_NPU         = 2'd1;
+    localparam [1:0] TGT_DECERR      = 2'd2;
 
-    // Latched target selection — safe against AW/W and AR/R decoupling
-    reg  wr_target_npu;  // 1 = NPU, 0 = Memory (write transaction)
-    reg  rd_target_npu;  // 1 = NPU, 0 = Memory (read transaction)
-    reg  aw_seen;        // AW received for current write (prevents W-before-AW routing)
+    function [1:0] decode_cpu_target;
+        input [AXI_ADDR_W-1:0] addr;
+        begin
+            if ((addr & NPU_MASK) == NPU_BASE)
+                decode_cpu_target = TGT_NPU;
+            else if (addr[31:20] == 12'h000)
+                decode_cpu_target = TGT_MEM;
+            else
+                decode_cpu_target = TGT_DECERR;
+        end
+    endfunction
 
-    wire aw_hs = cpu_awvalid && cpu_awready;
-    wire ar_hs = cpu_arvalid && cpu_arready;
-    wire w_hs  = cpu_wvalid  && cpu_wready;
-    wire b_hs  = cpu_bvalid  && cpu_bready;
+    // ============================================================
+    // CPU AXI-Lite write bridge
+    // ============================================================
+    reg                         cpu_aw_buf_valid;
+    reg  [AXI_ADDR_W-1:0]       cpu_aw_buf_addr;
+    reg                         cpu_w_buf_valid;
+    reg  [CPU_AXI_DATA_W-1:0]   cpu_w_buf_data;
+    reg  [3:0]                  cpu_w_buf_strb;
+
+    reg                         wr_active;
+    reg  [1:0]                  wr_target;
+    reg  [AXI_ADDR_W-1:0]       wr_addr;
+    reg  [CPU_AXI_DATA_W-1:0]   wr_data;
+    reg  [3:0]                  wr_strb;
+    reg                         wr_aw_done;
+    reg                         wr_w_done;
+    reg                         cpu_bvalid_r;
+    reg  [1:0]                  cpu_bresp_r;
+
+    wire cpu_aw_hs = cpu_awvalid && cpu_awready;
+    wire cpu_w_hs  = cpu_wvalid  && cpu_wready;
+    wire cpu_wr_start = !wr_active && !cpu_bvalid_r &&
+                        (cpu_aw_buf_valid || cpu_aw_hs) &&
+                        (cpu_w_buf_valid || cpu_w_hs);
+    wire [AXI_ADDR_W-1:0]     cpu_wr_addr = cpu_aw_hs ? cpu_awaddr : cpu_aw_buf_addr;
+    wire [CPU_AXI_DATA_W-1:0] cpu_wr_data = cpu_w_hs  ? cpu_wdata  : cpu_w_buf_data;
+    wire [3:0]                cpu_wr_strb = cpu_w_hs  ? cpu_wstrb  : cpu_w_buf_strb;
+    wire [1:0]                cpu_wr_target = decode_cpu_target(cpu_wr_addr);
+
+    assign cpu_awready = !cpu_aw_buf_valid && !wr_active && !cpu_bvalid_r;
+    assign cpu_wready  = !cpu_w_buf_valid  && !wr_active && !cpu_bvalid_r;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            wr_target_npu <= 1'b0;
-            rd_target_npu <= 1'b0;
-            aw_seen       <= 1'b0;
+            cpu_aw_buf_valid <= 1'b0;
+            cpu_aw_buf_addr  <= {AXI_ADDR_W{1'b0}};
+            cpu_w_buf_valid  <= 1'b0;
+            cpu_w_buf_data   <= {CPU_AXI_DATA_W{1'b0}};
+            cpu_w_buf_strb   <= 4'h0;
+            wr_active        <= 1'b0;
+            wr_target        <= TGT_MEM;
+            wr_addr          <= {AXI_ADDR_W{1'b0}};
+            wr_data          <= {CPU_AXI_DATA_W{1'b0}};
+            wr_strb          <= 4'h0;
+            wr_aw_done       <= 1'b0;
+            wr_w_done        <= 1'b0;
+            cpu_bvalid_r     <= 1'b0;
+            cpu_bresp_r      <= AXI_RESP_OKAY;
         end else begin
-            if (aw_hs) begin
-                wr_target_npu <= is_npu_aw;
-                aw_seen       <= 1'b1;
+            if (cpu_aw_hs) begin
+                cpu_aw_buf_valid <= 1'b1;
+                cpu_aw_buf_addr  <= cpu_awaddr;
             end
-            // Clear aw_seen when write transaction completes (B accepted)
-            if (b_hs)
-                aw_seen <= 1'b0;
-            if (ar_hs)
-                rd_target_npu <= is_npu_ar;
+            if (cpu_w_hs) begin
+                cpu_w_buf_valid <= 1'b1;
+                cpu_w_buf_data  <= cpu_wdata;
+                cpu_w_buf_strb  <= cpu_wstrb;
+            end
+
+            if (cpu_wr_start) begin
+                cpu_aw_buf_valid <= 1'b0;
+                cpu_w_buf_valid  <= 1'b0;
+                wr_target        <= cpu_wr_target;
+                wr_addr          <= cpu_wr_addr;
+                wr_data          <= cpu_wr_data;
+                wr_strb          <= cpu_wr_strb;
+                wr_aw_done       <= 1'b0;
+                wr_w_done        <= 1'b0;
+                if (cpu_wr_target == TGT_DECERR) begin
+                    wr_active    <= 1'b0;
+                    cpu_bvalid_r <= 1'b1;
+                    cpu_bresp_r  <= AXI_RESP_DECERR;
+                end else begin
+                    wr_active    <= 1'b1;
+                end
+            end else if (wr_active) begin
+                if ((wr_target == TGT_NPU) && npu_awvalid && npu_awready)
+                    wr_aw_done <= 1'b1;
+                if ((wr_target == TGT_MEM) && mem_awvalid && mem_awready)
+                    wr_aw_done <= 1'b1;
+                if ((wr_target == TGT_NPU) && npu_wvalid && npu_wready)
+                    wr_w_done <= 1'b1;
+                if ((wr_target == TGT_MEM) && mem_wvalid && mem_wready)
+                    wr_w_done <= 1'b1;
+
+                if ((wr_target == TGT_NPU) && npu_bvalid && npu_bready) begin
+                    wr_active    <= 1'b0;
+                    cpu_bvalid_r <= 1'b1;
+                    cpu_bresp_r  <= npu_bresp;
+                end else if ((wr_target == TGT_MEM) && mem_bvalid && mem_bready) begin
+                    wr_active    <= 1'b0;
+                    cpu_bvalid_r <= 1'b1;
+                    cpu_bresp_r  <= mem_bresp;
+                end
+            end else if (cpu_bvalid_r && cpu_bready) begin
+                cpu_bvalid_r <= 1'b0;
+            end
         end
     end
 
-    // === CPU → NPU (when write target is NPU) ===
-    assign npu_awvalid = cpu_awvalid && is_npu_aw;
-    assign npu_awaddr  = cpu_awaddr;
-    assign npu_wvalid  = cpu_wvalid && wr_target_npu && aw_seen;
-    assign npu_wdata   = cpu_wdata;
-    assign npu_wstrb   = cpu_wstrb;
-    assign npu_bready  = cpu_bready && wr_target_npu;
-    assign npu_arvalid = cpu_arvalid && is_npu_ar;
-    assign npu_araddr  = cpu_araddr;
-    assign npu_rready  = cpu_rready && rd_target_npu;
+    assign npu_awvalid = wr_active && (wr_target == TGT_NPU) && !wr_aw_done;
+    assign npu_awaddr  = wr_addr;
+    assign npu_wvalid  = wr_active && (wr_target == TGT_NPU) && !wr_w_done;
+    assign npu_wdata   = wr_data;
+    assign npu_wstrb   = wr_strb;
+    assign npu_bready  = wr_active && (wr_target == TGT_NPU) && !cpu_bvalid_r;
 
-    // === CPU → Memory (when write target is Memory) ===
-    assign mem_awvalid = cpu_awvalid && !is_npu_aw;
-    assign mem_awaddr  = cpu_awaddr;
-    assign mem_wvalid  = cpu_wvalid && !wr_target_npu && aw_seen;
-    assign mem_wdata   = cpu_wdata;
-    assign mem_wstrb   = cpu_wstrb;
-    assign mem_bready  = cpu_bready && !wr_target_npu;
-    assign mem_arvalid = cpu_arvalid && !is_npu_ar;
-    assign mem_araddr  = cpu_araddr;
-    assign mem_rready  = cpu_rready && !rd_target_npu;
+    assign mem_awvalid = wr_active && (wr_target == TGT_MEM) && !wr_aw_done;
+    assign mem_awaddr  = wr_addr;
+    assign mem_wvalid  = wr_active && (wr_target == TGT_MEM) && !wr_w_done;
+    assign mem_wdata   = wr_data;
+    assign mem_wstrb   = wr_strb;
+    assign mem_bready  = wr_active && (wr_target == TGT_MEM) && !cpu_bvalid_r;
 
-    // === CPU Response mux (use latched targets for W/B/R routing) ===
-    assign cpu_awready = is_npu_aw ? npu_awready : mem_awready;
-    // W accepted only after AW has been latched for the current transaction.
-    // aw_seen=0 → W-before-AW is blocked even if a slave asserts wready.
-    assign cpu_wready  = aw_seen && (wr_target_npu ? npu_wready : mem_wready);
-    assign cpu_bvalid  = wr_target_npu ? npu_bvalid  : mem_bvalid;
-    assign cpu_bresp   = wr_target_npu ? npu_bresp   : mem_bresp;
-    assign cpu_arready = is_npu_ar ? npu_arready : mem_arready;
-    assign cpu_rvalid  = rd_target_npu ? npu_rvalid  : mem_rvalid;
-    assign cpu_rdata   = rd_target_npu ? npu_rdata   : mem_rdata;
-    assign cpu_rresp   = rd_target_npu ? npu_rresp   : mem_rresp;
+    assign cpu_bvalid = cpu_bvalid_r;
+    assign cpu_bresp  = cpu_bresp_r;
+
+    // ============================================================
+    // CPU AXI-Lite read bridge
+    // ============================================================
+    reg                       rd_active;
+    reg [1:0]                 rd_target;
+    reg [AXI_ADDR_W-1:0]      rd_addr;
+    reg                       rd_ar_done;
+    reg                       cpu_rvalid_r;
+    reg [CPU_AXI_DATA_W-1:0]  cpu_rdata_r;
+    reg [1:0]                 cpu_rresp_r;
+
+    wire cpu_ar_hs = cpu_arvalid && cpu_arready;
+    wire [1:0] cpu_ar_target = decode_cpu_target(cpu_araddr);
+
+    assign cpu_arready = !rd_active && !cpu_rvalid_r;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            rd_active    <= 1'b0;
+            rd_target    <= TGT_MEM;
+            rd_addr      <= {AXI_ADDR_W{1'b0}};
+            rd_ar_done   <= 1'b0;
+            cpu_rvalid_r <= 1'b0;
+            cpu_rdata_r  <= {CPU_AXI_DATA_W{1'b0}};
+            cpu_rresp_r  <= AXI_RESP_OKAY;
+        end else begin
+            if (cpu_ar_hs) begin
+                rd_target  <= cpu_ar_target;
+                rd_addr    <= cpu_araddr;
+                rd_ar_done <= 1'b0;
+                if (cpu_ar_target == TGT_DECERR) begin
+                    rd_active    <= 1'b0;
+                    cpu_rvalid_r <= 1'b1;
+                    cpu_rdata_r  <= {CPU_AXI_DATA_W{1'b0}};
+                    cpu_rresp_r  <= AXI_RESP_DECERR;
+                end else begin
+                    rd_active <= 1'b1;
+                end
+            end else if (rd_active) begin
+                if ((rd_target == TGT_NPU) && npu_arvalid && npu_arready)
+                    rd_ar_done <= 1'b1;
+                if ((rd_target == TGT_MEM) && mem_arvalid && mem_arready)
+                    rd_ar_done <= 1'b1;
+
+                if ((rd_target == TGT_NPU) && npu_rvalid && npu_rready) begin
+                    rd_active    <= 1'b0;
+                    cpu_rvalid_r <= 1'b1;
+                    cpu_rdata_r  <= npu_rdata;
+                    cpu_rresp_r  <= npu_rresp;
+                end else if ((rd_target == TGT_MEM) && mem_rvalid && mem_rready) begin
+                    rd_active    <= 1'b0;
+                    cpu_rvalid_r <= 1'b1;
+                    cpu_rdata_r  <= mem_rdata;
+                    cpu_rresp_r  <= mem_rresp;
+                end
+            end else if (cpu_rvalid_r && cpu_rready) begin
+                cpu_rvalid_r <= 1'b0;
+            end
+        end
+    end
+
+    assign npu_arvalid = rd_active && (rd_target == TGT_NPU) && !rd_ar_done;
+    assign npu_araddr  = rd_addr;
+    assign npu_rready  = rd_active && (rd_target == TGT_NPU) && !cpu_rvalid_r;
+
+    assign mem_arvalid = rd_active && (rd_target == TGT_MEM) && !rd_ar_done;
+    assign mem_araddr  = rd_addr;
+    assign mem_rready  = rd_active && (rd_target == TGT_MEM) && !cpu_rvalid_r;
+
+    assign cpu_rvalid = cpu_rvalid_r;
+    assign cpu_rdata  = cpu_rdata_r;
+    assign cpu_rresp  = cpu_rresp_r;
 
     // === NPU DMA → Memory AXI4 (direct pass-through) ===
     assign mem4_awvalid = dma_awvalid;

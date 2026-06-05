@@ -1,5 +1,8 @@
-// tb_task3_axilite: verify AXI-Lite target latching in axi_interconnect
-// Tests: AW/W decoupling, AR/R persistence when address changes
+// tb_task3_axilite: legacy Task3 AXI-Lite target-latch micro-test.
+// This test predates AXI-2 compliance and still encodes the old project-subset
+// assumption that W-before-AW is blocked by the interconnect. It is retained as
+// a legacy/debug asset and is not AXI-2 standard AXI-Lite compliance evidence.
+// AXI-2 interconnect compliance is covered by tb_axil_interconnect_protocol.
 `timescale 1ns / 1ps
 
 module tb_task3_axilite;
