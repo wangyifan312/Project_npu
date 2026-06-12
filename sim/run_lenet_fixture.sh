@@ -16,6 +16,7 @@ SIMULATOR="${SIMULATOR:-vcs}"
 PROGRESS="${PROGRESS:-0}"
 INPUT_MEMH_NAME="${INPUT_MEMH_NAME:-input.memh}"
 EXPECTED_FILE_NAME="${EXPECTED_FILE_NAME:-argmax.txt}"
+EXPECTED_MANIFEST_FIELD="${EXPECTED_MANIFEST_FIELD:-}"
 EVAL_MODE="${EVAL_MODE:-0}"
 SKIP_PERF_READS="${SKIP_PERF_READS:-0}"
 COUNT="${COUNT:-0}"
@@ -113,6 +114,7 @@ load_requant_defaults() {
 run_one() {
     local sample="$1"
     local ordinal="$2"
+    local expected_override="${3:--1}"
     case "$SIMULATOR" in
         iverilog)
             timeout "${TIMEOUT_SECS:-600}s" \
@@ -123,6 +125,7 @@ run_one() {
                 +weights_root_dir="$WEIGHTS_ROOT_DIR" \
                 +input_memh_name="$INPUT_MEMH_NAME" \
                 +expected_file_name="$EXPECTED_FILE_NAME" \
+                +expected_class_override="$expected_override" \
                 +eval_mode="$EVAL_MODE" \
                 +skip_perf_reads="$SKIP_PERF_READS" \
                 +rq_conv2_mult="$RQ_CONV2_MULT" \
@@ -145,6 +148,7 @@ run_one() {
                 +weights_root_dir="$WEIGHTS_ROOT_DIR" \
                 +input_memh_name="$INPUT_MEMH_NAME" \
                 +expected_file_name="$EXPECTED_FILE_NAME" \
+                +expected_class_override="$expected_override" \
                 +eval_mode="$EVAL_MODE" \
                 +skip_perf_reads="$SKIP_PERF_READS" \
                 +rq_conv2_mult="$RQ_CONV2_MULT" \
@@ -159,6 +163,28 @@ run_one() {
                 +stop_after_layer="$STOP_AFTER_LAYER"
             ;;
     esac
+}
+
+manifest_expected() {
+    local sample="$1"
+    if [[ -z "$EXPECTED_MANIFEST_FIELD" ]]; then
+        echo "-1"
+        return
+    fi
+    python3 - <<'PY' "$MANIFEST_PATH" "$sample" "$EXPECTED_MANIFEST_FIELD"
+import json, pathlib, sys
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+sample = sys.argv[2]
+field = sys.argv[3]
+for entry in manifest:
+    if entry.get("dir") == sample:
+        if field not in entry:
+            raise SystemExit(f"manifest entry for {sample} lacks {field}")
+        print(int(entry[field]))
+        break
+else:
+    raise SystemExit(f"sample {sample} not found in manifest")
+PY
 }
 
 manifest_samples() {
@@ -354,7 +380,7 @@ run_batch() {
         echo "=== $sample ==="
         tmp_log="$(mktemp)"
         run_rc=0
-        if run_one "$sample" "$ordinal" | tee "$tmp_log"; then
+        if run_one "$sample" "$ordinal" "$(manifest_expected "$sample")" | tee "$tmp_log"; then
             run_rc=0
         else
             run_rc=$?
@@ -387,7 +413,7 @@ case "${1:-}" in
         apply_accuracy_only_defaults
         load_requant_defaults
         compile
-        run_one "$SAMPLE_NAME" 0
+        run_one "$SAMPLE_NAME" 0 "$(manifest_expected "$SAMPLE_NAME")"
         ;;
     batch)
         apply_accuracy_only_defaults
@@ -411,6 +437,7 @@ case "${1:-}" in
         echo "  WEIGHTS_ROOT_DIR=<dir>  weight memh root (default: \$FIXTURE_DIR/weights)"
         echo "  INPUT_MEMH_NAME=<name>  sample input memh file (default: input.memh)"
         echo "  EXPECTED_FILE_NAME=<name> expected label/prediction file (default: argmax.txt)"
+        echo "  EXPECTED_MANIFEST_FIELD=<field> use manifest field as expected class"
         echo "  EVAL_MODE=<0|1>         0=strict golden compare, 1=classification/perf eval only"
         echo "  SKIP_PERF_READS=<0|1>   skip layer-end perf register reads inside testbench"
         echo "  STOP_AFTER_LAYER=<name> stop after conv1/pool1/conv2/pool2/fc1/fc2 and print cumulative perf"

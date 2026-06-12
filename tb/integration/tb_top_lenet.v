@@ -141,9 +141,27 @@ module tb_top_lenet;
     reg [63:0] sample_total_array_active, sample_total_array_stall;
     reg [63:0] sample_total_cluster_active, sample_total_cluster_stall;
 
+`ifndef TOP_LENET_CLUSTER_MODE
+`define TOP_LENET_CLUSTER_MODE 2'd0
+`endif
+`ifndef TOP_LENET_CLUSTER_MASK
+`define TOP_LENET_CLUSTER_MASK 6'b11_1111
+`endif
+
+    localparam [1:0] TOP_LENET_CLUSTER_MODE_PARAM = `TOP_LENET_CLUSTER_MODE;
+    localparam [5:0] TOP_LENET_CLUSTER_MASK_PARAM = `TOP_LENET_CLUSTER_MASK;
+    localparam [5:0] TOP_LENET_EXPECT_CLUSTER_ENABLE =
+        (TOP_LENET_CLUSTER_MODE_PARAM == 2'd0) ? 6'b00_0001 :
+        (TOP_LENET_CLUSTER_MODE_PARAM == 2'd1) ? 6'b00_0011 :
+                                                  6'b11_1111;
+    localparam [7:0] TOP_LENET_EXPECT_CLUSTER_CFG =
+        {TOP_LENET_CLUSTER_MODE_PARAM, TOP_LENET_EXPECT_CLUSTER_ENABLE};
+
     top #(
         .NPU_TILE_ROWS(16),
-        .NPU_TILE_COLS(16)
+        .NPU_TILE_COLS(16),
+        .NPU_CLUSTER_MODE(TOP_LENET_CLUSTER_MODE_PARAM),
+        .NPU_CLUSTER_MASK_REQ(TOP_LENET_CLUSTER_MASK_PARAM)
     ) u_top (
         .clk(clk),
         .rst_n(rst_n),
@@ -1099,8 +1117,9 @@ module tb_top_lenet;
                        layer_name, mac_hi, mac_lo, expected_mac[63:32], expected_mac[31:0]);
             if (cycle_lo == 32'd0)
                 $fatal(1, "%0s perf cycles should be non-zero", layer_name);
-            if (cluster_cfg[7:0] !== 8'h01)
-                $fatal(1, "%0s cluster cfg mismatch: 0x%08x", layer_name, cluster_cfg);
+            if (cluster_cfg[7:0] !== TOP_LENET_EXPECT_CLUSTER_CFG)
+                $fatal(1, "%0s cluster cfg mismatch: 0x%08x expect 0x%02x",
+                       layer_name, cluster_cfg, TOP_LENET_EXPECT_CLUSTER_CFG);
 
             sample_total_cycles         = sample_total_cycles + {cycle_hi, cycle_lo};
             sample_total_mac            = sample_total_mac + {mac_hi, mac_lo};

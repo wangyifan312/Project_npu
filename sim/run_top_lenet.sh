@@ -15,6 +15,7 @@ SAMPLE_NAME="${SAMPLE_NAME:-sample_00000_label_7}"
 SIMULATOR="${SIMULATOR:-vcs}"
 PROGRESS="${PROGRESS:-0}"
 TOP_SIM_BASENAME="${TOP_SIM_BASENAME:-simv_top_lenet_run}"
+TOP_CLUSTER_MODE="${TOP_CLUSTER_MODE:-single}"
 INPUT_MEMH_NAME="${INPUT_MEMH_NAME:-input.memh}"
 EXPECTED_FILE_NAME="${EXPECTED_FILE_NAME:-argmax.txt}"
 EXPECTED_MANIFEST_FIELD="${EXPECTED_MANIFEST_FIELD:-}"
@@ -74,13 +75,29 @@ PY
 }
 
 compile_iverilog() {
-    $IVERILOG -o "$SIMDIR/tb_top_lenet.vvp" $TOP_RTL_SOURCES
+    case "$TOP_CLUSTER_MODE" in
+        single) CLUSTER_DEFINES="" ;;
+        dual)   CLUSTER_DEFINES="-DTOP_LENET_CLUSTER_MODE=2'd1 -DTOP_LENET_CLUSTER_MASK=6'b000011" ;;
+        full)   CLUSTER_DEFINES="-DTOP_LENET_CLUSTER_MODE=2'd2 -DTOP_LENET_CLUSTER_MASK=6'b111111" ;;
+        *) echo "Unsupported TOP_CLUSTER_MODE=$TOP_CLUSTER_MODE"; exit 1 ;;
+    esac
+    $IVERILOG $CLUSTER_DEFINES -o "$SIMDIR/tb_top_lenet.vvp" $TOP_RTL_SOURCES
 }
 
 compile_vcs() {
     if [[ "${ENABLE_FSDB_DUMP:-0}" == "1" ]]; then
         VCS_OPTS="$VCS_OPTS +define+ENABLE_FSDB_DUMP"
     fi
+    case "$TOP_CLUSTER_MODE" in
+        single) ;;
+        dual)
+            VCS_OPTS="$VCS_OPTS +define+TOP_LENET_CLUSTER_MODE=2'd1 +define+TOP_LENET_CLUSTER_MASK=6'b000011"
+            ;;
+        full)
+            VCS_OPTS="$VCS_OPTS +define+TOP_LENET_CLUSTER_MODE=2'd2 +define+TOP_LENET_CLUSTER_MASK=6'b111111"
+            ;;
+        *) echo "Unsupported TOP_CLUSTER_MODE=$TOP_CLUSTER_MODE"; exit 1 ;;
+    esac
     $VCS_BIN -full64 -sverilog -timescale=1ns/1ps \
         -o "$SIMDIR/$TOP_SIM_BASENAME" \
         +incdir+rtl/npu +incdir+rtl/soc +incdir+rtl/bus +incdir+tb/integration \
@@ -454,6 +471,7 @@ case "${1:-}" in
         echo "  EXTRA_PLUSARGS='<args>' pass extra plusargs, e.g. '+dump_vcd=1 +dump_file=sim/top.vcd'"
         echo "  ENABLE_FSDB_DUMP=1      add +define+ENABLE_FSDB_DUMP for tb_top_lenet FSDB dump calls"
         echo "  VCS_OPTS='<opts>'       extra VCS compile options, e.g. '-debug_access+all -kdb'"
+        echo "  TOP_CLUSTER_MODE=<single|dual|full> compile top LeNet cluster mode"
         echo "  SIMULATOR=<vcs|iverilog> PROGRESS=<0|1> VERBOSE_LIMIT=<n>"
         exit 1
         ;;

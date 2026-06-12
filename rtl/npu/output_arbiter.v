@@ -23,6 +23,7 @@ module output_arbiter #(
     reg [2:0] rr_ptr;
     reg [2:0] pick_idx;
     reg       pick_found;
+    reg [CLUSTER_OUT_W-1:0] agg_sum_next;
 
     always @(*) begin
         pick_found = 1'b0;
@@ -44,12 +45,14 @@ module output_arbiter #(
         arb_sum_out_flat = {CLUSTER_OUT_W{1'b0}};
         if (AGGREGATE_MODE != 0) begin
             arb_valid = |(cluster_enable & cluster_valid);
+            agg_sum_next = {CLUSTER_OUT_W{1'b0}};
             for (agg_idx = 0; agg_idx < CLUSTER_COUNT; agg_idx = agg_idx + 1) begin
                 if (cluster_enable[agg_idx] && cluster_valid[agg_idx]) begin
-                    arb_sum_out_flat = arb_sum_out_flat |
-                        cluster_sum_out_flat[agg_idx*CLUSTER_OUT_W +: CLUSTER_OUT_W];
+                    agg_sum_next = agg_sum_next |
+                                   cluster_sum_out_flat[agg_idx*CLUSTER_OUT_W +: CLUSTER_OUT_W];
                 end
             end
+            arb_sum_out_flat = agg_sum_next;
         end else if (pick_found) begin
             arb_sum_out_flat = cluster_sum_out_flat[pick_idx*CLUSTER_OUT_W +: CLUSTER_OUT_W];
         end

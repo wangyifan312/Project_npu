@@ -81,7 +81,7 @@ module tb_lenet_network;
     integer rq_conv2_mult, rq_conv2_shift;
     integer rq_fc1_mult, rq_fc1_shift;
     integer rq_fc2_mult, rq_fc2_shift;
-    integer errs, pred, expected_pred;
+    integer errs, pred, expected_pred, expected_class_override;
     reg [63:0] sample_total_cycles, sample_total_mac;
     reg [63:0] sample_total_read_beats, sample_total_write_beats;
     reg [63:0] sample_total_read_active, sample_total_write_active;
@@ -651,6 +651,7 @@ module tb_lenet_network;
         sample_ordinal = 0;
         verbose_limit = 16;
         skip_perf_reads = 0;
+        expected_class_override = -1;
         rq_conv2_mult = 1;
         rq_conv2_shift = 0;
         rq_fc1_mult = 1;
@@ -669,6 +670,7 @@ module tb_lenet_network;
         void'($value$plusargs("sample_ordinal=%d", sample_ordinal));
         void'($value$plusargs("verbose_limit=%d", verbose_limit));
         void'($value$plusargs("skip_perf_reads=%d", skip_perf_reads));
+        void'($value$plusargs("expected_class_override=%d", expected_class_override));
         void'($value$plusargs("rq_conv2_mult=%d", rq_conv2_mult));
         void'($value$plusargs("rq_conv2_shift=%d", rq_conv2_shift));
         void'($value$plusargs("rq_fc1_mult=%d", rq_fc1_mult));
@@ -752,7 +754,8 @@ module tb_lenet_network;
         maybe_stop_after_layer("fc2");
 
         pred = argmax_region(FC2_OUT_ADDR, 10);
-        expected_pred = read_int_file(path_expected);
+        expected_pred = (expected_class_override >= 0) ?
+                        expected_class_override : read_int_file(path_expected);
         if (verbose_this_sample != 0)
             $display("Predicted class=%0d expected=%0d", pred, expected_pred);
         if (pred != expected_pred) begin

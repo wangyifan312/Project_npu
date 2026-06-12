@@ -472,9 +472,21 @@ module npu_top #(
     integer cluster_target_tile_i;
     integer cluster_target_base_i;
     integer cluster_route_col_i;
+    integer arb_bus_idx;
+    integer arb_rank_i;
+    integer arb_count_i;
+    integer arb_base_i;
+    integer arb_end_i;
+    integer arb_prev_i;
+    integer arb_global_col_i;
+    integer arb_route_col_i;
     assign array_active_rows = is_fc_mode ? fc_chunk_inputs : KERNEL_SPATIAL_16;
     assign array_active_cols = is_fc_mode ? fc_tile_outputs : output_c;
-    assign array_drain_offset = PE_ROWS_16 - array_active_rows + 16'd5;
+    // Drain latency is max(PE_ROWS - active_rows, 0) plus the fixed pipeline tail.
+    // Conv kernels can use more active rows than the physical PE row count.
+    assign array_drain_offset = (PE_ROWS_16 > array_active_rows) ?
+                                (PE_ROWS_16 - array_active_rows + 16'd5) :
+                                16'd5;
 
     assign array_sum_in = {PE_COLS{32'h0}};
     assign array_clk_en = {N_TILES{1'b1}};
@@ -524,37 +536,40 @@ module npu_top #(
     always @(*) begin
         cluster_routed_sum_out_all_flat = {(CLUSTER_COUNT*CLUSTER_SUM_W){1'b0}};
         cluster_arb_valid = {CLUSTER_COUNT{1'b0}};
-        cluster_count_i = (perf_cluster_count == 3'd0) ? 1 : perf_cluster_count;
+        arb_count_i = (perf_cluster_count == 3'd0) ? 1 : perf_cluster_count;
+        arb_route_col_i = 0;
+        cluster_route_col_i = 0;
 
         if ((fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_DRAIN) &&
             (comp_drain_cnt >= array_drain_offset)) begin
-            cluster_route_col_i = comp_drain_cnt - array_drain_offset;
-            if ((cluster_count_i == 1) && perf_cluster_enable[0]) begin
-                if ((cluster_route_col_i < array_active_cols) &&
-                    (cluster_route_col_i < PE_COLS)) begin
+            arb_route_col_i = comp_drain_cnt - array_drain_offset;
+            cluster_route_col_i = arb_route_col_i;
+            if ((arb_count_i == 1) && perf_cluster_enable[0]) begin
+                if ((arb_route_col_i < array_active_cols) &&
+                    (arb_route_col_i < PE_COLS)) begin
                     cluster_arb_valid[0] = 1'b1;
-                    cluster_routed_sum_out_all_flat[cluster_route_col_i*32 +: 32] =
-                        cluster_sum_out_all_flat[cluster_route_col_i*32 +: 32];
+                    cluster_routed_sum_out_all_flat[arb_route_col_i*32 +: 32] =
+                        cluster_sum_out_all_flat[arb_route_col_i*32 +: 32];
                 end
             end else begin
-                for (cluster_bus_idx = 0; cluster_bus_idx < CLUSTER_COUNT; cluster_bus_idx = cluster_bus_idx + 1) begin
-                    cluster_rank_i = 0;
-                    for (cluster_col_i = 0; cluster_col_i < cluster_bus_idx; cluster_col_i = cluster_col_i + 1) begin
-                        if (perf_cluster_enable[cluster_col_i])
-                            cluster_rank_i = cluster_rank_i + 1;
+                for (arb_bus_idx = 0; arb_bus_idx < CLUSTER_COUNT; arb_bus_idx = arb_bus_idx + 1) begin
+                    arb_rank_i = 0;
+                    for (arb_prev_i = 0; arb_prev_i < arb_bus_idx; arb_prev_i = arb_prev_i + 1) begin
+                        if (perf_cluster_enable[arb_prev_i])
+                            arb_rank_i = arb_rank_i + 1;
                     end
-                    cluster_base_i = (array_active_cols * cluster_rank_i) / cluster_count_i;
-                    cluster_end_i  = (array_active_cols * (cluster_rank_i + 1)) / cluster_count_i;
-                    cluster_global_col_i = cluster_base_i + cluster_route_col_i;
-                    if (perf_cluster_enable[cluster_bus_idx] &&
-                        (cluster_global_col_i < cluster_end_i) &&
-                        (cluster_global_col_i < array_active_cols) &&
-                        (cluster_route_col_i < PE_COLS)) begin
-                        cluster_arb_valid[cluster_bus_idx] = 1'b1;
+                    arb_base_i = (array_active_cols * arb_rank_i) / arb_count_i;
+                    arb_end_i  = (array_active_cols * (arb_rank_i + 1)) / arb_count_i;
+                    arb_global_col_i = arb_base_i + arb_route_col_i;
+                    if (perf_cluster_enable[arb_bus_idx] &&
+                        (arb_global_col_i < arb_end_i) &&
+                        (arb_global_col_i < array_active_cols) &&
+                        (arb_route_col_i < PE_COLS)) begin
+                        cluster_arb_valid[arb_bus_idx] = 1'b1;
                         cluster_routed_sum_out_all_flat[
-                            cluster_bus_idx*CLUSTER_SUM_W + cluster_global_col_i*32 +: 32
+                            arb_bus_idx*CLUSTER_SUM_W + arb_global_col_i*32 +: 32
                         ] = cluster_sum_out_all_flat[
-                            cluster_bus_idx*CLUSTER_SUM_W + cluster_route_col_i*32 +: 32
+                            arb_bus_idx*CLUSTER_SUM_W + arb_route_col_i*32 +: 32
                         ];
                     end
                 end
