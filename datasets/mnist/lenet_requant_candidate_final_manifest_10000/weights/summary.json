@@ -1,0 +1,26 @@
+{
+  "checkpoint": "datasets/mnist/models/mnist_lenet_soc6_requant_candidate_final.pt",
+  "best_test_acc": 0.9885,
+  "mode": "manifest_only",
+  "offset": 0,
+  "count": 10000,
+  "requant_version": "per_layer_i32_to_i8_v1",
+  "requant_params": {
+    "conv2_in": {
+      "multiplier": 1,
+      "shift": 4
+    },
+    "fc1_in": {
+      "multiplier": 1,
+      "shift": 5
+    },
+    "fc2_in": {
+      "multiplier": 1,
+      "shift": 5
+    }
+  },
+  "conv1_words": 125,
+  "conv2_words": 6260,
+  "fc1_words": 100000,
+  "fc2_words": 1250
+}

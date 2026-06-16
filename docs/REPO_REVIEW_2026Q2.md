@@ -28,12 +28,24 @@
 - top-level LeNet performance replay 仍是 `single-cluster` 网络级口径
 - multi-cluster 证据来自 util counter 与 compute-core/cluster-mode 运行级覆盖，不代表完整 LeNet dual/full performance replay
 - 当前 AXI compliance 已完成到项目正式支持边界：控制面为标准化 `AXI-Lite` 项目子集，数据面为标准化 `256-bit AXI4 INCR burst` 项目子集；仍不应直接表述为完整通用 AXI4 / AXI-Lite 兼容 IP
+- 后续交付补强 `W1/W2/W3` 已完成：
+  - `W1`：top-level non-single-cluster 网络级证据已补齐
+  - `W2`：`top64` / `subsystem64` 中等规模回归已通过
+  - `W3`：full-set evaluation 以 `software full-set + RTL representative chunk evidence` 口径收口
+- W3 当前正式结论：
+  - software full-set 主证据：`results/mnist_lenet_soc6_requant_candidate_final_eval.json`
+  - software 结果：`9885/10000 = 98.85%`
+  - RTL representative evidence：`results/w3_subsystem_full_10000_candidate_final_chunked/merged/`
+  - 正式 merged 样本窗口：`3000/10000`
+  - `summary.json` 口径：`2944/3000 = 98.1333%`
+  - 停止时 write-out 观测值：`3000/3057 = 98.1354%`，partial chunk 不计入正式 merged
 
 因此：
 
 - P1-1 “AXI/Shared RAM 仍是 32-bit 功能模型”在 HB 主线下已关闭
 - P1-2 “npu_buffer 仍是 32-bit 功能模型”在 HB 主线下已关闭到 256-bit beat 接入口径
-- 最终交付层面的 full-set accuracy、固件驱动、FPGA/coverage 报告仍可作为后续交付增强项
+- 完整 RTL `10000/10000` full-set 因仿真成本过高，降级为后续增强项
+- 最终交付层面的固件驱动、FPGA/coverage 报告仍可作为后续交付增强项
 
 ---
 
@@ -45,6 +57,7 @@
 - `Conv / Pool / ReLU / FC` 功能链路已建立
 - `LeNet/MNIST` 的 software、fixture、subsystem、top 级验证资产已基本齐备
 - 新 requant 语义的软件基线已建立，当前正式候选模型 software full-test accuracy 已达 `98.85%`
+- RTL 侧已形成 `3000/10000` representative full-set chunk evidence，未见 RTL 回归趋势
 
 但它距离“赛题最终可提交版本”仍有明确差距：
 
@@ -52,7 +65,7 @@
 2. `6-cluster` Conv 主路径已完成正式收口
 3. FC 已完成正式阵列化强切
 4. AXI / Shared RAM / buffer 的 `256-bit` HB 主线已经收口
-5. 性能计数和 HB2 小批量 replay 已闭环，但低功耗、覆盖率和最终报告证据链仍需后续交付补强
+5. 性能计数、HB2 小批量 replay 和 W3 representative full-set evidence 已闭环，但低功耗、覆盖率和最终报告证据链仍需后续交付补强
 
 当前最准确的状态定义是：
 
@@ -69,9 +82,9 @@
 | 工程结构与目录组织 | `85%` | `rtl/tb/docs/datasets/sim` 边界总体清楚，但历史资产仍偏多 |
 | RTL 功能完整度 | `85%` | Conv/Pool/ReLU/FC/LeNet 主链已具备，requant 与 256-bit 数据面已接入 |
 | SoC 集成完整度 | `80%` | shared memory、AXI-Lite、256-bit DMA、top LeNet 小批量 replay 已成立 |
-| 验证体系完整度 | `85%` | unit/integration/golden/fixture/top/subsystem 较完整，但 coverage 无正式报告 |
+| 验证体系完整度 | `88%` | unit/integration/golden/fixture/top/subsystem 较完整，software full-set 与 RTL representative chunks 已形成 W3 证据，但 coverage 无正式报告 |
 | 赛题指标匹配度 | `70%` | 理论目标、HB2 performance replay 和 multi-cluster 运行级覆盖已具备 |
-| 最终交付准备度 | `70%` | HB 主线已收口，但 full-set、FPGA/coverage/报告材料仍需交付补强 |
+| 最终交付准备度 | `75%` | HB/AXI/W1/W2/W3 已收口；FPGA/coverage/报告材料仍需交付补强 |
 
 ---
 
@@ -83,8 +96,8 @@
 | 以 `4x4` 脉动阵列为基础 | `mac_pe -> mac_tile_4x4 -> array_top` 明确存在 | `rtl/npu/mac_pe.v`, `mac_tile_4x4.v`, `array_top.v` | 满足 | 无 |
 | AXI-Lite + AXI Burst | CPU 控制面为 `32-bit AXI-Lite`，NPU DMA 为 `256-bit AXI4 burst` | `rtl/bus/axi_interconnect.v`, `rtl/npu/dma_axi_reader.v`, `dma_axi_writer.v` | 满足当前 HB 口径 | 后续仍可补更完整压力/coverage 报告 |
 | CPU/NPU 共享一份 memory | CPU port 和 NPU DMA port 指向同一 `32768 x 256-bit beat` shared memory | `rtl/soc/shared_ram.v` | 满足当前 HB 口径 | 后续仍可补综合/FPGA 语义说明 |
-| 支持卷积/矩阵/FC 推理 | Conv/Pool/ReLU/FC 都能跑，FC 已阵列化 | `rtl/npu/npu_top.v`, `docs/LENET_MNIST_SPEC.md` | 基本满足 | 完整 full-set/交付报告仍需后续补强 |
-| 标准测试集推理 | MNIST 已有完整链路 | `datasets/mnist`, `tb_top_lenet.v`, `tb_lenet_network.v` | 部分满足 | CIFAR-10 尚无完整闭环 |
+| 支持卷积/矩阵/FC 推理 | Conv/Pool/ReLU/FC 都能跑，FC 已阵列化 | `rtl/npu/npu_top.v`, `docs/LENET_MNIST_SPEC.md` | 基本满足 | 交付报告仍需后续补强 |
+| 标准测试集推理 | MNIST 已有完整链路，software full-set 为 `9885/10000 = 98.85%`，RTL subsystem 已有 `3000/10000` representative chunks | `datasets/mnist`, `tb_top_lenet.v`, `tb_lenet_network.v`, `results/w3_subsystem_full_10000_candidate_final_chunked/merged/` | 基本满足当前 W3 口径 | CIFAR-10 尚无完整闭环；完整 RTL `10000/10000` 为后续增强项 |
 | `>=0.5 TOPS @ INT8 @ 200MHz` | 文档理论值满足 | `ARCHITECTURE_SPEC.md`, `docs/PERFORMANCE_SUMMARY.md` | 理论满足 | 必须与正式 `16x16 / 1536 PE` RTL 基线收敛 |
 | Burst 带宽利用率 `>=60%` | read bandwidth util 在 top/subsystem replay 下已非零且达到当前引用口径 | `rtl/npu/perf_counter.v`, `docs/PERFORMANCE_SUMMARY.md` | 满足当前 HB2 边界 | write util 反映当前 store 形态，不作为单独优化结论 |
 | 低功耗设计 | tile/cluster 级 enable/gating 语义存在 | `rtl/npu/array_top.v`, `cluster_scheduler.v` | 部分满足 | 仍非正式可论证实现 |
@@ -174,7 +187,8 @@ P0-1 入口分层口径：
   - top16/top32 使用 `predicted_class` 口径与 software/fixture 对齐
 - 原因：
   - HB 主线已经完成小批量功能/性能闭环
-  - 最终赛题交付仍需要 full-set、报告、coverage/FPGA 等材料补强
+  - W3 已以 software full-set 主证据和 RTL representative chunk evidence 收口
+  - 最终赛题交付仍需要报告、coverage/FPGA 等材料补强；完整 RTL `10000/10000` full-set 可作为后续增强项
 - 影响：
   - 当前可以描述为“HB1/HB2 已按既定范围收敛”
   - 当前仍不能描述为“最终赛题交付全量材料已完成”
@@ -183,7 +197,8 @@ P0-1 入口分层口径：
   - HB 阶段验收规模锁定为：
     - `top` 层在正式 `16x16 + 6-cluster + 阵列化 FC + requant + 256-bit data plane` 路径下完成小批量真实样本闭环
     - top/subsystem performance summary 非零且线性自洽
-  - full-set、FPGA、coverage 和最终报告作为交付补强项继续跟踪
+  - FPGA、coverage 和最终报告作为交付补强项继续跟踪
+  - 完整 RTL `10000/10000` full-set 不再作为 W3 关闭阻塞项，若资源允许可作为增强项继续执行
 - 建议验收：
   - 已完成：`top` 小批量真实样本结果与 subsystem/software `predicted_class` 口径一致
   - 后续：不得把小批量 replay 包装成完整 MNIST full-set 或完整 LeNet dual/full-cluster 性能结论

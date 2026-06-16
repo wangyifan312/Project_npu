@@ -4,7 +4,9 @@
 
 module npu_ctrl #(
     parameter AXI_ADDR_WIDTH = 32,
-    parameter AXI_DATA_WIDTH = 32
+    parameter AXI_DATA_WIDTH = 32,
+    parameter [1:0] DEFAULT_CLUSTER_MODE = 2'd0,
+    parameter [5:0] DEFAULT_CLUSTER_MASK = 6'b11_1111
 ) (
     input  wire        clk,
     input  wire        rst_n,
@@ -56,6 +58,8 @@ module npu_ctrl #(
     output wire [1:0]                  requant_slot_sel,
     output wire [31:0]                 requant_multiplier,
     output wire [5:0]                  requant_shift,
+    output wire [1:0]                  cluster_mode_cfg,
+    output wire [5:0]                  cluster_mask_cfg,
 
     // === Task status inputs (from NPU internals) ===
     input  wire                        task_done_i,
@@ -117,6 +121,8 @@ module npu_ctrl #(
     localparam ADDR_REQUANT2_SHIFT      = 6'd31;  // 0x7C: [5:0]=shift
     localparam ADDR_REQUANT3_MULT       = 6'd32;  // 0x80
     localparam ADDR_REQUANT3_SHIFT      = 6'd33;  // 0x84: [5:0]=shift
+    localparam ADDR_CLUSTER_MODE        = 6'd34;  // 0x88: [1:0]=cluster mode
+    localparam ADDR_CLUSTER_MASK        = 6'd35;  // 0x8C: [5:0]=cluster mask
 
     function [31:0] apply_wstrb;
         input [31:0] old_value;
@@ -144,7 +150,8 @@ module npu_ctrl #(
                 ADDR_REQUANT0_MULT, ADDR_REQUANT0_SHIFT,
                 ADDR_REQUANT1_MULT, ADDR_REQUANT1_SHIFT,
                 ADDR_REQUANT2_MULT, ADDR_REQUANT2_SHIFT,
-                ADDR_REQUANT3_MULT, ADDR_REQUANT3_SHIFT:
+                ADDR_REQUANT3_MULT, ADDR_REQUANT3_SHIFT,
+                ADDR_CLUSTER_MODE, ADDR_CLUSTER_MASK:
                     is_write_addr_valid = 1'b1;
                 default:
                     is_write_addr_valid = 1'b0;
@@ -170,7 +177,8 @@ module npu_ctrl #(
                 ADDR_REQUANT0_MULT, ADDR_REQUANT0_SHIFT,
                 ADDR_REQUANT1_MULT, ADDR_REQUANT1_SHIFT,
                 ADDR_REQUANT2_MULT, ADDR_REQUANT2_SHIFT,
-                ADDR_REQUANT3_MULT, ADDR_REQUANT3_SHIFT:
+                ADDR_REQUANT3_MULT, ADDR_REQUANT3_SHIFT,
+                ADDR_CLUSTER_MODE, ADDR_CLUSTER_MASK:
                     is_read_addr_valid = 1'b1;
                 default:
                     is_read_addr_valid = 1'b0;
@@ -305,6 +313,8 @@ module npu_ctrl #(
     reg  [31:0] cfg_requant_sel;
     reg  [31:0] cfg_requant_mult [0:3];
     reg  [31:0] cfg_requant_shift [0:3];
+    reg  [31:0] cfg_cluster_mode;
+    reg  [31:0] cfg_cluster_mask;
 
     // Status registers (HW-managed)
     reg         busy;
@@ -355,6 +365,8 @@ module npu_ctrl #(
             cfg_requant_shift[1] <= 32'd0;
             cfg_requant_shift[2] <= 32'd0;
             cfg_requant_shift[3] <= 32'd0;
+            cfg_cluster_mode <= {30'd0, DEFAULT_CLUSTER_MODE};
+            cfg_cluster_mask <= {26'd0, DEFAULT_CLUSTER_MASK};
         end else if (write_hs && wr_allowed && is_write_addr_valid(wr_addr)) begin
             case (wr_addr)
                 ADDR_TASK_TYPE:    cfg_task_type    <= apply_wstrb(cfg_task_type, write_data, write_strb);
@@ -376,6 +388,8 @@ module npu_ctrl #(
                 ADDR_REQUANT2_SHIFT:cfg_requant_shift[2] <= apply_wstrb(cfg_requant_shift[2], write_data, write_strb);
                 ADDR_REQUANT3_MULT: cfg_requant_mult[3]  <= apply_wstrb(cfg_requant_mult[3], write_data, write_strb);
                 ADDR_REQUANT3_SHIFT:cfg_requant_shift[3] <= apply_wstrb(cfg_requant_shift[3], write_data, write_strb);
+                ADDR_CLUSTER_MODE:  cfg_cluster_mode      <= apply_wstrb(cfg_cluster_mode, write_data, write_strb) & 32'h0000_0003;
+                ADDR_CLUSTER_MASK:  cfg_cluster_mask      <= apply_wstrb(cfg_cluster_mask, write_data, write_strb) & 32'h0000_003f;
                 default: ;
             endcase
         end
@@ -517,6 +531,8 @@ module npu_ctrl #(
     assign requant_slot_sel = requant_slot_sel_r;
     assign requant_multiplier = requant_multiplier_r;
     assign requant_shift = requant_shift_r;
+    assign cluster_mode_cfg = cfg_cluster_mode[1:0];
+    assign cluster_mask_cfg = cfg_cluster_mask[5:0];
 
     // ============================================================
     // AXI read data generation
@@ -559,6 +575,8 @@ module npu_ctrl #(
         (rd_addr == ADDR_REQUANT2_SHIFT)     ? cfg_requant_shift[2]  :
         (rd_addr == ADDR_REQUANT3_MULT)      ? cfg_requant_mult[3]   :
         (rd_addr == ADDR_REQUANT3_SHIFT)     ? cfg_requant_shift[3]  :
+        (rd_addr == ADDR_CLUSTER_MODE)        ? cfg_cluster_mode      :
+        (rd_addr == ADDR_CLUSTER_MASK)        ? cfg_cluster_mask      :
         32'h0;
 
     always @(posedge clk) begin

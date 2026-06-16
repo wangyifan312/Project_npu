@@ -23,18 +23,37 @@
 - real-weight fixture 小批量回归
 - `npu_top + axi4_ram` subsystem 级 `8` 样本 real-weight 回归
 - `top` 层 `8` 样本 real-weight 回归
+- candidate-final software full-set
+  - `results/mnist_lenet_soc6_requant_candidate_final_eval.json`
+  - `9885/10000 = 98.85%`
+- RTL subsystem representative chunk evidence
+  - `results/w3_subsystem_full_10000_candidate_final_chunked/merged/`
+  - 完整 merged chunk：`12`
+  - 正式 merged 样本窗口：`3000/10000`
+  - `summary.json` 口径：`2944/3000 = 98.1333%`
+  - 停止时 write-out 观测值：`3000/3057 = 98.1354%`
 
 这证明：
 
 - 推理链路已闭环
 - 真实样本与真实权重链路已打通
 - `LeNet(MNIST)` 在 subsystem 和 `top` 两层都已可运行
+- 当前 software full-set 已形成最终全量 accuracy 主证据
+- 当前 RTL 侧已形成 representative full-set chunk evidence
 
 但这**不等于**：
 
-- 已经跑完整 `MNIST test set`
-- 已经拿到全量测试集 accuracy
-- 已经形成最终精度结论
+- RTL 已经完整跑完 `10000/10000`
+- top-level 已经完整跑完 `10000/10000`
+- RTL representative chunks 可以被包装成完整 RTL full-set 结果
+
+当前 W3 关闭口径：
+
+- software full-set 是最终全量准确率主证据
+- RTL subsystem full-set 因仿真成本过高，采用 representative chunk evidence 收口
+- `chunk_03000_03249` 是 partial chunk，没有 `summary.json / finished_at.txt`，不计入正式 merged
+- observed fail 需要区分模型错分与 RTL/software 偏差，不能默认视为 RTL 回归
+- 完整 RTL `10000/10000` full-set 降级为后续增强项，不作为当前 W3 关闭阻塞项
 
 ---
 
@@ -379,9 +398,17 @@ Phase 1.5 已确认：
 
 ### 9.2 更现实且通常足够答辩
 
-- subsystem：完整测试集 `10000`
+- software：完整测试集 `10000`
+- subsystem RTL：representative full-set chunks
 - `top`：大批量 `100` 或 `1000`
 - 文档中明确写出 subsystem / top 层级差异
+
+当前 W3 已采用该口径收口：
+
+- software full-set：`9885/10000 = 98.85%`
+- RTL subsystem representative chunk evidence：正式 merged `3000/10000` 样本窗口，`summary.json` 为 `2944/3000 = 98.1333%`
+- 停止时 write-out 观测值：`3000/3057 = 98.1354%`，partial chunk 不计入正式 merged
+- 完整 RTL `10000/10000` 可作为后续增强项继续执行，但不是当前 W3 关闭阻塞项
 
 ### 9.3 不允许的表述
 
@@ -390,11 +417,13 @@ Phase 1.5 已确认：
 - `8` 样本
 - `100` 样本
 - `1000` 样本
+- partial chunk
 
 则不得写成：
 
 - “完整 MNIST 测试集结果”
 - “全量测试集准确率”
+- “完整 RTL full-set 已完成”
 
 ---
 
@@ -402,4 +431,4 @@ Phase 1.5 已确认：
 
 如果赛题要求完整测试集结果，正确做法是：
 
-**先跑 subsystem 级完整测试集拿准确率，再用 `top` 级大批量或全量回归补齐 SoC 顶层证据链。**
+**以 software full-set 固定最终全量准确率，再用 RTL subsystem representative chunks 和 `top` 级大批量/全量回归补齐硬件侧证据链。**

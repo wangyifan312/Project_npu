@@ -48,7 +48,6 @@ module task_checker #(
     localparam ERR_CONV_PARAM        = 8'h07;
     localparam ERR_POOL_PARAM        = 8'h08;
     localparam ERR_DIM_RELATION      = 8'h09;
-    localparam ERR_FC_NOT_SUPPORTED  = 8'h0A;
     localparam ERR_REQUANT_PARAM     = 8'h0B;
 
     // ============================================================

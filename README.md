@@ -27,6 +27,40 @@
 - top-level LeNet performance replay 仍是 `single-cluster` 网络级口径
 - multi-cluster 证据来自 util counter 与 compute-core/cluster-mode 运行级覆盖，不等同于完整 LeNet dual/full performance replay
 
+## 当前交付补强状态
+
+在 `HB` 和 `AXI` 主线收口后，当前仓库已经开始进入交付补强阶段。
+
+当前已完成：
+
+- `W1` 完成：`top` 级完整 LeNet 的 non-single-cluster 网络级证据已补齐
+  - `dual-cluster top1` 通过
+  - `dual-cluster top8` 通过
+  - `optional full-cluster top1` 通过
+- `W2` 完成：中等规模回归已扩到
+  - `top64`：`64/64 PASS`
+  - `subsystem64`：`64/64 PASS`
+- `W3` 完成，可关闭：full-set evaluation 采用 `software full-set + RTL representative chunk evidence` 口径收口
+  - software full-set 主证据：`results/mnist_lenet_soc6_requant_candidate_final_eval.json`
+  - software 结果：`9885/10000 = 98.85%`
+  - RTL subsystem representative merged evidence：`results/w3_subsystem_full_10000_candidate_final_chunked/merged/`
+  - RTL 正式 merged 样本窗口：`3000/10000`
+  - RTL `summary.json` 口径：`2944/3000 = 98.1333%`
+  - 停止时 write-out 观测值：`3000/3057 = 98.1354%`，其中 partial chunk 不计入正式 merged
+
+当前下一条正式工单是：
+
+- `W4`：coverage flow
+
+引用限制：
+
+- 当前 `W1` 证明的是 `top` 级完整 LeNet 在 non-single-cluster 配置下可运行且功能正确
+- 当前 `W1` 结果不应直接表述为“top-level LeNet dual/full-cluster 吞吐提升结论”
+- 当前 `W2` 证明的是中等规模回归稳定，不等同于 full-set 结果
+- 当前 `W3` 的最终全量准确率主证据是 software full-set；RTL 侧是 representative chunk evidence，不应表述为“RTL `10000/10000` full-set 已完整完成”
+- `chunk_03000_03249` 是停止时 partial chunk，没有 `summary.json / finished_at.txt`，不计入正式 merged 结果
+- observed fail 需要区分模型错分与 RTL/software 偏差，不能默认视为 RTL 回归
+
 ## AXI 当前状态
 
 当前仓库的 AXI compliance plan 已完成到当前项目正式支持边界。当前可准确表述为：
@@ -46,6 +80,51 @@
 - [docs/AXI_COMPLIANCE_EXECUTION_CHECKLIST.md](docs/AXI_COMPLIANCE_EXECUTION_CHECKLIST.md)
 
 作为支持范围与限制范围的正式基线。当前仍不应把该实现表述为“完整通用 AXI4 / AXI-Lite 兼容 IP”。
+
+## NPU RTL follow-up 当前状态
+
+当前 `docs/NPU_RTL_TODO.md` 中的 NPU RTL follow-up 已推进到：
+
+- Workstream A 已完成：multi-cluster route / aggregate correctness 已收口，runtime bottleneck evidence 已增强。
+  - 当前 6-cluster 路径不是 inter-cluster reduce，而是 `activation broadcast + weight split + routed global-column OR merge`。
+  - first-pass full-cluster 优化已完成，并通过 `top32 + subsystem64` stronger regression stable。
+- Workstream B 已完成：shared memory contract 和 store-path verification 已收口。
+- shared memory contract 继续固定为 `1 MB = 32768 x 256-bit beat`。
+- `acc_buffer -> DMA writer` 写回路径固定为 `32-bit word -> 256-bit AXI beat` packing，last-beat `WSTRB` 由实际 byte count 决定。
+- NPU task base address contract 当前继续维持 `64B` 对齐；不在当前阶段放宽到 `32B`。
+- Workstream C 已完成：cluster mode / mask 已支持 AXI-Lite runtime config，parameter 保留为 reset default。
+
+引用限制：
+
+- 当前 Workstream A 不应表述为 full LeNet-wide performance attribution complete；性能归因已有更强运行级证据，但后续若要做第二轮优化仍需单独评估。
+- 当前 Workstream B 不应解读为“地址契约已放宽”或“store layout 可自由重排”。
+- 当前 Workstream C 不等同于 task queue / descriptor / shadow config；当前仍是单任务寄存器触发模型。
+- 后续若要修改地址对齐、输出 layout、写回 packing 或控制模型，必须单独立项并同步 RTL、脚本、文档和回归资产。
+
+## 当前目录状态
+
+当前仓库的正式源码与正式文档主要集中在：
+
+- `rtl/`
+- `tb/`
+- `sim/`
+- `datasets/`
+- `docs/`
+
+此外，根目录可能会保留一些本地调试或仿真生成产物，例如：
+
+- `csrc/`
+- `novas.fsdb`
+- `novas_dump.log`
+- `ucli.key`
+- `tmp/`
+
+这些不属于正式源码基线，也不应作为交付证据引用。若需要清理，应优先保留：
+
+- `results/` 中的正式结果资产
+- `sim/` 下的正式脚本入口
+
+而将明显可再生的仿真产物单独清理。
 
 ## 阵列规格与入口分层
 
@@ -96,12 +175,24 @@
 - [docs/MNIST_FULL_EVAL_PLAN.md](docs/MNIST_FULL_EVAL_PLAN.md)
 - [docs/AXI_COMPLIANCE_SPEC.md](docs/AXI_COMPLIANCE_SPEC.md)
 - [docs/AXI_COMPLIANCE_EXECUTION_CHECKLIST.md](docs/AXI_COMPLIANCE_EXECUTION_CHECKLIST.md)
+- [docs/NEXT_TASK_WORKLIST.md](docs/NEXT_TASK_WORKLIST.md)
 
 如果目标是对当前仓库做正式状态评估、逐条清理历史问题和规划整改路线，请优先阅读 [docs/REPO_REVIEW_2026Q2.md](docs/REPO_REVIEW_2026Q2.md)。这份文档是当前仓库级 review 与整改清单基线，高于零散会话结论。
 
 如果目标是**赛题最终提交 / 答辩交付**，请优先以 [docs/DELIVERY_CHECKLIST.md](docs/DELIVERY_CHECKLIST.md) 为收尾标准，而不是只以“工程上已可运行”作为完成依据。
 
-如果赛题书面要求**完整 `MNIST` 测试集结果**，则还必须继续执行 [docs/MNIST_FULL_EVAL_PLAN.md](docs/MNIST_FULL_EVAL_PLAN.md)，不能把 `8` 样本或其他小批量回归结果当成完整测试集结论。
+如果目标是继续按顺序推进后续补强工单，请优先使用 [docs/NEXT_TASK_WORKLIST.md](docs/NEXT_TASK_WORKLIST.md)；当前固定顺序是：
+
+1. `W1` top-level non-single-cluster evidence：已完成
+2. `W2` medium-scale regression expansion：已完成
+3. `W3` full-set evaluation：已完成，可关闭
+4. `W4` coverage flow：下一条执行
+5. `W5` FPGA / synthesis delivery material
+6. `W6` final delivery hardening
+
+其中当前已完成 `W1/W2/W3`，下一条工单固定为 `W4`。
+
+如果赛题书面要求**完整 `MNIST` 测试集结果**，当前可引用 software full-set 作为全量 accuracy 主证据，并引用 RTL subsystem representative chunk evidence 作为硬件侧代表性验证；不能把小批量回归或 partial chunk 包装成完整 RTL full-set。
 此外，完整 `MNIST test set` 的最终交付 accuracy 门槛固定为 **`80%` 及以上**；低于该门槛的 full-test 结果只能算阶段性结果，不能算最终交付。
 如果 software full-test 始终卡在 `80%` 以下，则必须优先对照 [docs/REQUANTIZATION_PLAN.md](docs/REQUANTIZATION_PLAN.md) 审视中间层 requant 语义，而不是继续盲跑 RTL full-set。
 
@@ -203,6 +294,28 @@ SIMULATOR=vcs bash sim/run_top_lenet.sh all
   - [docs/REAL_WEIGHT_FLOW.md](docs/REAL_WEIGHT_FLOW.md)
   - [docs/PERFORMANCE_SUMMARY.md](docs/PERFORMANCE_SUMMARY.md)
   - [docs/DEFENSE_REGRESSION.md](docs/DEFENSE_REGRESSION.md)
+
+当前常用正式入口也可以直接通过顶层 `Makefile` 调用：
+
+```bash
+make help
+make top1
+make top8
+make top16
+make top32
+make subsystem8
+make perf-top16
+make perf-top32
+make perf-subsystem8
+make fullset-subsystem-status
+```
+
+说明：
+
+- `Makefile` 是对现有 `sim/*.sh` 的薄封装
+- 正式 replay / perf / utility target 已分组整理
+- `fullset-subsystem-status` 用于查看 W3 candidate-final chunked full-set 当前 representative evidence；默认不会把 partial chunk 算入正式 merged
+- 如需继续推进后续工单，仍以对应工单文档和结果目录口径为准
 
 ## 完成标准
 

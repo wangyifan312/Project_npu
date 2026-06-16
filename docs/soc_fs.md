@@ -394,6 +394,35 @@ NPU DMA 访问要求 32-byte 对齐，因此 NPU DMA base address 的 `addr[4:0]
 | FC2 weights | `0x000F_3000` | FC2 INT8 weights |
 | Final logits | `0x000F_5000` | FC2 INT32 output logits |
 
+### 6.4 NPU store-path 写回契约
+
+NPU 写回路径固定为：
+
+```text
+acc_buffer 32-bit word
+  -> npu_top FSM_STORE pack
+  -> dma_axi_writer 256-bit AXI4 INCR burst
+  -> shared RAM 32768 x 256-bit beat
+```
+
+正式 packing 规则：
+
+- `acc_buffer` 以 32-bit word 为单位保存 Conv / FC / Requant 写回数据。
+- `FSM_STORE` 按递增 word index 读取并打包。
+- `store_pack_lane=0..7` 对应 256-bit beat 的低到高 32-bit lane。
+- 每 8 个 32-bit word 形成一个 256-bit beat。
+- `store_words_active = ceil(store_bytes_active / 4)`。
+- `dma_axi_writer` 使用实际 `byte_count` 生成最后一拍 `WSTRB`，低位连续 byte 有效。
+- Requant INT8 输出允许最后一组不是 4B 整数倍；最后 packed word 中多余 byte 由 `WSTRB` 屏蔽。
+
+当前验证入口：
+
+```text
+tb/unit/tb_store_pack_path.v
+```
+
+该入口直接实例化 `npu_top` 并观测真实 `FSM_STORE -> dma_axi_writer` 输出，覆盖 Conv-like、FC-like、Requant-like 三类写回和 partial beat `WSTRB`。
+
 ## 7. 中断 / 异常
 
 当前顶层没有连接外部 interrupt output。CPU 或 testbench 通过轮询 NPU control/status registers 判断任务状态。
@@ -421,7 +450,7 @@ NPU DMA 访问要求 32-byte 对齐，因此 NPU DMA base address 的 `addr[4:0]
 | `0x07` | `ERR_CONV_PARAM` | Conv 参数非法，例如输入尺寸小于 5x5 |
 | `0x08` | `ERR_POOL_PARAM` | Pool 参数非法，例如输入宽高不是偶数 |
 | `0x09` | `ERR_DIM_RELATION` | 输入/输出 channel 维度非法 |
-| `0x0A` | `ERR_FC_NOT_SUPPORTED` | 历史保留错误码，当前 FC 已支持 |
+| `0x0A` | 保留未用 | 当前 RTL 不再定义该错误码，保留数值空洞以避免和既有调试记录混淆 |
 | `0x0B` | `ERR_REQUANT_PARAM` | Requant 参数非法 |
 
 ### 7.3 Control FSM 错误码
@@ -477,6 +506,8 @@ NPU register window base address 为 `0x1000_0000`，寄存器为 32-bit 宽度�
 | `0x7C` | `REQUANT2_SHIFT` | R/W | `[5:0]` | requant slot 2 shift |
 | `0x80` | `REQUANT3_MULT` | R/W | `[31:0]` | requant slot 3 multiplier |
 | `0x84` | `REQUANT3_SHIFT` | R/W | `[5:0]` | requant slot 3 shift |
+| `0x88` | `CLUSTER_MODE` | R/W | `[1:0]` | runtime cluster mode；`0=single`, `1=dual`, `2=full`, `3=mask` |
+| `0x8C` | `CLUSTER_MASK` | R/W | `[5:0]` | runtime cluster request mask；reset default 来自 `NPU_CLUSTER_MASK_REQ` |
 
 寄存器访问约束：
 
@@ -484,3 +515,4 @@ NPU register window base address 为 `0x1000_0000`，寄存器为 32-bit 宽度�
 - performance registers 为只读，由 NPU 内部性能计数器更新。
 - 未定义寄存器读写返回 AXI-Lite SLVERR。
 - `CTRL.start` 启动后，配置会锁存到任务执行寄存器；执行过程中修改配置会报错。
+- `CLUSTER_MODE / CLUSTER_MASK` 是 runtime config；Verilog parameter 仅作为 reset default。

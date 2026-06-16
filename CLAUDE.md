@@ -34,6 +34,33 @@
 - `tb_fc_accept`、`tb_fc_reject`、`tb_task_requant`、`tb_task4_fc_tiled_signed`、`tb_npu_top`、`tb_task1_illegal`、`tb_task3_pool`、`tb_task4_system`、`tb_task2_multiblock`、`tb_task2_weight_layout`、`tb_task6_pingpong`、`tb_task2_strict`、`tb_task4_fc_signed`、`tb_task2_multichannel`、`tb_requant_conv_handoff` 统一定位为 `legacy micro-tests`，允许用于局部回归，不得代表正式阵列基线或性能证据。
 - `tb_task4_fc` 已升级为阵列化 FC formal sanity 入口，不能再作为 legacy 标量 FC 证据使用。
 
+### 2.2 当前 NPU RTL 整改基线
+
+`docs/NPU_RTL_TODO.md` 中的 NPU RTL 整改线当前已收口到以下状态：
+
+- Workstream A 已完成：multi-cluster route / aggregate correctness 已收口，runtime bottleneck evidence 已增强。
+- 当前 6-cluster 路径不是 inter-cluster reduce，而是 `activation broadcast + weight split + routed global-column OR merge`。
+- first-pass full-cluster 优化已完成，并达到 `top32 + subsystem64` stronger regression stable。
+- Workstream B 已完成：shared memory contract、store-path correctness、`64B` alignment contract 已收口。
+- shared memory 固定为 `1 MB = 32768 x 256-bit beat`。
+- `acc_buffer -> DMA writer` 写回 packing 固定为 `32-bit word -> 256-bit AXI beat`，last-beat `WSTRB` 由实际 byte count 决定。
+- NPU task base address contract 当前继续维持 `64B` 对齐，不得在普通优化中顺手放宽到 `32B`。
+- Workstream C 已完成：runtime `CLUSTER_MODE / CLUSTER_MASK` 已支持 AXI-Lite 配置，parameter 仍作为 reset default。
+- 当前控制模型仍是单任务寄存器触发模型，不是 task queue / descriptor / shadow config 架构。
+
+后续如果继续 NPU RTL 优化，默认下一步不是继续证明 Workstream A/B/C，而是二选一：
+
+- 第二轮性能优化评估，且必须先定义新的性能目标、护栏和回归范围。
+- 更高强度 runtime cluster mode 长回归，确认 AXI-Lite runtime config 在更长路径下稳定。
+
+以下变更必须单独立项，不能作为顺手清理：
+
+- 放宽地址对齐契约，例如从 `64B` 改到 `32B`。
+- 修改 store packing、last-beat `WSTRB`、output layout 或 layer memory map。
+- 将单任务寄存器触发模型改成 queue / descriptor / shadow config。
+
+当前证据边界也必须保持准确：Workstream A 已有 route/aggregate correctness 和 stronger runtime evidence，但不能表述为 full LeNet-wide performance attribution complete。
+
 ## 3. 顶层架构
 
 ### SoC 层

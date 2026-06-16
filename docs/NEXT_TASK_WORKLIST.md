@@ -33,8 +33,6 @@
 
 当前必须继续补强的主要缺口：
 
-- `top` 级完整 LeNet 的 non-single-cluster 网络级证据
-- 更大规模/完整测试集结果
 - 正式 coverage 报告
 - FPGA / 综合交付材料
 - 最终答辩/交付文档固化
@@ -113,7 +111,14 @@
 
 状态：
 
-- 下一条执行
+- 已完成
+
+完成结果：
+
+- `dual-cluster top1` PASS
+- `dual-cluster top8` PASS
+- `full-cluster top1` 作为可选证据 PASS
+- 该结论证明 `top` 级完整 LeNet 在 non-single-cluster 配置下可运行；不应表述为完整 dual/full-cluster top-level performance full-set 结论
 
 ---
 
@@ -143,18 +148,28 @@
 - 结果稳定可复现
 - 能给出第一失败样本或明确全通过
 
+状态：
+
+- 已完成
+
+完成结果：
+
+- `top64`：`64/64 PASS`
+- `subsystem64`：`64/64 PASS`
+- 该结论证明中等规模回归稳定；不等同于 full-set 结果
+
 ---
 
 ### W3 Full-Set Evaluation
 
 目标：
 
-- 拿到完整测试集结果，而不是只停留在小批量 replay
+- 形成可引用的完整测试集结果链，并给出 RTL 侧代表性 full-set chunk evidence
 
 建议顺序：
 
 1. software full-set
-2. subsystem full-set
+2. subsystem representative full-set chunks
 3. 视成本再评估 `top` full-set
 
 必须产出：
@@ -166,11 +181,34 @@
 
 完成标准：
 
-- 至少形成一条正式可引用的 full-set 结果链
+- software full-set 作为当前最终全量准确率主证据
+- RTL subsystem 形成 representative chunk evidence，且不显示 RTL 回归趋势
+- 若完整 RTL `10000/10000` 仿真成本过高，可降级为后续增强项，不作为当前 W3 关闭阻塞项
 
 说明：
 
 - 不允许把 `8/16/32/64` 样本结果当成 full-set 结果
+- 不允许把 partial chunk 计入正式 merged 结果
+- observed fail 需要区分模型错分与 RTL/software 偏差，不能默认视为 RTL 回归
+
+状态：
+
+- 已完成，可关闭
+
+完成结果：
+
+- software full-set 主证据：`results/mnist_lenet_soc6_requant_candidate_final_eval.json`
+  - `9885/10000`
+  - `accuracy = 98.85%`
+  - 已超过当前 `80%` accuracy gate
+- RTL subsystem representative chunk evidence：
+  - 结果目录：`results/w3_subsystem_full_10000_candidate_final_chunked/merged/`
+  - 完整 merged chunk：`12`
+  - 正式 merged 样本窗口：`3000/10000`
+  - `summary.json` 口径：`2944/3000 = 98.1333%`
+  - 停止时 write-out 观测值：`3000/3057 = 98.1354%`，其中 `chunk_03000_03249` 为 partial chunk，不计入正式 merged
+- 完整 RTL `10000/10000` full-set 因仿真成本过高，降级为后续增强项
+- 当前允许进入 `W4 Coverage Flow`
 
 ---
 
@@ -232,14 +270,14 @@
 
 固定顺序如下：
 
-1. `W1` top-level non-single-cluster evidence
-2. `W2` medium-scale regression expansion
-3. `W3` full-set evaluation
-4. `W4` coverage flow
+1. `W1` top-level non-single-cluster evidence：已完成
+2. `W2` medium-scale regression expansion：已完成
+3. `W3` full-set evaluation：已完成，可关闭
+4. `W4` coverage flow：下一条执行
 5. `W5` FPGA / synthesis delivery material
 6. `W6` final delivery hardening
 
-不允许跳过 `W1` 直接宣称最终交付完成。
+不允许把 W3 的 representative RTL chunk evidence 表述为“RTL `10000/10000` full-set 已完整完成”。
 
 ---
 
@@ -247,15 +285,15 @@
 
 当前下一条应执行的工单固定为：
 
-- `W1: Top-Level Non-Single-Cluster Evidence`
+- `W4: Coverage Flow`
 
 执行重点：
 
-1. 先拿 `dual-cluster top1`
-2. 再扩大到 `dual-cluster top8`
-3. 如稳定，再评估是否补 `full-cluster top1`
+1. 建立正式 coverage 收集入口
+2. 建立 coverage merge/report 流程
+3. 明确 coverage 引用边界
 
-不允许一开始就直接冲 full-set 或 unrelated cleanup。
+不允许回头把 RTL full-set 长跑重新设为 W3 关闭阻塞项，也不允许直接跳到 FPGA 或 unrelated cleanup。
 
 ---
 
@@ -286,4 +324,3 @@ review 至少判断：
 2. 结果是否被 legacy/debug 证据污染
 3. 是否破坏当前 `HB/AXI` 基线
 4. 是否可以正式关闭该工单
-

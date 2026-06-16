@@ -159,6 +159,8 @@ module npu_top #(
     wire [1:0]  requant_slot_sel;
     wire [31:0] requant_multiplier;
     wire [5:0]  requant_shift;
+    wire [1:0]  cluster_mode_cfg;
+    wire [5:0]  cluster_mask_cfg;
     wire        ctrl_busy, ctrl_done, ctrl_error, task_go;
     wire [7:0]  ctrl_error_code;
 
@@ -185,7 +187,10 @@ module npu_top #(
     // ============================================================
     // npu_ctrl
     // ============================================================
-    npu_ctrl u_ctrl (
+    npu_ctrl #(
+        .DEFAULT_CLUSTER_MODE(CLUSTER_MODE),
+        .DEFAULT_CLUSTER_MASK(CLUSTER_MASK_REQ)
+    ) u_ctrl (
         .clk(clk), .rst_n(rst_n),
         .s_axi_awvalid(s_axi_awvalid), .s_axi_awready(s_axi_awready),
         .s_axi_awaddr(s_axi_awaddr),   .s_axi_wvalid(s_axi_wvalid),
@@ -204,6 +209,7 @@ module npu_top #(
         .input_h(input_h), .input_w(input_w), .input_c(input_c), .output_c(output_c),
         .relu_en(relu_en), .pool_en(pool_en),
         .requant_slot_sel(requant_slot_sel), .requant_multiplier(requant_multiplier), .requant_shift(requant_shift),
+        .cluster_mode_cfg(cluster_mode_cfg), .cluster_mask_cfg(cluster_mask_cfg),
         .task_done_i(task_done_fb), .task_error_i(task_error_fb),
         .task_error_code_i(task_error_code_fb),
         .check_done_i(check_done_fb), .checks_pass_i(checks_pass_fb),
@@ -349,6 +355,10 @@ module npu_top #(
     );
 
     reg  wgt_load_start, wgt_load_done, wgt_load_bank;
+    reg  wgt_consume_bank;
+    reg  wgt_preload_active, wgt_preload_done, wgt_preload_bank;
+    reg  [15:0] wgt_preload_cin;
+    reg  [4:0]  wgt_preload_byte_offset;
     reg wgt_buf_flush;
     npu_buffer #(.DATA_WIDTH(BUF_DATA_W), .ENTRIES(BUF_ENTRIES), .ADDR_WIDTH(BUF_ADDR_W))
     u_wgt_buffer (
@@ -357,7 +367,7 @@ module npu_top #(
         .rd_addr(wgt_rd_addr), .rd_data(wgt_rd_data), .rd_bank_sel(wgt_rd_bank),
         .load_start(wgt_load_start), .load_done(wgt_load_done),
         .comp_start(1'b0), .comp_done(1'b0),
-        .load_bank_sel(wgt_load_bank), .comp_bank_sel(1'b0),
+        .load_bank_sel(wgt_load_bank), .comp_bank_sel(wgt_consume_bank),
         .flush(wgt_buf_flush), .load_ready(), .comp_ready(), .comp_active(),
         .bank_a_state(), .bank_b_state()
     );
@@ -578,8 +588,8 @@ module npu_top #(
     end
 
     cluster_scheduler u_cluster_scheduler (
-        .cluster_mode(CLUSTER_MODE),
-        .cluster_mask_req(CLUSTER_MASK_REQ),
+        .cluster_mode(cluster_mode_cfg),
+        .cluster_mask_req(cluster_mask_cfg),
         .cluster_enable(perf_cluster_enable),
         .cluster_count(perf_cluster_count),
         .schedule_valid(perf_schedule_valid)
@@ -710,7 +720,7 @@ module npu_top #(
     assign perf_mac_hi = is_conv_mode ? perf_conv_mac_count[63:32] :
                          is_fc_mode   ? perf_fc_mac_count[63:32] :
                                         32'd0;
-    assign perf_cluster_cfg = {24'd0, CLUSTER_MODE, perf_cluster_enable};
+    assign perf_cluster_cfg = {24'd0, cluster_mode_cfg, perf_cluster_enable};
 
     perf_counter u_perf (
         .clk(clk), .rst_n(rst_n), .task_active(perf_task_active), .freeze(perf_freeze),
@@ -798,9 +808,10 @@ module npu_top #(
     wire [BUF_ADDR_W-1:0] wgt_mac_addr;
     wire [31:0] fc_wgt_dma_base = blk_wgt_addr + fc_out_start * input_c;
     wire [31:0] conv_wgt_dma_base = blk_wgt_addr + cin_idx * wgt_per_cin;
+    wire [31:0] conv_next_wgt_dma_base = blk_wgt_addr + (cin_idx + 16'd1) * wgt_per_cin;
     wire [31:0] conv_wgt_valid_bytes = 32'd25 * output_c;
     assign wgt_rd_addr  = (is_fc_mode && (fsm_state == FSM_LOAD_ARRAY)) ? fc_weight_beat_addr : wgt_mac_addr;
-    assign wgt_rd_bank  = wgt_load_bank;
+    assign wgt_rd_bank  = wgt_consume_bank;
 
     // ============================================================
     // Weight → array mapping (registered, multi-cycle loading)
@@ -1024,6 +1035,9 @@ module npu_top #(
             act_comp_start <= 1'b0; act_comp_done <= 1'b0;
             act_load_bank <= 1'b0; act_comp_bank <= 1'b0;
             wgt_load_start <= 1'b0; wgt_load_done <= 1'b0; wgt_load_bank <= 1'b0;
+            wgt_consume_bank <= 1'b0;
+            wgt_preload_active <= 1'b0; wgt_preload_done <= 1'b0; wgt_preload_bank <= 1'b0;
+            wgt_preload_cin <= 16'd0; wgt_preload_byte_offset <= 5'd0;
             acc_load_start <= 1'b0; acc_load_done <= 1'b0;
             acc_comp_start <= 1'b0; acc_comp_done <= 1'b0;
             acc_load_bank <= 1'b0; acc_comp_bank <= 1'b0;
@@ -1065,6 +1079,7 @@ module npu_top #(
                         task_done_r <= 1'b0; task_error_r <= 1'b0; task_error_code_r <= 8'h0;
                         dma_rd_ptr <= 0; dma_wr_started <= 1'b0;
                         wgt_load_phase <= 32'd0; wgt_load_done_r <= 1'b0;
+                        wgt_preload_active <= 1'b0; wgt_preload_done <= 1'b0;
                         wgt_load_reg <= 0; blk_done <= 1'b0;
                         fsm_state <= FSM_TASK_SETUP;
                     end
@@ -1161,6 +1176,7 @@ module npu_top #(
                 FSM_FC_LOAD_WAIT: begin
                     if (wgt_dma_done) begin
                         wgt_load_done <= 1'b1;
+                        wgt_consume_bank <= wgt_load_bank;
                         wgt_load_phase <= 32'd0;
                         wgt_load_wait <= 1'b1;
                         wgt_load_reg <= 0;
@@ -1217,15 +1233,41 @@ module npu_top #(
                         cf_last_col <= 16'hFFFF;
                         cf_channel_sel <= cin_idx[5:0];
                         comp_win_idx <= 16'd0;
-                        wgt_dma_start <= 1'b1;
-                        wgt_dma_addr <= {conv_wgt_dma_base[31:5], 5'b0};
-                        wgt_dma_byte_offset <= conv_wgt_dma_base[4:0];
-                        wgt_dma_bytes <= conv_wgt_valid_bytes + {27'd0, conv_wgt_dma_base[4:0]};
-                        wgt_load_start <= 1'b1;
-                        wgt_load_bank <= block_bank;
-                        wgt_load_phase <= 32'd0;
-                        wgt_load_done_r <= 1'b0;
-                        fsm_state <= FSM_CIN_LOAD_WGT;
+                        if (wgt_preload_done && (wgt_preload_cin == cin_idx)) begin
+                            wgt_load_bank <= wgt_preload_bank;
+                            wgt_consume_bank <= wgt_preload_bank;
+                            wgt_dma_byte_offset <= wgt_preload_byte_offset;
+                            wgt_preload_done <= 1'b0;
+                            wgt_load_phase <= 32'd0;
+                            wgt_load_wait <= 1'b1;
+                            wgt_load_done_r <= 1'b0;
+                            fsm_state <= FSM_LOAD_ARRAY;
+                        end else if (wgt_preload_active && (wgt_preload_cin == cin_idx)) begin
+                            if (wgt_dma_done) begin
+                                wgt_load_done <= 1'b1;
+                                wgt_load_bank <= wgt_preload_bank;
+                                wgt_consume_bank <= wgt_preload_bank;
+                                wgt_dma_byte_offset <= wgt_preload_byte_offset;
+                                wgt_preload_active <= 1'b0;
+                                wgt_load_phase <= 32'd0;
+                                wgt_load_wait <= 1'b1;
+                                wgt_load_done_r <= 1'b0;
+                                fsm_state <= FSM_LOAD_ARRAY;
+                            end else if (wgt_dma_error) begin
+                                task_error_r <= 1'b1; task_error_code_r <= wgt_dma_error_code;
+                                fsm_state <= FSM_ERROR;
+                            end
+                        end else begin
+                            wgt_dma_start <= 1'b1;
+                            wgt_dma_addr <= {conv_wgt_dma_base[31:5], 5'b0};
+                            wgt_dma_byte_offset <= conv_wgt_dma_base[4:0];
+                            wgt_dma_bytes <= conv_wgt_valid_bytes + {27'd0, conv_wgt_dma_base[4:0]};
+                            wgt_load_start <= 1'b1;
+                            wgt_load_bank <= block_bank;
+                            wgt_load_phase <= 32'd0;
+                            wgt_load_done_r <= 1'b0;
+                            fsm_state <= FSM_CIN_LOAD_WGT;
+                        end
                     end else begin
                         comp_sub_state <= CP_WAIT_WIN;
                         fsm_state <= FSM_COMPUTE;
@@ -1235,6 +1277,7 @@ module npu_top #(
                 FSM_CIN_LOAD_WGT: begin
                     if (wgt_dma_done) begin
                         wgt_load_done <= 1'b1;
+                        wgt_consume_bank <= wgt_load_bank;
                         fsm_state <= FSM_CIN_LOAD_DONE;
                     end else if (wgt_dma_error) begin
                         task_error_r <= 1'b1; task_error_code_r <= wgt_dma_error_code;
@@ -1272,15 +1315,36 @@ module npu_top #(
                         // wgt_reg: spatial_pos * 64 + out_c   (strided for array columns)
                         // HB1-B: phase is a byte index; beat address and byte lane
                         // use the same 256-bit extraction rule as FC weights.
+                        reg [31:0] load_idx;
+                        reg [31:0] load_abs_idx;
+                        reg [31:0] load_count;
+                        reg [31:0] load_remaining;
+                        reg [31:0] bytes_left_in_beat;
+                        reg [4:0]  load_byte_sel;
                         reg [15:0] sp0;
                         reg [5:0]  oc0;
-                        sp0 = wgt_load_phase / {16'd0, output_c};
-                        oc0 = wgt_load_phase % {16'd0, output_c};
-                        wgt_load_reg[(sp0 * PE_COLS + oc0)*8 +: 8] <= hb_beat_byte(wgt_rd_data, conv_weight_dma_byte_idx[4:0]);
-                        if ((conv_weight_dma_byte_idx[4:0] == 5'd31) &&
-                            (wgt_load_phase + 32'd1 < conv_wgt_valid_bytes))
+                        integer load_lane;
+                        load_remaining = conv_wgt_valid_bytes - wgt_load_phase;
+                        bytes_left_in_beat = 32'd32 - {27'd0, conv_weight_dma_byte_idx[4:0]};
+                        load_count = (load_remaining > 32'd4) ? 32'd4 : load_remaining;
+                        if (bytes_left_in_beat < load_count)
+                            load_count = bytes_left_in_beat;
+                        for (load_lane = 0; load_lane < 4; load_lane = load_lane + 1) begin
+                            if (load_lane < load_count) begin
+                                load_idx = wgt_load_phase + load_lane;
+                                load_abs_idx = conv_weight_dma_byte_idx + load_lane;
+                                load_byte_sel = load_abs_idx[4:0];
+                                sp0 = load_idx / {16'd0, output_c};
+                                oc0 = load_idx % {16'd0, output_c};
+                                wgt_load_reg[(sp0 * PE_COLS + oc0)*8 +: 8] <=
+                                    hb_beat_byte(wgt_rd_data, load_byte_sel);
+                            end
+                        end
+                        if ((((conv_weight_dma_byte_idx[4:0] + load_count) >= 32'd32) ||
+                             (load_count < 32'd4)) &&
+                            (wgt_load_phase + load_count < conv_wgt_valid_bytes))
                             wgt_load_wait <= 1'b1;
-                        wgt_load_phase <= wgt_load_phase + 32'd1;
+                        wgt_load_phase <= wgt_load_phase + load_count;
                     end else begin
                         wgt_load_done_r <= 1'b1;
                         fsm_state <= FSM_WGT_LD;
@@ -1299,6 +1363,29 @@ module npu_top #(
                 // FSM_COMPUTE: process all spatial windows for current c_in
                 // ============================================================
                 FSM_COMPUTE: begin
+                    if (wgt_preload_active && wgt_dma_done) begin
+                        wgt_load_done <= 1'b1;
+                        wgt_preload_active <= 1'b0;
+                        wgt_preload_done <= 1'b1;
+                    end else if (wgt_preload_active && wgt_dma_error) begin
+                        task_error_r <= 1'b1; task_error_code_r <= wgt_dma_error_code;
+                        wgt_preload_active <= 1'b0;
+                        fsm_state <= FSM_ERROR;
+                    end else begin
+                    if (is_conv_mode && (comp_sub_state == CP_COLLECT) && !acc_collect_wait &&
+                        !wgt_preload_active && !wgt_preload_done &&
+                        (cin_idx + 16'd1 < cin_total)) begin
+                        wgt_preload_active <= 1'b1;
+                        wgt_preload_bank <= ~wgt_consume_bank;
+                        wgt_preload_cin <= cin_idx + 16'd1;
+                        wgt_preload_byte_offset <= conv_next_wgt_dma_base[4:0];
+                        wgt_load_bank <= ~wgt_consume_bank;
+                        wgt_dma_start <= 1'b1;
+                        wgt_dma_addr <= {conv_next_wgt_dma_base[31:5], 5'b0};
+                        wgt_dma_byte_offset <= conv_next_wgt_dma_base[4:0];
+                        wgt_dma_bytes <= conv_wgt_valid_bytes + {27'd0, conv_next_wgt_dma_base[4:0]};
+                        wgt_load_start <= 1'b1;
+                    end
                     case (comp_sub_state)
                         CP_WAIT_WIN: begin
                             if (is_fc_mode) begin
@@ -1448,6 +1535,7 @@ module npu_top #(
 
                         default: comp_sub_state <= CP_WAIT_WIN;
                     endcase
+                    end
                 end
 
                 // ============================================================
@@ -1474,7 +1562,8 @@ module npu_top #(
                     cf_last_row <= 16'hFFFF;
                     cf_last_col <= 16'hFFFF;
                     // Flush wgt_buffer so it can accept new DMA load for next c_in
-                    wgt_buf_flush <= 1'b1;
+                    if (!((wgt_preload_done || wgt_preload_active) && (wgt_preload_cin == cin_idx)))
+                        wgt_buf_flush <= 1'b1;
                     fsm_state <= FSM_CIN_START;
                 end
 

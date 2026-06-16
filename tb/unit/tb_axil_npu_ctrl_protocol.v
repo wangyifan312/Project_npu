@@ -44,6 +44,8 @@ module tb_axil_npu_ctrl_protocol;
     wire [1:0]  requant_slot_sel;
     wire [31:0] requant_multiplier;
     wire [5:0]  requant_shift;
+    wire [1:0]  cluster_mode_cfg;
+    wire [5:0]  cluster_mask_cfg;
 
     npu_ctrl u_dut (
         .clk(clk),
@@ -87,6 +89,8 @@ module tb_axil_npu_ctrl_protocol;
         .requant_slot_sel(requant_slot_sel),
         .requant_multiplier(requant_multiplier),
         .requant_shift(requant_shift),
+        .cluster_mode_cfg(cluster_mode_cfg),
+        .cluster_mask_cfg(cluster_mask_cfg),
         .task_done_i(1'b0),
         .task_error_i(1'b0),
         .task_error_code_i(8'h0),

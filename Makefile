@@ -3,6 +3,7 @@ SHELL := /bin/bash
 .PHONY: help \
 	top1 top8 top16 top32 subsystem8 \
 	perf-top16 perf-top32 perf-subsystem8 \
+	fullset-subsystem fullset-subsystem-status \
 	sim-all lint-sh diffcheck
 
 SIMULATOR ?= vcs
@@ -68,6 +69,8 @@ help:
 		'' \
 		'Subsystem replay (cross-check entry):' \
 		'  make subsystem8      COUNT=8 -> sim/run_lenet_fixture.sh, results/make_subsystem8' \
+		'  make fullset-subsystem        -> candidate-final chunked subsystem full-set' \
+		'  make fullset-subsystem-status -> merge existing chunks and print progress' \
 		'' \
 		'Performance replay (accuracy-only replay with perf reads enabled):' \
 		'  make perf-top16      COUNT=16 -> sim/run_top_lenet.sh, results/make_perf_top16' \
@@ -106,6 +109,12 @@ perf-top32:
 perf-subsystem8:
 	$(call run_subsystem_perf,8,make_perf_subsystem8,results/make_perf_subsystem8)
 
+fullset-subsystem:
+	bash scripts/run_w3_subsystem_full.sh run
+
+fullset-subsystem-status:
+	bash scripts/run_w3_subsystem_full.sh status
+
 sim-all:
 	bash sim/run_sim.sh all
 
@@ -113,6 +122,8 @@ lint-sh:
 	@bash -n sim/run_top_lenet.sh
 	@bash -n sim/run_lenet_fixture.sh
 	@bash -n sim/run_sim.sh
+	@bash -n scripts/run_w3_subsystem_chunked.sh
+	@bash -n scripts/run_w3_subsystem_full.sh
 
 diffcheck:
 	@git diff --check

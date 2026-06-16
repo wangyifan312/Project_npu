@@ -1,0 +1,24 @@
+{
+  "checkpoint": "datasets/mnist/models/mnist_lenet_soc6_requant_candidate_final.pt",
+  "exports_dir": "datasets/mnist/exports_full_10000",
+  "output_dir": "datasets/mnist/lenet_requant_candidate_final_manifest_10000",
+  "offset": 0,
+  "count": 10000,
+  "mode": "manifest_only",
+  "best_test_acc": 0.9885,
+  "requant_version": "per_layer_i32_to_i8_v1",
+  "requant_params": {
+    "conv2_in": {
+      "multiplier": 1,
+      "shift": 4
+    },
+    "fc1_in": {
+      "multiplier": 1,
+      "shift": 5
+    },
+    "fc2_in": {
+      "multiplier": 1,
+      "shift": 5
+    }
+  }
+}

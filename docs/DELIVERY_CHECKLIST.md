@@ -330,9 +330,26 @@
 如果赛题明确要求完整测试集结果，则在完成上述 5 项后，继续按以下顺序推进：
 
 1. 执行 [docs/MNIST_FULL_EVAL_PLAN.md](docs/MNIST_FULL_EVAL_PLAN.md)
-2. 先跑 subsystem 级完整测试集
-3. 再跑 `top` 级大批量或完整测试集
-4. 输出正式 accuracy / cycles / perf 统计
+2. 先确认 software full-set 主证据
+3. 再补 RTL subsystem representative chunk evidence
+4. 视仿真成本再推进 `top` 级大批量或完整测试集
+5. 输出正式 accuracy / cycles / perf 统计与引用边界
+
+当前 W3 收口状态：
+
+- software full-set 是当前最终全量准确率主证据
+  - 文件：`results/mnist_lenet_soc6_requant_candidate_final_eval.json`
+  - 结果：`9885/10000 = 98.85%`
+  - 已超过 `80%` gate
+- RTL subsystem 采用 representative chunk evidence 口径收口
+  - 结果目录：`results/w3_subsystem_full_10000_candidate_final_chunked/merged/`
+  - 完整 merged chunk：`12`
+  - 正式 merged 样本窗口：`3000/10000`
+  - `summary.json` 口径：`2944/3000 = 98.1333%`
+  - 停止时 write-out 观测值：`3000/3057 = 98.1354%`
+- `chunk_03000_03249` 是 partial chunk，没有 `summary.json / finished_at.txt`，不计入正式 merged
+- observed fail 需要区分模型错分与 RTL/software 偏差，不能默认视为 RTL 回归
+- 完整 RTL `10000/10000` full-set 因仿真成本过高，降级为后续增强项，不作为当前 W3 关闭阻塞项
 
 ---
 
@@ -352,8 +369,8 @@
 
 如果赛题书面要求包含**完整测试集结果**，则还必须额外满足：
 
-- 已按 [docs/MNIST_FULL_EVAL_PLAN.md](docs/MNIST_FULL_EVAL_PLAN.md) 跑出完整测试集结论
-- 完整 `MNIST test set` accuracy 必须达到 `80%` 及以上
+- 已按 [docs/MNIST_FULL_EVAL_PLAN.md](docs/MNIST_FULL_EVAL_PLAN.md) 跑出完整测试集结论；当前以 software full-set 作为全量 accuracy 主证据，并以 RTL representative chunks 作为硬件侧代表性证据
+- 完整 `MNIST test set` software accuracy 必须达到 `80%` 及以上
 
 否则只能表述为：
 
