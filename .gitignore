@@ -39,6 +39,8 @@ novas*/
 
 # Downloaded datasets / model artifacts (regenerable)
 datasets/cifar10/*.tar.gz
+datasets/cifar10/models/
+datasets/cifar10/resnet20_*_fixture/
 datasets/mnist/*.gz
 datasets/mnist/*.npz
 datasets/mnist/models/

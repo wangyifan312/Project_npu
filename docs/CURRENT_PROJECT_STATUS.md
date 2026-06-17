@@ -225,6 +225,8 @@ NPU RTL 方向如需继续推进，推荐二选一：
 
 任何涉及地址对齐、store packing、output layout、控制模型的修改，都必须单独立项。
 
+ResNet-20 迁移线当前只进入 `R0.5 Software Golden and Fixture Flow` 工程骨架阶段，RTL implementation 尚未启动。当前状态入口见 `docs/RESNET20_CURRENT_STATUS.md`。
+
 ---
 
 ## 8. 仍保留的专题文档入口
@@ -238,3 +240,5 @@ NPU RTL 方向如需继续推进，推荐二选一：
 - `docs/PERFORMANCE_SUMMARY.md`: 性能证据分层和引用限制。
 - `docs/MNIST_FULL_EVAL_PLAN.md`: full-set evaluation 策略和 W3 口径。
 - `docs/REPO_REVIEW_2026Q2.md`: 仓库级 review 和整改背景。
+- `docs/RESNET20_CURRENT_STATUS.md`: ResNet-20 R0.5 software golden / fixture flow 当前状态。
+- `docs/RESNET20_SOFTWARE_GOLDEN_PLAN.md` / `docs/RESNET20_RTL_EXTENSION_PLAN.md`: ResNet-20 software gate 与 RTL extension 计划。
