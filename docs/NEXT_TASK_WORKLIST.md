@@ -31,11 +31,17 @@
 - CPU 控制面为 `32-bit AXI-Lite`
 - NPU DMA 数据面为 `256-bit AXI4 burst`
 
-当前必须继续补强的主要缺口：
+当前已知后续增强项：
 
 - 正式 coverage 报告
 - FPGA / 综合交付材料
 - 最终答辩/交付文档固化
+
+当前统一口径：
+
+- `W1/W2/W3` 已完成并可关闭。
+- `W4/W5/W6` 保留为后续增强项。
+- 当前不默认继续执行 W4/W5/W6；如需推进，必须重新显式立项并确认目标、资源和验收范围。
 
 ---
 
@@ -208,7 +214,7 @@
   - `summary.json` 口径：`2944/3000 = 98.1333%`
   - 停止时 write-out 观测值：`3000/3057 = 98.1354%`，其中 `chunk_03000_03249` 为 partial chunk，不计入正式 merged
 - 完整 RTL `10000/10000` full-set 因仿真成本过高，降级为后续增强项
-- 当前允许进入 `W4 Coverage Flow`
+- 当前不自动进入 `W4 Coverage Flow`；W4 保留为后续增强项，需要重新显式立项
 
 ---
 
@@ -268,32 +274,34 @@
 
 ## 4. 推荐执行顺序
 
-固定顺序如下：
+如项目决定继续交付增强，建议顺序如下：
 
 1. `W1` top-level non-single-cluster evidence：已完成
 2. `W2` medium-scale regression expansion：已完成
 3. `W3` full-set evaluation：已完成，可关闭
-4. `W4` coverage flow：下一条执行
-5. `W5` FPGA / synthesis delivery material
-6. `W6` final delivery hardening
+4. `W4` coverage flow：后续增强项，当前不默认执行
+5. `W5` FPGA / synthesis delivery material：后续增强项
+6. `W6` final delivery hardening：后续增强项
 
 不允许把 W3 的 representative RTL chunk evidence 表述为“RTL `10000/10000` full-set 已完整完成”。
 
 ---
 
-## 5. 当前第一条工单
+## 5. 后续增强项启动条件
 
-当前下一条应执行的工单固定为：
+当前没有默认正在执行的 W4/W5/W6 工单。
+
+若项目决定启动交付增强，优先重新立项：
 
 - `W4: Coverage Flow`
 
-执行重点：
+W4 执行重点：
 
 1. 建立正式 coverage 收集入口
 2. 建立 coverage merge/report 流程
 3. 明确 coverage 引用边界
 
-不允许回头把 RTL full-set 长跑重新设为 W3 关闭阻塞项，也不允许直接跳到 FPGA 或 unrelated cleanup。
+不允许回头把 RTL full-set 长跑重新设为 W3 关闭阻塞项，也不允许在未重新立项时直接跳到 FPGA 或 unrelated cleanup。
 
 ---
 

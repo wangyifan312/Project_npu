@@ -1,231 +1,92 @@
 # CLAUDE.md — Project_npu Working Baseline
 
-本文件是项目内的工程约束与架构工作基线，服务于本轮 `6-cluster + SoC` 正式重构。
+本文件是后续 coding agent 的工程约束和接手基线。当前项目状态总表见：
+
+- `docs/CURRENT_PROJECT_STATUS.md`
+
+新会话应先读 `CURRENT_PROJECT_STATUS.md`，再进入对应专题文档。不要把 README 或 CLAUDE 当作完整状态总表。
 
 ## 1. 不可逾越约束
 
 1. 所有修改必须限制在 `/root/Project_npu/` 内。
 2. RTL 使用 Verilog / 可综合 SystemVerilog 子集。
-3. 默认仿真工具链为 `iverilog + vvp`，可保留其他已有后端用于大回归。
-4. CPU 核固定为 `PicoRV32`，不得改成自研 CPU。
-5. 一次只收敛一个任务；当前任务严格测试未通过，禁止进入下一任务。
-6. 关键规模、位宽、cluster 数量和 shared memory 容量必须参数化。
-7. 以赛题交付为导向，优先保证可验证性与闭环。
-8. 不允许把“结构已接通”当成完成。
-9. 本项目最终目标是赛题/答辩交付，不是一般性的工程阶段性交付。
-10. 当“工程上可运行”和“赛题证据链完整”冲突时，优先补齐赛题/答辩所需证据链。
+3. CPU 核固定为 `PicoRV32`，不得改成自研 CPU。
+4. 一次只收敛一个任务；当前任务未验收前，不进入下一任务。
+5. 关键规模、位宽、cluster 数量和 shared memory 容量必须参数化。
+6. 不允许把“结构已接通”“done=1”“输出非 x”当成完成。
+7. 本项目最终目标是赛题/答辩交付，不是一般工程阶段性交付。
+8. 当“工程上可运行”和“赛题证据链完整”冲突时，优先补齐赛题/答辩证据链。
 
-## 2. 本轮重构目标
+## 2. 固定架构基线
 
-- 正式废弃旧阵列目标口径
-- 切换为 `6-cluster` 动态可调脉动阵列
-- 每个 cluster = `16x16 PE`
-- 总计 `1536 PE`
-- `200MHz` 理论峰值 `0.6144 TOPS`
-- `npu_top` 从大一统结构重构为“编排层 + compute hierarchy”
-- `top/shared_ram` 升级到可承载完整 LeNet 地址图
-- 用真实训练权重闭合 `LeNet/MNIST`
-- 一次补齐性能统计与验证体系
+- SoC：`PicoRV32 + AXI interconnect + shared_ram + NPU`
+- NPU：`6 x 16x16 PE cluster`
+- 总 PE：`1536`
+- 理论峰值：`0.6144 TOPS @ 200MHz`
+- shared memory：`1 MB = 32768 x 256-bit beat`
+- CPU 控制面：`32-bit AXI-Lite`
+- NPU DMA 数据面：`256-bit AXI4 INCR burst`
+- 正式计算路径：`cluster_scheduler -> compute_core_6cluster -> output_arbiter`
+- FC 正式路径：arrayized FC
 
-### 2.1 正式阵列规格与入口分层
-
-- 正式规格固定为 `16x16 cluster / 1536 PE / 0.6144 TOPS @ 200MHz`，不回退到历史小阵列口径。
-- 正式入口只认 `16x16`：`rtl/soc/top.v`、`tb/integration/tb_lenet_network.v`、`tb/integration/tb_top_lenet.v`、`tb/integration/tb_top.v`、`tb/integration/tb_top_cluster_modes.v` 必须显式或默认落在 `16/16`。
-- `tb_fc_accept`、`tb_fc_reject`、`tb_task_requant`、`tb_task4_fc_tiled_signed`、`tb_npu_top`、`tb_task1_illegal`、`tb_task3_pool`、`tb_task4_system`、`tb_task2_multiblock`、`tb_task2_weight_layout`、`tb_task6_pingpong`、`tb_task2_strict`、`tb_task4_fc_signed`、`tb_task2_multichannel`、`tb_requant_conv_handoff` 统一定位为 `legacy micro-tests`，允许用于局部回归，不得代表正式阵列基线或性能证据。
-- `tb_task4_fc` 已升级为阵列化 FC formal sanity 入口，不能再作为 legacy 标量 FC 证据使用。
-
-### 2.2 当前 NPU RTL 整改基线
-
-`docs/NPU_RTL_TODO.md` 中的 NPU RTL 整改线当前已收口到以下状态：
-
-- Workstream A 已完成：multi-cluster route / aggregate correctness 已收口，runtime bottleneck evidence 已增强。
-- 当前 6-cluster 路径不是 inter-cluster reduce，而是 `activation broadcast + weight split + routed global-column OR merge`。
-- first-pass full-cluster 优化已完成，并达到 `top32 + subsystem64` stronger regression stable。
-- Workstream B 已完成：shared memory contract、store-path correctness、`64B` alignment contract 已收口。
-- shared memory 固定为 `1 MB = 32768 x 256-bit beat`。
-- `acc_buffer -> DMA writer` 写回 packing 固定为 `32-bit word -> 256-bit AXI beat`，last-beat `WSTRB` 由实际 byte count 决定。
-- NPU task base address contract 当前继续维持 `64B` 对齐，不得在普通优化中顺手放宽到 `32B`。
-- Workstream C 已完成：runtime `CLUSTER_MODE / CLUSTER_MASK` 已支持 AXI-Lite 配置，parameter 仍作为 reset default。
-- 当前控制模型仍是单任务寄存器触发模型，不是 task queue / descriptor / shadow config 架构。
-
-后续如果继续 NPU RTL 优化，默认下一步不是继续证明 Workstream A/B/C，而是二选一：
-
-- 第二轮性能优化评估，且必须先定义新的性能目标、护栏和回归范围。
-- 更高强度 runtime cluster mode 长回归，确认 AXI-Lite runtime config 在更长路径下稳定。
-
-以下变更必须单独立项，不能作为顺手清理：
-
-- 放宽地址对齐契约，例如从 `64B` 改到 `32B`。
-- 修改 store packing、last-beat `WSTRB`、output layout 或 layer memory map。
-- 将单任务寄存器触发模型改成 queue / descriptor / shadow config。
-
-当前证据边界也必须保持准确：Workstream A 已有 route/aggregate correctness 和 stronger runtime evidence，但不能表述为 full LeNet-wide performance attribution complete。
-
-## 3. 顶层架构
-
-### SoC 层
+正式入口只认 `16x16` 基线：
 
 - `rtl/soc/top.v`
-- `rtl/soc/shared_ram.v`
-- `rtl/bus/axi_interconnect.v`
-- `rtl/cpu/picorv32/...`
+- `tb/integration/tb_lenet_network.v`
+- `tb/integration/tb_top_lenet.v`
+- `tb/integration/tb_top.v`
+- `tb/integration/tb_top_cluster_modes.v`
 
-### NPU 编排层
+历史 `tb_task*`、`tb_npu_top`、`tb_fc*` 等只作为 legacy/debug/micro 入口，不能代表正式阵列规模、性能峰值或交付基线。
 
-- `npu_ctrl`
-- `task_checker`
-- `block_scheduler`
-- DMA read/write path
-- `npu_buffer`
-- `conv_frontend`
-- 阵列化 FC 执行流
-- `postproc`
-- `perf_counter`
-- `npu_top`
+## 3. 当前状态入口
 
-### 新 compute hierarchy
+完整当前状态以 `docs/CURRENT_PROJECT_STATUS.md` 为准。简要边界如下：
 
-- `cluster_16x16.v`
-- `compute_core_6cluster.v`
-- `cluster_scheduler.v`
-- `output_arbiter.v`
+- `HB1/HB2` 已按当前边界完成。
+- `AXI-1/2/3/4` 已按当前项目子集边界完成。
+- `W1/W2/W3` 已完成并可关闭。
+- `W4/W5/W6` 当前降级为后续增强项，不作为正在执行的正式工单。
+- NPU RTL `Workstream A/B/C` 已完成。
+- first-pass full-cluster 优化已达到 `top32 + subsystem64 stronger regression stable`。
 
-要求：
+## 4. 不能乱动的 contract
 
-- `cluster_16x16` 复用现有 `array_top` / `4x4 tile` 资产
-- `compute_core_6cluster` 必须真正例化 6 个 cluster
-- `cluster_enable[5:0]` 是正式接口，不是测试专用信号
-- Conv / FC 都必须走新 compute hierarchy
-- `fc_frontend.v` 当前只作为 legacy/debug stream formatter 保留，不承担正式 FC 主路径职责
+以下内容不允许在普通修复或优化中顺手改变：
 
-## 4. 验证层级与口径
+- LeNet 地址图。
+- requant 算法语义。
+- shared memory 物理组织：`32768 x 256-bit beat`。
+- NPU task base address `64B` 对齐契约。
+- `acc_buffer -> DMA writer` 的 `32-bit word -> 256-bit beat` packing。
+- last-beat `WSTRB` 根据实际 byte count 生成的语义。
+- output layout / layer memory map。
+- 单任务寄存器触发模型。
 
-### NPU 子系统级
+runtime `CLUSTER_MODE / CLUSTER_MASK` 已支持 AXI-Lite 配置，但这不等同于 task queue、descriptor FIFO 或 shadow config 架构。
 
-`npu_top + axi4_ram` 用于：
+## 5. 证据边界
 
-- deterministic fixture
-- 层级黄金对拍
-- 大容量 LeNet 回归
+- software full-set 是当前全量 accuracy 主证据。
+- RTL 侧是 representative chunk evidence，不能表述为 RTL `10000/10000` full-set 已完成。
+- multi-cluster correctness 已收口，runtime bottleneck evidence 已增强，但不能表述为 full LeNet-wide performance attribution complete。
+- AXI 当前是标准化项目子集，不是完整通用 AXI4 / AXI-Lite IP。
 
-### SoC 顶层级
+## 6. 后续工作口径
 
-`top` 用于：
+当前默认不是继续 W4/W5/W6 主线开发；它们已降级为后续增强项。
 
-- CPU/NPU/shared memory 统一语义
-- AXI-Lite 控制闭环
-- 完整 LeNet 地址图
-- shared memory 预加载与结果回读
-- Conv / FC 正式执行流必须走 `cluster_scheduler -> compute_core_6cluster -> output_arbiter`
-- `single / dual / full / mask` cluster mode 必须在同一 Conv 主路径上生效，不能只作为寄存器读数存在
+如果后续继续推进，应先明确立项：
 
-正式 SoC 顶层 testbench 必须使用 `16x16` 阵列参数；历史小阵列测试只作为 legacy debug/regression 资产。
+- coverage flow
+- FPGA / synthesis delivery material
+- final delivery hardening
+- 第二轮 NPU 性能优化
+- 更高强度 runtime cluster mode 长回归
 
-本轮 SoC 级默认方法：
+涉及地址对齐、store packing、output layout、控制模型的修改必须单独立项。
 
-- testbench `AXI-Lite master` 模拟 CPU 软件行为
-- memory preload 提前写入输入和权重
-- 不要求 PicoRV32 固件先驱动完整 LeNet
-
-补充口径：
-
-- `single / dual / full / dynamic mask` 的 cluster 模式覆盖当前主要来自 compute-core / cluster-level 回归
-- 不应将这部分覆盖表述成“完整 SoC 顶层已覆盖所有 cluster 模式”
-
-## 4.1 赛题/答辩交付优先口径
-
-后续所有任务以“可用于赛题提交与答辩陈述”为最终完成标准，而不是只达到仓库内部可运行。
-
-这意味着必须优先补齐以下证据链：
-
-1. SoC 顶层证据链
-   - 不仅要有 `npu_top + axi4_ram` 子系统级闭环
-   - 还要有 `top` 层共享内存、寄存器配置、结果回读的可证明闭环
-2. 真实模型证据链
-   - deterministic fixture 只能作为快速回归
-   - 最终必须能用真实训练权重与真实 `MNIST` 样本给出可解释结果
-3. 性能证据链
-   - 不仅要有理论峰值
-   - 还要有 `MAC count / cycle count / utilization / AXI bandwidth` 的正式统计
-   - 并明确区分 compute-core 级与 SoC 顶层级覆盖范围
-4. 验收口径证据链
-   - 文档、RTL、testbench、脚本、日志表述必须一致
-   - 不允许用“基本完成”“结构完整”“单样本可跑”替代赛题级完成
-
-如果某项工作只能支持“阶段性工程交付”而不能支持“赛题/答辩交付”，必须在汇报中明确写出，不得默认视为最终完成。
-
-最终收尾时，必须同步对照：
-
-- `docs/DELIVERY_CHECKLIST.md`
-- `docs/MNIST_FULL_EVAL_PLAN.md`（当赛题明确要求完整测试集结果时）
-- `docs/REQUANTIZATION_PLAN.md`（当 software full-test 长期低于 `80%` gate 时）
-
-该清单高于一般工程里程碑，用于判断是否已经达到“可用于赛题最终提交 / 答辩展示”的标准。
-其中：
-
-- `DELIVERY_CHECKLIST.md` 用于判断是否达到答辩展示级交付
-- `MNIST_FULL_EVAL_PLAN.md` 用于判断是否已经完成完整测试集结果交付
-- `REQUANTIZATION_PLAN.md` 用于判断当前是否已进入“模型-硬件数值语义 blocker”阶段，以及后续是否允许切换到新 requant 语义
-- `REPO_REVIEW_2026Q2.md` 用于判断当前仓库的正式问题清单、架构一致性缺口和整改优先级；后续清理与派工应优先对照该文档，而不是依赖零散会话结论
-
-## 5. 固定网络与数据规则
-
-- 网络：`LeNet(MNIST)`
-- feature map layout：`HWC`
-- conv weight layout：`[in_c][k_h][k_w][out_c]` + per-`in_c` 32-bit 对齐
-- fc weight layout：`[out_neuron][in_neuron]`
-- activation / weight：`INT8`
-- accumulate / output：`INT32`
-- 层间 `INT32 -> INT8` 规则：layer-wise requant
-- requant 算术：`multiplier + shift + round-half-away-from-zero + clamp`
-- `Pool = 2x2 MaxPool, stride=2`
-- `ReLU` 在 `INT32` 域
-- `bias` 本轮不支持
-
-补充说明：
-
-- 上述 requant 语义是当前正式基线
-- 旧 direct-saturate 路径不再作为正式交付语义保留
-- software / fixture / RTL 必须共同使用同一组 per-layer requant 参数
-
-## 6. Shared Memory 基线
-
-- `top` 不允许继续停留在默认 `64KB` 小容量模型
-- 默认共享内存窗口必须覆盖 LeNet 地址图
-- 当前基线按至少 `1MB` 共享内存窗口规划
-- `task_checker` 地址合法范围必须与 `shared_ram` 容量一致
-
-## 7. 不回退门槛
-
-以下项目视为本轮强制不回退约束：
-
-- 参数检查必须先于 DMA / compute 启动
-- `block_scheduler` 必须接入真实主数据路径
-- `AXI-Lite interconnect` 必须保持事务目标锁存安全
-- CPU / NPU 必须继续共享同一份内存语义
-- FC 不能再按“未支持”处理
-- deterministic fixture 不能被真实权重流替代掉
-
-## 8. 调试与验收规则
-
-### 完成判定
-
-以下都不算完成：
-
-- `done=1`
-- `no error`
-- 输出非 `x`
-- accepted / framework exists / structure complete
-
-必须同时满足：
-
-1. 严格 testbench PASS
-2. 数值与 golden/reference 一致
-3. 退出原因为正确完成，而不是偶然结束
-4. 相关回归未破坏
-5. 文档、RTL、testbench 口径一致
-
-### 调试顺序
+## 7. 调试与验收规则
 
 出现 mismatch 时，优先检查：
 
@@ -238,25 +99,21 @@
 7. start/done 时序
 8. 同周期旧值使用
 
-简单问题未排除前，不要先归因为深层阵列时序。
+完成必须同时满足：
 
-### 最小闭环优先
+1. 指定 testbench 严格 PASS
+2. 数值与 golden/reference 一致
+3. 退出原因为正确完成
+4. 相关回归未破坏
+5. 文档、RTL、testbench、脚本口径一致
 
-- 先最小空间尺寸
-- 先最小通道数
-- 先单 block
-- 先手算 golden
-- 先单层再整网
+每轮完成后必须报告：
 
-## 9. 任务完成后必须报告
-
-每完成一个任务，必须报告：
-
-- Task 编号
+- 当前任务 / 工单
 - 修改摘要
 - 修改文件列表
 - 新增/修改的测试
 - 运行命令
-- 仿真/验证结果
-- 是否满足该任务验收标准
+- 运行结果
+- 是否满足验收标准
 - 残留风险

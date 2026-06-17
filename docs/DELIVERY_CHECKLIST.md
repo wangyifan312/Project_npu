@@ -35,15 +35,15 @@
 
 - 上述 5 条必做项定义的是**当前仓库达到赛题答辩展示标准**的最小门槛
 - 如果赛题明确要求**完整测试集结果**，则除本清单外，还必须继续执行：
-  - [docs/MNIST_FULL_EVAL_PLAN.md](docs/MNIST_FULL_EVAL_PLAN.md)
+  - [MNIST_FULL_EVAL_PLAN.md](MNIST_FULL_EVAL_PLAN.md)
 - 如果完整测试集 software gate 长期低于 `80%`，则还必须继续执行：
-  - [docs/REQUANTIZATION_PLAN.md](docs/REQUANTIZATION_PLAN.md)
+  - [REQUANTIZATION_PLAN.md](REQUANTIZATION_PLAN.md)
 - 也就是说：
   - `8` 样本或小批量 real-weight 回归可证明推理链路与 SoC 闭环
   - 但不能替代完整 `MNIST test set` 结果
   - 如果答辩或交付材料要明确宣称“标准 AXI4 / AXI-Lite 兼容”，则还必须继续执行：
-    - [docs/AXI_COMPLIANCE_SPEC.md](docs/AXI_COMPLIANCE_SPEC.md)
-    - [docs/AXI_COMPLIANCE_EXECUTION_CHECKLIST.md](docs/AXI_COMPLIANCE_EXECUTION_CHECKLIST.md)
+    - [AXI_COMPLIANCE_SPEC.md](AXI_COMPLIANCE_SPEC.md)
+    - [AXI_COMPLIANCE_EXECUTION_CHECKLIST.md](AXI_COMPLIANCE_EXECUTION_CHECKLIST.md)
 
 ---
 
@@ -329,7 +329,7 @@
 
 如果赛题明确要求完整测试集结果，则在完成上述 5 项后，继续按以下顺序推进：
 
-1. 执行 [docs/MNIST_FULL_EVAL_PLAN.md](docs/MNIST_FULL_EVAL_PLAN.md)
+1. 执行 [MNIST_FULL_EVAL_PLAN.md](MNIST_FULL_EVAL_PLAN.md)
 2. 先确认 software full-set 主证据
 3. 再补 RTL subsystem representative chunk evidence
 4. 视仿真成本再推进 `top` 级大批量或完整测试集
@@ -369,7 +369,7 @@
 
 如果赛题书面要求包含**完整测试集结果**，则还必须额外满足：
 
-- 已按 [docs/MNIST_FULL_EVAL_PLAN.md](docs/MNIST_FULL_EVAL_PLAN.md) 跑出完整测试集结论；当前以 software full-set 作为全量 accuracy 主证据，并以 RTL representative chunks 作为硬件侧代表性证据
+- 已按 [MNIST_FULL_EVAL_PLAN.md](MNIST_FULL_EVAL_PLAN.md) 跑出完整测试集结论；当前以 software full-set 作为全量 accuracy 主证据，并以 RTL representative chunks 作为硬件侧代表性证据
 - 完整 `MNIST test set` software accuracy 必须达到 `80%` 及以上
 
 否则只能表述为：
