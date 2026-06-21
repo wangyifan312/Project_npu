@@ -1,0 +1,52 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "closed_items": [
+    {
+      "item": "folded_bias_int32_rounding",
+      "rtl_requirement": "rtl_consumption_required_in_R1",
+      "status": "closed_for_export"
+    },
+    {
+      "item": "gap_reciprocal_shift_contract",
+      "rtl_requirement": "rtl_datapath_required_in_R1",
+      "status": "closed_for_export"
+    },
+    {
+      "item": "residual_add_datapath_contract",
+      "rtl_requirement": "rtl_datapath_required_in_R1",
+      "status": "closed_for_export"
+    }
+  ],
+  "f6a_previous_status": "reviewed_with_open_items",
+  "fixed_point_accuracy": 0.8639,
+  "fixed_point_correct": 8639,
+  "fixed_point_total": 10000,
+  "gate_status": "passed",
+  "generated_files": [
+    "summary.json",
+    "numerical_contract.json",
+    "op_contract.json",
+    "export_manifest_schema.json"
+  ],
+  "handoff_contract_status": "reviewed_contract_closed_for_export",
+  "next_allowed_stage": "export_int8_int32_assets",
+  "one_mb_memory_reuse_map_generated": false,
+  "r0_5_unfinished": [
+    "int8_weights_memh",
+    "int32_folded_bias_memh",
+    "final_task_sequence",
+    "one_mb_memory_reuse_map",
+    "rtl_r1_implementation"
+  ],
+  "rtl_memh_generated": false,
+  "rtl_r1_started": false,
+  "rtl_task_sequence_generated": false,
+  "source_conv_fc_requant": "datasets/cifar10/resnet20_requant_plan/conv_fc_requant.json",
+  "source_fixed_eval": "datasets/cifar10/resnet20_fixed_point_eval_10000/summary.json",
+  "source_quant_params": "datasets/cifar10/resnet20_quant_calibration/quant_params.json",
+  "source_residual_add_alignment": "datasets/cifar10/resnet20_requant_plan/residual_add_alignment.json",
+  "source_rtl_lock_review": "datasets/cifar10/resnet20_rtl_lock_review/summary.json",
+  "unresolved_items": [],
+  "validation_errors": [],
+  "waiver_items": []
+}

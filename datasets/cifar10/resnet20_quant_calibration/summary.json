@@ -1,0 +1,35 @@
+{
+  "activation_tensor_count": 50,
+  "arch": "cifar10_resnet20_v1",
+  "calibration_sample_count": 512,
+  "checkpoint": "datasets/cifar10/models/resnet20_float_candidate_mps_continue_stage2.pt",
+  "conv_fc_quant_param_count": 22,
+  "dataset_source": "cifar10_tar:datasets/cifar10/cifar-10-python.tar.gz:train",
+  "fixed_point_accuracy_gate": {
+    "reason": "calibration skeleton does not run actual fixed-point inference",
+    "required_accuracy": 0.8,
+    "status": "not_evaluated"
+  },
+  "fixed_point_status": "not_implemented",
+  "generated_memh_files": [],
+  "memory_reuse_map": null,
+  "outputs": {
+    "activation_stats": "activation_stats.json",
+    "quant_params": "quant_params.json",
+    "requant_plan": "requant_plan.json"
+  },
+  "r0_5_unfinished": [
+    "actual_fixed_point_inference",
+    "accuracy_gate_80_percent",
+    "real_cifar10_full_fixed_point_eval",
+    "int8_weights_memh",
+    "int32_folded_bias_memh",
+    "final_task_sequence",
+    "one_mb_memory_reuse_map"
+  ],
+  "residual_add_count": 9,
+  "same_scale_pending_count": 9,
+  "split": "train",
+  "status": "quant_calibration_skeleton",
+  "task_sequence": null
+}

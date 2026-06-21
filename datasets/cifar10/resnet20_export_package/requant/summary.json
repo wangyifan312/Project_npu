@@ -1,0 +1,12 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "conv_fc_requant_count": 22,
+  "files": {
+    "conv_fc_requant": "requant/conv_fc_requant.json",
+    "gap_requant": "requant/gap_requant.json",
+    "residual_add_alignment": "requant/residual_add_alignment.json"
+  },
+  "gap_requant_status": "searched",
+  "residual_add_alignment_count": 9,
+  "status": "requant_exported"
+}

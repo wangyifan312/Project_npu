@@ -243,7 +243,7 @@ module npu_top_route_case #(
             $fatal(1, "%0s cluster_count=%0d expect=%0d",
                    CASE_NAME, dut.perf_cluster_count, EXPECTED_CLUSTERS);
 
-        force dut.task_type = 2'd0;
+        force dut.task_type = 3'd0;
         force dut.output_c = ACTIVE_COLS[15:0];
         force dut.fsm_state = 5'd9;
         force dut.comp_sub_state = 3'd2;

@@ -1,0 +1,1025 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "layers": [
+    {
+      "has_bias_after_folding": true,
+      "has_bn": true,
+      "input_shape": [
+        3,
+        32,
+        32
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "name": "conv1",
+      "op_type": "conv",
+      "output_shape": [
+        16,
+        32,
+        32
+      ],
+      "padding": [
+        1,
+        1
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "none",
+      "stride": [
+        1,
+        1
+      ]
+    },
+    {
+      "has_bias_after_folding": true,
+      "has_bn": true,
+      "input_shape": [
+        16,
+        32,
+        32
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "name": "layer1.0.conv1",
+      "op_type": "conv",
+      "output_shape": [
+        16,
+        32,
+        32
+      ],
+      "padding": [
+        1,
+        1
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "identity",
+      "stride": [
+        1,
+        1
+      ]
+    },
+    {
+      "has_bias_after_folding": true,
+      "has_bn": true,
+      "input_shape": [
+        16,
+        32,
+        32
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "name": "layer1.0.conv2",
+      "op_type": "conv",
+      "output_shape": [
+        16,
+        32,
+        32
+      ],
+      "padding": [
+        1,
+        1
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "identity",
+      "stride": [
+        1,
+        1
+      ]
+    },
+    {
+      "add_contract": "int32_same_scale",
+      "has_bias_after_folding": false,
+      "has_bn": false,
+      "input_shape": [
+        [
+          16,
+          32,
+          32
+        ],
+        [
+          16,
+          32,
+          32
+        ]
+      ],
+      "kernel": null,
+      "name": "layer1.0.add",
+      "op_type": "residual_add",
+      "output_shape": [
+        16,
+        32,
+        32
+      ],
+      "padding": null,
+      "postproc_options": [
+        "ADD",
+        "ADD_RELU",
+        "ADD_REQUANT",
+        "ADD_RELU_REQUANT"
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "identity",
+      "stride": null
+    },
+    {
+      "has_bias_after_folding": true,
+      "has_bn": true,
+      "input_shape": [
+        16,
+        32,
+        32
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "name": "layer1.1.conv1",
+      "op_type": "conv",
+      "output_shape": [
+        16,
+        32,
+        32
+      ],
+      "padding": [
+        1,
+        1
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "identity",
+      "stride": [
+        1,
+        1
+      ]
+    },
+    {
+      "has_bias_after_folding": true,
+      "has_bn": true,
+      "input_shape": [
+        16,
+        32,
+        32
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "name": "layer1.1.conv2",
+      "op_type": "conv",
+      "output_shape": [
+        16,
+        32,
+        32
+      ],
+      "padding": [
+        1,
+        1
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "identity",
+      "stride": [
+        1,
+        1
+      ]
+    },
+    {
+      "add_contract": "int32_same_scale",
+      "has_bias_after_folding": false,
+      "has_bn": false,
+      "input_shape": [
+        [
+          16,
+          32,
+          32
+        ],
+        [
+          16,
+          32,
+          32
+        ]
+      ],
+      "kernel": null,
+      "name": "layer1.1.add",
+      "op_type": "residual_add",
+      "output_shape": [
+        16,
+        32,
+        32
+      ],
+      "padding": null,
+      "postproc_options": [
+        "ADD",
+        "ADD_RELU",
+        "ADD_REQUANT",
+        "ADD_RELU_REQUANT"
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "identity",
+      "stride": null
+    },
+    {
+      "has_bias_after_folding": true,
+      "has_bn": true,
+      "input_shape": [
+        16,
+        32,
+        32
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "name": "layer1.2.conv1",
+      "op_type": "conv",
+      "output_shape": [
+        16,
+        32,
+        32
+      ],
+      "padding": [
+        1,
+        1
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "identity",
+      "stride": [
+        1,
+        1
+      ]
+    },
+    {
+      "has_bias_after_folding": true,
+      "has_bn": true,
+      "input_shape": [
+        16,
+        32,
+        32
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "name": "layer1.2.conv2",
+      "op_type": "conv",
+      "output_shape": [
+        16,
+        32,
+        32
+      ],
+      "padding": [
+        1,
+        1
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "identity",
+      "stride": [
+        1,
+        1
+      ]
+    },
+    {
+      "add_contract": "int32_same_scale",
+      "has_bias_after_folding": false,
+      "has_bn": false,
+      "input_shape": [
+        [
+          16,
+          32,
+          32
+        ],
+        [
+          16,
+          32,
+          32
+        ]
+      ],
+      "kernel": null,
+      "name": "layer1.2.add",
+      "op_type": "residual_add",
+      "output_shape": [
+        16,
+        32,
+        32
+      ],
+      "padding": null,
+      "postproc_options": [
+        "ADD",
+        "ADD_RELU",
+        "ADD_REQUANT",
+        "ADD_RELU_REQUANT"
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "identity",
+      "stride": null
+    },
+    {
+      "has_bias_after_folding": true,
+      "has_bn": true,
+      "input_shape": [
+        16,
+        32,
+        32
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "name": "layer2.0.conv1",
+      "op_type": "conv",
+      "output_shape": [
+        32,
+        16,
+        16
+      ],
+      "padding": [
+        1,
+        1
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "projection_conv1x1_stride2",
+      "stride": [
+        2,
+        2
+      ]
+    },
+    {
+      "has_bias_after_folding": true,
+      "has_bn": true,
+      "input_shape": [
+        32,
+        16,
+        16
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "name": "layer2.0.conv2",
+      "op_type": "conv",
+      "output_shape": [
+        32,
+        16,
+        16
+      ],
+      "padding": [
+        1,
+        1
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "projection_conv1x1_stride2",
+      "stride": [
+        1,
+        1
+      ]
+    },
+    {
+      "has_bias_after_folding": true,
+      "has_bn": true,
+      "input_shape": [
+        16,
+        32,
+        32
+      ],
+      "kernel": [
+        1,
+        1
+      ],
+      "name": "layer2.0.shortcut.proj",
+      "op_type": "conv",
+      "output_shape": [
+        32,
+        16,
+        16
+      ],
+      "padding": [
+        0,
+        0
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "projection_conv1x1_stride2",
+      "stride": [
+        2,
+        2
+      ]
+    },
+    {
+      "add_contract": "int32_same_scale",
+      "has_bias_after_folding": false,
+      "has_bn": false,
+      "input_shape": [
+        [
+          32,
+          16,
+          16
+        ],
+        [
+          32,
+          16,
+          16
+        ]
+      ],
+      "kernel": null,
+      "name": "layer2.0.add",
+      "op_type": "residual_add",
+      "output_shape": [
+        32,
+        16,
+        16
+      ],
+      "padding": null,
+      "postproc_options": [
+        "ADD",
+        "ADD_RELU",
+        "ADD_REQUANT",
+        "ADD_RELU_REQUANT"
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "projection_conv1x1_stride2",
+      "stride": null
+    },
+    {
+      "has_bias_after_folding": true,
+      "has_bn": true,
+      "input_shape": [
+        32,
+        16,
+        16
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "name": "layer2.1.conv1",
+      "op_type": "conv",
+      "output_shape": [
+        32,
+        16,
+        16
+      ],
+      "padding": [
+        1,
+        1
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "identity",
+      "stride": [
+        1,
+        1
+      ]
+    },
+    {
+      "has_bias_after_folding": true,
+      "has_bn": true,
+      "input_shape": [
+        32,
+        16,
+        16
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "name": "layer2.1.conv2",
+      "op_type": "conv",
+      "output_shape": [
+        32,
+        16,
+        16
+      ],
+      "padding": [
+        1,
+        1
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "identity",
+      "stride": [
+        1,
+        1
+      ]
+    },
+    {
+      "add_contract": "int32_same_scale",
+      "has_bias_after_folding": false,
+      "has_bn": false,
+      "input_shape": [
+        [
+          32,
+          16,
+          16
+        ],
+        [
+          32,
+          16,
+          16
+        ]
+      ],
+      "kernel": null,
+      "name": "layer2.1.add",
+      "op_type": "residual_add",
+      "output_shape": [
+        32,
+        16,
+        16
+      ],
+      "padding": null,
+      "postproc_options": [
+        "ADD",
+        "ADD_RELU",
+        "ADD_REQUANT",
+        "ADD_RELU_REQUANT"
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "identity",
+      "stride": null
+    },
+    {
+      "has_bias_after_folding": true,
+      "has_bn": true,
+      "input_shape": [
+        32,
+        16,
+        16
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "name": "layer2.2.conv1",
+      "op_type": "conv",
+      "output_shape": [
+        32,
+        16,
+        16
+      ],
+      "padding": [
+        1,
+        1
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "identity",
+      "stride": [
+        1,
+        1
+      ]
+    },
+    {
+      "has_bias_after_folding": true,
+      "has_bn": true,
+      "input_shape": [
+        32,
+        16,
+        16
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "name": "layer2.2.conv2",
+      "op_type": "conv",
+      "output_shape": [
+        32,
+        16,
+        16
+      ],
+      "padding": [
+        1,
+        1
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "identity",
+      "stride": [
+        1,
+        1
+      ]
+    },
+    {
+      "add_contract": "int32_same_scale",
+      "has_bias_after_folding": false,
+      "has_bn": false,
+      "input_shape": [
+        [
+          32,
+          16,
+          16
+        ],
+        [
+          32,
+          16,
+          16
+        ]
+      ],
+      "kernel": null,
+      "name": "layer2.2.add",
+      "op_type": "residual_add",
+      "output_shape": [
+        32,
+        16,
+        16
+      ],
+      "padding": null,
+      "postproc_options": [
+        "ADD",
+        "ADD_RELU",
+        "ADD_REQUANT",
+        "ADD_RELU_REQUANT"
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "identity",
+      "stride": null
+    },
+    {
+      "has_bias_after_folding": true,
+      "has_bn": true,
+      "input_shape": [
+        32,
+        16,
+        16
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "name": "layer3.0.conv1",
+      "op_type": "conv",
+      "output_shape": [
+        64,
+        8,
+        8
+      ],
+      "padding": [
+        1,
+        1
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "projection_conv1x1_stride2",
+      "stride": [
+        2,
+        2
+      ]
+    },
+    {
+      "has_bias_after_folding": true,
+      "has_bn": true,
+      "input_shape": [
+        64,
+        8,
+        8
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "name": "layer3.0.conv2",
+      "op_type": "conv",
+      "output_shape": [
+        64,
+        8,
+        8
+      ],
+      "padding": [
+        1,
+        1
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "projection_conv1x1_stride2",
+      "stride": [
+        1,
+        1
+      ]
+    },
+    {
+      "has_bias_after_folding": true,
+      "has_bn": true,
+      "input_shape": [
+        32,
+        16,
+        16
+      ],
+      "kernel": [
+        1,
+        1
+      ],
+      "name": "layer3.0.shortcut.proj",
+      "op_type": "conv",
+      "output_shape": [
+        64,
+        8,
+        8
+      ],
+      "padding": [
+        0,
+        0
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "projection_conv1x1_stride2",
+      "stride": [
+        2,
+        2
+      ]
+    },
+    {
+      "add_contract": "int32_same_scale",
+      "has_bias_after_folding": false,
+      "has_bn": false,
+      "input_shape": [
+        [
+          64,
+          8,
+          8
+        ],
+        [
+          64,
+          8,
+          8
+        ]
+      ],
+      "kernel": null,
+      "name": "layer3.0.add",
+      "op_type": "residual_add",
+      "output_shape": [
+        64,
+        8,
+        8
+      ],
+      "padding": null,
+      "postproc_options": [
+        "ADD",
+        "ADD_RELU",
+        "ADD_REQUANT",
+        "ADD_RELU_REQUANT"
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "projection_conv1x1_stride2",
+      "stride": null
+    },
+    {
+      "has_bias_after_folding": true,
+      "has_bn": true,
+      "input_shape": [
+        64,
+        8,
+        8
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "name": "layer3.1.conv1",
+      "op_type": "conv",
+      "output_shape": [
+        64,
+        8,
+        8
+      ],
+      "padding": [
+        1,
+        1
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "identity",
+      "stride": [
+        1,
+        1
+      ]
+    },
+    {
+      "has_bias_after_folding": true,
+      "has_bn": true,
+      "input_shape": [
+        64,
+        8,
+        8
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "name": "layer3.1.conv2",
+      "op_type": "conv",
+      "output_shape": [
+        64,
+        8,
+        8
+      ],
+      "padding": [
+        1,
+        1
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "identity",
+      "stride": [
+        1,
+        1
+      ]
+    },
+    {
+      "add_contract": "int32_same_scale",
+      "has_bias_after_folding": false,
+      "has_bn": false,
+      "input_shape": [
+        [
+          64,
+          8,
+          8
+        ],
+        [
+          64,
+          8,
+          8
+        ]
+      ],
+      "kernel": null,
+      "name": "layer3.1.add",
+      "op_type": "residual_add",
+      "output_shape": [
+        64,
+        8,
+        8
+      ],
+      "padding": null,
+      "postproc_options": [
+        "ADD",
+        "ADD_RELU",
+        "ADD_REQUANT",
+        "ADD_RELU_REQUANT"
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "identity",
+      "stride": null
+    },
+    {
+      "has_bias_after_folding": true,
+      "has_bn": true,
+      "input_shape": [
+        64,
+        8,
+        8
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "name": "layer3.2.conv1",
+      "op_type": "conv",
+      "output_shape": [
+        64,
+        8,
+        8
+      ],
+      "padding": [
+        1,
+        1
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "identity",
+      "stride": [
+        1,
+        1
+      ]
+    },
+    {
+      "has_bias_after_folding": true,
+      "has_bn": true,
+      "input_shape": [
+        64,
+        8,
+        8
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "name": "layer3.2.conv2",
+      "op_type": "conv",
+      "output_shape": [
+        64,
+        8,
+        8
+      ],
+      "padding": [
+        1,
+        1
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "identity",
+      "stride": [
+        1,
+        1
+      ]
+    },
+    {
+      "add_contract": "int32_same_scale",
+      "has_bias_after_folding": false,
+      "has_bn": false,
+      "input_shape": [
+        [
+          64,
+          8,
+          8
+        ],
+        [
+          64,
+          8,
+          8
+        ]
+      ],
+      "kernel": null,
+      "name": "layer3.2.add",
+      "op_type": "residual_add",
+      "output_shape": [
+        64,
+        8,
+        8
+      ],
+      "padding": null,
+      "postproc_options": [
+        "ADD",
+        "ADD_RELU",
+        "ADD_REQUANT",
+        "ADD_RELU_REQUANT"
+      ],
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "identity",
+      "stride": null
+    },
+    {
+      "gap_contract": "int32_input_int32_output_reciprocal_shift_no_divider",
+      "has_bias_after_folding": false,
+      "has_bn": false,
+      "input_shape": [
+        64,
+        8,
+        8
+      ],
+      "kernel": [
+        8,
+        8
+      ],
+      "name": "global_average_pool",
+      "op_type": "gap",
+      "output_shape": [
+        64
+      ],
+      "padding": null,
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "none",
+      "stride": null
+    },
+    {
+      "has_bias_after_folding": true,
+      "has_bn": false,
+      "input_shape": [
+        64
+      ],
+      "kernel": null,
+      "name": "fc",
+      "op_type": "fc",
+      "output_shape": [
+        10
+      ],
+      "padding": null,
+      "quant_status": "not_implemented",
+      "requant_status": "not_implemented",
+      "shortcut_type": "none",
+      "stride": null
+    }
+  ],
+  "operator_count": 32,
+  "source_checkpoint": "datasets/cifar10/models/resnet20_float_candidate_mps_continue_stage2.pt",
+  "status": "fixed_point_layer_skeleton"
+}

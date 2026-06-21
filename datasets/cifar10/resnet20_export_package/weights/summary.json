@@ -1,0 +1,472 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "dtype": "INT8",
+  "entries": [
+    {
+      "abs_checksum": 4626,
+      "checksum": -48,
+      "dtype": "INT8",
+      "element_count": 432,
+      "file": "weights/conv1.memh",
+      "layer": "conv1",
+      "layout": "conv_weight_IHWO_from_pytorch_OIHW",
+      "max": 127,
+      "min": -51,
+      "module_name": "conv1",
+      "scale": 0.02575007761557271,
+      "shape": [
+        3,
+        3,
+        3,
+        16
+      ],
+      "source_layout": "pytorch_OIHW",
+      "source_tensor": "conv1.weight"
+    },
+    {
+      "abs_checksum": 19923,
+      "checksum": -1145,
+      "dtype": "INT8",
+      "element_count": 2304,
+      "file": "weights/layer1_0_conv1.memh",
+      "layer": "layer1.0.conv1",
+      "layout": "conv_weight_IHWO_from_pytorch_OIHW",
+      "max": 92,
+      "min": -127,
+      "module_name": "layer1.0.conv1",
+      "scale": 0.0045919291616424805,
+      "shape": [
+        16,
+        3,
+        3,
+        16
+      ],
+      "source_layout": "pytorch_OIHW",
+      "source_tensor": "layer1.0.conv1.weight"
+    },
+    {
+      "abs_checksum": 46117,
+      "checksum": -5847,
+      "dtype": "INT8",
+      "element_count": 2304,
+      "file": "weights/layer1_0_conv2.memh",
+      "layer": "layer1.0.conv2",
+      "layout": "conv_weight_IHWO_from_pytorch_OIHW",
+      "max": 122,
+      "min": -127,
+      "module_name": "layer1.0.conv2",
+      "scale": 0.0025455991583546314,
+      "shape": [
+        16,
+        3,
+        3,
+        16
+      ],
+      "source_layout": "pytorch_OIHW",
+      "source_tensor": "layer1.0.conv2.weight"
+    },
+    {
+      "abs_checksum": 34719,
+      "checksum": 647,
+      "dtype": "INT8",
+      "element_count": 2304,
+      "file": "weights/layer1_1_conv1.memh",
+      "layer": "layer1.1.conv1",
+      "layout": "conv_weight_IHWO_from_pytorch_OIHW",
+      "max": 127,
+      "min": -102,
+      "module_name": "layer1.1.conv1",
+      "scale": 0.0021344456147021195,
+      "shape": [
+        16,
+        3,
+        3,
+        16
+      ],
+      "source_layout": "pytorch_OIHW",
+      "source_tensor": "layer1.1.conv1.weight"
+    },
+    {
+      "abs_checksum": 34850,
+      "checksum": -7128,
+      "dtype": "INT8",
+      "element_count": 2304,
+      "file": "weights/layer1_1_conv2.memh",
+      "layer": "layer1.1.conv2",
+      "layout": "conv_weight_IHWO_from_pytorch_OIHW",
+      "max": 127,
+      "min": -82,
+      "module_name": "layer1.1.conv2",
+      "scale": 0.004367696018669549,
+      "shape": [
+        16,
+        3,
+        3,
+        16
+      ],
+      "source_layout": "pytorch_OIHW",
+      "source_tensor": "layer1.1.conv2.weight"
+    },
+    {
+      "abs_checksum": 44337,
+      "checksum": -1455,
+      "dtype": "INT8",
+      "element_count": 2304,
+      "file": "weights/layer1_2_conv1.memh",
+      "layer": "layer1.2.conv1",
+      "layout": "conv_weight_IHWO_from_pytorch_OIHW",
+      "max": 127,
+      "min": -106,
+      "module_name": "layer1.2.conv1",
+      "scale": 0.0014695750446770135,
+      "shape": [
+        16,
+        3,
+        3,
+        16
+      ],
+      "source_layout": "pytorch_OIHW",
+      "source_tensor": "layer1.2.conv1.weight"
+    },
+    {
+      "abs_checksum": 37212,
+      "checksum": -3604,
+      "dtype": "INT8",
+      "element_count": 2304,
+      "file": "weights/layer1_2_conv2.memh",
+      "layer": "layer1.2.conv2",
+      "layout": "conv_weight_IHWO_from_pytorch_OIHW",
+      "max": 92,
+      "min": -127,
+      "module_name": "layer1.2.conv2",
+      "scale": 0.004378404204301008,
+      "shape": [
+        16,
+        3,
+        3,
+        16
+      ],
+      "source_layout": "pytorch_OIHW",
+      "source_tensor": "layer1.2.conv2.weight"
+    },
+    {
+      "abs_checksum": 90034,
+      "checksum": -4602,
+      "dtype": "INT8",
+      "element_count": 4608,
+      "file": "weights/layer2_0_conv1.memh",
+      "layer": "layer2.0.conv1",
+      "layout": "conv_weight_IHWO_from_pytorch_OIHW",
+      "max": 127,
+      "min": -112,
+      "module_name": "layer2.0.conv1",
+      "scale": 0.001385761527564582,
+      "shape": [
+        16,
+        3,
+        3,
+        32
+      ],
+      "source_layout": "pytorch_OIHW",
+      "source_tensor": "layer2.0.conv1.weight"
+    },
+    {
+      "abs_checksum": 201528,
+      "checksum": -9612,
+      "dtype": "INT8",
+      "element_count": 9216,
+      "file": "weights/layer2_0_conv2.memh",
+      "layer": "layer2.0.conv2",
+      "layout": "conv_weight_IHWO_from_pytorch_OIHW",
+      "max": 127,
+      "min": -112,
+      "module_name": "layer2.0.conv2",
+      "scale": 0.002716412459771464,
+      "shape": [
+        32,
+        3,
+        3,
+        32
+      ],
+      "source_layout": "pytorch_OIHW",
+      "source_tensor": "layer2.0.conv2.weight"
+    },
+    {
+      "abs_checksum": 12470,
+      "checksum": 404,
+      "dtype": "INT8",
+      "element_count": 512,
+      "file": "weights/layer2_0_shortcut_projection.memh",
+      "layer": "layer2.0.shortcut.projection",
+      "layout": "conv_weight_IHWO_from_pytorch_OIHW",
+      "max": 127,
+      "min": -101,
+      "module_name": "layer2.0.shortcut",
+      "scale": 0.005252162302572896,
+      "shape": [
+        16,
+        1,
+        1,
+        32
+      ],
+      "source_layout": "pytorch_OIHW",
+      "source_tensor": "layer2.0.shortcut.0.weight"
+    },
+    {
+      "abs_checksum": 155446,
+      "checksum": -14860,
+      "dtype": "INT8",
+      "element_count": 9216,
+      "file": "weights/layer2_1_conv1.memh",
+      "layer": "layer2.1.conv1",
+      "layout": "conv_weight_IHWO_from_pytorch_OIHW",
+      "max": 127,
+      "min": -121,
+      "module_name": "layer2.1.conv1",
+      "scale": 0.0012842816865350317,
+      "shape": [
+        32,
+        3,
+        3,
+        32
+      ],
+      "source_layout": "pytorch_OIHW",
+      "source_tensor": "layer2.1.conv1.weight"
+    },
+    {
+      "abs_checksum": 175214,
+      "checksum": -13154,
+      "dtype": "INT8",
+      "element_count": 9216,
+      "file": "weights/layer2_1_conv2.memh",
+      "layer": "layer2.1.conv2",
+      "layout": "conv_weight_IHWO_from_pytorch_OIHW",
+      "max": 127,
+      "min": -99,
+      "module_name": "layer2.1.conv2",
+      "scale": 0.0033717061590960644,
+      "shape": [
+        32,
+        3,
+        3,
+        32
+      ],
+      "source_layout": "pytorch_OIHW",
+      "source_tensor": "layer2.1.conv2.weight"
+    },
+    {
+      "abs_checksum": 193096,
+      "checksum": -21504,
+      "dtype": "INT8",
+      "element_count": 9216,
+      "file": "weights/layer2_2_conv1.memh",
+      "layer": "layer2.2.conv1",
+      "layout": "conv_weight_IHWO_from_pytorch_OIHW",
+      "max": 124,
+      "min": -127,
+      "module_name": "layer2.2.conv1",
+      "scale": 0.0008476448692674712,
+      "shape": [
+        32,
+        3,
+        3,
+        32
+      ],
+      "source_layout": "pytorch_OIHW",
+      "source_tensor": "layer2.2.conv1.weight"
+    },
+    {
+      "abs_checksum": 181273,
+      "checksum": -24829,
+      "dtype": "INT8",
+      "element_count": 9216,
+      "file": "weights/layer2_2_conv2.memh",
+      "layer": "layer2.2.conv2",
+      "layout": "conv_weight_IHWO_from_pytorch_OIHW",
+      "max": 127,
+      "min": -110,
+      "module_name": "layer2.2.conv2",
+      "scale": 0.003089035355199979,
+      "shape": [
+        32,
+        3,
+        3,
+        32
+      ],
+      "source_layout": "pytorch_OIHW",
+      "source_tensor": "layer2.2.conv2.weight"
+    },
+    {
+      "abs_checksum": 387251,
+      "checksum": -44763,
+      "dtype": "INT8",
+      "element_count": 18432,
+      "file": "weights/layer3_0_conv1.memh",
+      "layer": "layer3.0.conv1",
+      "layout": "conv_weight_IHWO_from_pytorch_OIHW",
+      "max": 127,
+      "min": -105,
+      "module_name": "layer3.0.conv1",
+      "scale": 0.0008742480766116165,
+      "shape": [
+        32,
+        3,
+        3,
+        64
+      ],
+      "source_layout": "pytorch_OIHW",
+      "source_tensor": "layer3.0.conv1.weight"
+    },
+    {
+      "abs_checksum": 667406,
+      "checksum": -59766,
+      "dtype": "INT8",
+      "element_count": 36864,
+      "file": "weights/layer3_0_conv2.memh",
+      "layer": "layer3.0.conv2",
+      "layout": "conv_weight_IHWO_from_pytorch_OIHW",
+      "max": 127,
+      "min": -100,
+      "module_name": "layer3.0.conv2",
+      "scale": 0.0029972434982540102,
+      "shape": [
+        64,
+        3,
+        3,
+        64
+      ],
+      "source_layout": "pytorch_OIHW",
+      "source_tensor": "layer3.0.conv2.weight"
+    },
+    {
+      "abs_checksum": 46654,
+      "checksum": -3442,
+      "dtype": "INT8",
+      "element_count": 2048,
+      "file": "weights/layer3_0_shortcut_projection.memh",
+      "layer": "layer3.0.shortcut.projection",
+      "layout": "conv_weight_IHWO_from_pytorch_OIHW",
+      "max": 112,
+      "min": -127,
+      "module_name": "layer3.0.shortcut",
+      "scale": 0.002476230146378044,
+      "shape": [
+        32,
+        1,
+        1,
+        64
+      ],
+      "source_layout": "pytorch_OIHW",
+      "source_tensor": "layer3.0.shortcut.0.weight"
+    },
+    {
+      "abs_checksum": 671958,
+      "checksum": -84540,
+      "dtype": "INT8",
+      "element_count": 36864,
+      "file": "weights/layer3_1_conv1.memh",
+      "layer": "layer3.1.conv1",
+      "layout": "conv_weight_IHWO_from_pytorch_OIHW",
+      "max": 127,
+      "min": -104,
+      "module_name": "layer3.1.conv1",
+      "scale": 0.001720585456983311,
+      "shape": [
+        64,
+        3,
+        3,
+        64
+      ],
+      "source_layout": "pytorch_OIHW",
+      "source_tensor": "layer3.1.conv1.weight"
+    },
+    {
+      "abs_checksum": 669953,
+      "checksum": -93417,
+      "dtype": "INT8",
+      "element_count": 36864,
+      "file": "weights/layer3_1_conv2.memh",
+      "layer": "layer3.1.conv2",
+      "layout": "conv_weight_IHWO_from_pytorch_OIHW",
+      "max": 127,
+      "min": -115,
+      "module_name": "layer3.1.conv2",
+      "scale": 0.0032487882403876836,
+      "shape": [
+        64,
+        3,
+        3,
+        64
+      ],
+      "source_layout": "pytorch_OIHW",
+      "source_tensor": "layer3.1.conv2.weight"
+    },
+    {
+      "abs_checksum": 636945,
+      "checksum": -41069,
+      "dtype": "INT8",
+      "element_count": 36864,
+      "file": "weights/layer3_2_conv1.memh",
+      "layer": "layer3.2.conv1",
+      "layout": "conv_weight_IHWO_from_pytorch_OIHW",
+      "max": 123,
+      "min": -127,
+      "module_name": "layer3.2.conv1",
+      "scale": 0.0009960085153579712,
+      "shape": [
+        64,
+        3,
+        3,
+        64
+      ],
+      "source_layout": "pytorch_OIHW",
+      "source_tensor": "layer3.2.conv1.weight"
+    },
+    {
+      "abs_checksum": 691819,
+      "checksum": -8367,
+      "dtype": "INT8",
+      "element_count": 36864,
+      "file": "weights/layer3_2_conv2.memh",
+      "layer": "layer3.2.conv2",
+      "layout": "conv_weight_IHWO_from_pytorch_OIHW",
+      "max": 127,
+      "min": -112,
+      "module_name": "layer3.2.conv2",
+      "scale": 0.0017341599455029946,
+      "shape": [
+        64,
+        3,
+        3,
+        64
+      ],
+      "source_layout": "pytorch_OIHW",
+      "source_tensor": "layer3.2.conv2.weight"
+    },
+    {
+      "abs_checksum": 19967,
+      "checksum": 33,
+      "dtype": "INT8",
+      "element_count": 640,
+      "file": "weights/fc.memh",
+      "layer": "fc",
+      "layout": "fc_weight_OI",
+      "max": 127,
+      "min": -81,
+      "module_name": "fc",
+      "scale": 0.01218554729551781,
+      "shape": [
+        10,
+        64
+      ],
+      "source_layout": "pytorch_OI",
+      "source_tensor": "fc.weight"
+    }
+  ],
+  "layout_policy": {
+    "conv": "IHWO_from_pytorch_OIHW",
+    "fc": "OI"
+  },
+  "status": "weights_exported",
+  "weight_file_count": 22
+}

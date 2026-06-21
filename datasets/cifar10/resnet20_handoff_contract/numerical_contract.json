@@ -1,0 +1,98 @@
+{
+  "GAP": {
+    "generated_memh": false,
+    "implementation_policy": "dedicated_GAP_task_or_explicit_task_sequence_macro_allowed_if_contract_preserved",
+    "input": {
+      "dtype": "INT8",
+      "shape": "N x 64 x 8 x 8 logical feature tensor",
+      "tensor": "final_residual_block_activation"
+    },
+    "op_class": "GAP8x8",
+    "operation": {
+      "divide": "divide by 64 using fixed shift/reciprocal contract",
+      "hardware_divider": "not_allowed",
+      "requant": "convert to gap.output scale with multiplier/shift",
+      "sum": "sum 8x8 spatial region per channel in INT32"
+    },
+    "output": {
+      "dtype": "INT8",
+      "length": 64
+    },
+    "rtl_datapath": "rtl_datapath_required_in_R1",
+    "status": "closed_for_export"
+  },
+  "activation_quantization": {
+    "activation_tensor_count": 50,
+    "dtype": "INT8",
+    "input_layout": "HWC",
+    "input_quantization": "uint8_minus_128",
+    "scheme": "per_tensor_symmetric_signed_int8",
+    "status": "closed_for_export"
+  },
+  "arch": "cifar10_resnet20_v1",
+  "bias_quantization": {
+    "dtype": "signed_int32",
+    "formula": {
+      "accumulator_scale": "input_activation_scale * weight_scale",
+      "bias_int32": "round_half_away_from_zero(folded_bias / accumulator_scale)",
+      "folded_bias": "beta - running_mean * gamma / sqrt(running_var + eps)"
+    },
+    "generated_memh": false,
+    "layout": "one_bias_per_output_channel_or_output_neuron",
+    "ordering": {
+      "conv": "output_channel_order",
+      "fc": "output_neuron_order"
+    },
+    "rounding": "round_half_away_from_zero",
+    "rtl_consumption": "rtl_consumption_required_in_R1",
+    "status": "closed_for_export"
+  },
+  "requant": {
+    "conv_fc_requant_count": 22,
+    "formula": "clamp(round_half_away_from_zero(acc * multiplier / 2^shift), -128, 127)",
+    "multiplier_domain": "positive int32-compatible integer",
+    "residual_add_alignment_count": 9,
+    "shift_domain": "0..31",
+    "status": "closed_for_export"
+  },
+  "residual_ADD": {
+    "add": "INT32 aligned main + INT32 aligned shortcut",
+    "alignment_policy": "align_both_branches_to_target_add_scale",
+    "branch_alignment": {
+      "main": "requant main branch to target_add_scale",
+      "shortcut": "requant shortcut branch to target_add_scale"
+    },
+    "generated_task_sequence": false,
+    "postprocess": [
+      "ReLU in INT32 domain",
+      "requant to post_relu_scale",
+      "clamp signed INT8 [-128,127]"
+    ],
+    "residual_add_count": 9,
+    "rtl_datapath": "rtl_datapath_required_in_R1",
+    "same_scale_status": "closed_for_export_using_planned_alignment",
+    "source": "datasets/cifar10/resnet20_requant_plan/residual_add_alignment.json",
+    "status": "closed_for_export",
+    "task_expression": "ADD task or postprocess op placeholder allowed as contract; RTL datapath required in R1"
+  },
+  "rounding": {
+    "rule": "round_half_away_from_zero",
+    "source": "F6a reviewed existing requant_i32_to_i8 match",
+    "status": "closed_for_export"
+  },
+  "saturation": {
+    "activation_int8": {
+      "max": 127,
+      "min": -128
+    },
+    "status": "closed_for_export"
+  },
+  "weight_quantization": {
+    "dtype": "INT8",
+    "per_channel_quantization": "not_implemented_v1",
+    "scheme": "per_tensor_symmetric_signed_int8",
+    "source": "datasets/cifar10/resnet20_quant_calibration/quant_params.json",
+    "status": "closed_for_export",
+    "weight_tensor_count": 22
+  }
+}

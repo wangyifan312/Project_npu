@@ -64,6 +64,8 @@ ResNet-20 应建立等价但独立的链路：
 datasets/scripts/train_resnet20_cifar10.py
 datasets/scripts/eval_resnet20_checkpoint.py
 datasets/scripts/generate_resnet20_fixture.py
+datasets/scripts/inspect_resnet20_checkpoint.py
+datasets/scripts/export_resnet20_fixed_point_skeleton.py
 ```
 
 推荐目录：
@@ -216,6 +218,14 @@ generated_at
 ```text
 accuracy >= 80%
 ```
+
+当前 fixed-point golden 设计入口：
+
+```text
+docs/RESNET20_FIXED_POINT_GOLDEN_PLAN.md
+```
+
+该文档和 skeleton 脚本只用于冻结接口、checkpoint inspection、layer graph 和 TODO 状态；在 actual fixed-point inference 和 full CIFAR-10 fixed-point eval 完成前，不能作为 RTL R1/R2/R3 启动条件。
 
 ### 4.3 Fixture
 

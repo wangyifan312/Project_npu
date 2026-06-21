@@ -1,4 +1,4 @@
-// conv_frontend: 5x5 convolution window generator (stride=1, valid padding)
+// conv_frontend: convolution window generator skeleton for 5x5/3x3/1x1 modes
 // Multi-channel: line buffer stores C_in channels at each spatial position (HWC layout)
 // Window extraction: 25 spatial values for a selected input channel
 // Sliding window: line buffer holds 5 rows, shifts up as new rows arrive
@@ -33,6 +33,7 @@ module conv_frontend #(
     input  wire [15:0] input_w,         // feature map width
     input  wire [15:0] input_h,         // feature map height (informational)
     input  wire [15:0] input_c,         // number of input channels (1..MAX_C_IN)
+    input  wire [31:0] conv_cfg,        // R1b: kernel/stride/padding control
     input  wire [15:0] block_out_rows,  // output rows for this block
     input  wire [15:0] block_in_rows,   // input rows for this block (= block_out_rows + 4)
     input  wire        start,           // pulse to begin
@@ -64,10 +65,42 @@ module conv_frontend #(
     reg [15:0] total_out_cols;
     reg [15:0] block_in;
     reg [15:0] bytes_per_row;          // input_w * input_c
+    reg [15:0] kernel_size_r;
+    reg [15:0] stride_r;
+    reg [15:0] pad_r;
+    reg [15:0] prefill_rows;
+    integer    lb_base_row;           // logical input row currently stored in lb[0]
     reg        load_phase;
     reg        shift_now;
     reg        flush_lb;
     integer    si, sj;
+
+    wire [1:0] conv_kernel_sel = conv_cfg[1:0];
+    wire       conv_stride2    = conv_cfg[2];
+    wire       conv_same_pad   = conv_cfg[3];
+    wire [15:0] conv_kernel_size =
+        (conv_kernel_sel == 2'd1) ? 16'd1 :
+        (conv_kernel_sel == 2'd2) ? 16'd3 :
+                                    16'd5;
+    wire [15:0] conv_stride = conv_stride2 ? 16'd2 : 16'd1;
+    wire [15:0] conv_pad = conv_same_pad ? (conv_kernel_size >> 1) : 16'd0;
+    wire [15:0] prefill_rows_next =
+        (block_in_rows < conv_kernel_size) ? block_in_rows : conv_kernel_size;
+
+    function [15:0] conv_out_dim;
+        input [15:0] in_dim;
+        input [15:0] kernel;
+        input [15:0] stride;
+        input        same_pad;
+        begin
+            if (same_pad)
+                conv_out_dim = (stride == 16'd2) ? ((in_dim + 16'd1) >> 1) : in_dim;
+            else if (in_dim >= kernel)
+                conv_out_dim = ((in_dim - kernel) / stride) + 16'd1;
+            else
+                conv_out_dim = 16'd0;
+        end
+    endfunction
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -81,6 +114,11 @@ module conv_frontend #(
             total_out_cols  <= 16'd0;
             block_in        <= 16'd0;
             bytes_per_row   <= 16'd0;
+            kernel_size_r   <= 16'd5;
+            stride_r        <= 16'd1;
+            pad_r           <= 16'd0;
+            prefill_rows    <= 16'd5;
+            lb_base_row     <= 0;
             load_phase      <= 1'b0;
             shift_now       <= 1'b0;
             flush_lb        <= 1'b0;
@@ -99,6 +137,8 @@ module conv_frontend #(
                     lb[2][si] <= lb[3][si];
                     lb[3][si] <= lb[4][si];
                 end
+                if (state != S_LOAD_FIRST_5)
+                    lb_base_row <= lb_base_row + 1;
             end
 
             if (start) begin
@@ -108,9 +148,14 @@ module conv_frontend #(
                 load_col       <= 16'd0;
                 rows_loaded    <= 16'd0;
                 total_out_rows <= block_out_rows;
-                total_out_cols <= input_w - 16'd5 + 16'd1;
+                total_out_cols <= conv_out_dim(input_w, conv_kernel_size, conv_stride, conv_same_pad);
                 block_in       <= block_in_rows;
                 bytes_per_row  <= input_w * input_c;
+                kernel_size_r  <= conv_kernel_size;
+                stride_r       <= conv_stride;
+                pad_r          <= conv_pad;
+                prefill_rows   <= prefill_rows_next;
+                lb_base_row    <= $signed({1'b0, prefill_rows_next}) - 17'sd5;
                 load_phase     <= 1'b1;
                 flush_lb       <= 1'b1;
                 state          <= S_LOAD_FIRST_5;
@@ -125,7 +170,7 @@ module conv_frontend #(
                         if (load_col + 16'd1 == bytes_per_row) begin
                             load_col <= 16'd0;
                             rows_loaded <= rows_loaded + 16'd1;
-                            if (rows_loaded + 16'd1 == 16'd5) begin
+                            if (rows_loaded + 16'd1 == prefill_rows) begin
                                 load_phase <= 1'b0;
                                 curr_row <= 16'd0;
                                 curr_col <= 16'd0;
@@ -205,28 +250,56 @@ module conv_frontend #(
     assign done = done_r;
 
     // ============================================================
-    // Window extraction (combinational) — for selected channel
-    // For spatial position (curr_row + r, curr_col + c), channel channel_sel:
-    //   byte offset within row = (curr_col + c) * input_c + channel_sel
+    // Compact window extraction. 5x5 legacy remains ports [0:24].
+    // 3x3 uses ports [0:8], 1x1 uses port [0]. Stride/same padding are
+    // accepted as a control/frontend skeleton; boundary rows for same/stride2
+    // still require R1b+ datapath verification before ResNet numerical use.
     // ============================================================
-    wire [AW:0] row_bytes_per_col;  // bytes per column stride
-    wire [AW:0] c0_byte, c1_byte, c2_byte, c3_byte, c4_byte;
+    reg [7:0] compact_window [0:24];
+    integer kr;
+    integer kc;
+    integer idx;
+    integer src_col;
+    integer logical_src_row;
+    integer lb_row;
+    integer byte_idx;
+    integer wi;
 
-    // Each column advance adds input_c bytes (stride between consecutive HWC positions)
-    assign row_bytes_per_col = {6'd0, input_c};
+    always @(*) begin
+        for (wi = 0; wi < 25; wi = wi + 1)
+            compact_window[wi] = 8'd0;
 
-    // Byte address for window top-left corner channel
-    wire [AW:0] base_byte = ({5'd0, curr_col} * row_bytes_per_col) + {6'd0, channel_sel};
-    assign c0_byte = base_byte;
-    assign c1_byte = base_byte + row_bytes_per_col;
-    assign c2_byte = base_byte + (row_bytes_per_col << 1);
-    assign c3_byte = base_byte + (row_bytes_per_col * 16'd3);
-    assign c4_byte = base_byte + (row_bytes_per_col << 2);
+        for (kr = 0; kr < 5; kr = kr + 1) begin
+            for (kc = 0; kc < 5; kc = kc + 1) begin
+                if ((kr < kernel_size_r) && (kc < kernel_size_r)) begin
+                    idx = kr * kernel_size_r + kc;
+                    if (conv_same_pad && (input_h <= kernel_size_r)) begin
+                        // Preserve the compact alias smoke contract used by R1g:
+                        // tiny 3x3 aliases are not full-shape same-padding
+                        // evidence and keep the pre-R1h line-buffer placement.
+                        logical_src_row = kr;
+                        lb_row = kr;
+                    end else begin
+                        logical_src_row = (curr_row * stride_r) + kr - pad_r;
+                        lb_row = logical_src_row - lb_base_row;
+                    end
+                    src_col = (curr_col * stride_r) + kc - pad_r;
+                    byte_idx = src_col * input_c + channel_sel;
+                    if ((idx < 25) &&
+                        (logical_src_row >= 0) && (logical_src_row < input_h) &&
+                        (lb_row >= 0) && (lb_row < 5) &&
+                        (src_col >= 0) && (src_col < input_w) &&
+                        (byte_idx >= 0) && (byte_idx < MAX_LINE_W))
+                        compact_window[idx] = lb[lb_row][byte_idx];
+                end
+            end
+        end
+    end
 
-    assign window_00 = lb[0][c0_byte]; assign window_01 = lb[0][c1_byte]; assign window_02 = lb[0][c2_byte]; assign window_03 = lb[0][c3_byte]; assign window_04 = lb[0][c4_byte];
-    assign window_10 = lb[1][c0_byte]; assign window_11 = lb[1][c1_byte]; assign window_12 = lb[1][c2_byte]; assign window_13 = lb[1][c3_byte]; assign window_14 = lb[1][c4_byte];
-    assign window_20 = lb[2][c0_byte]; assign window_21 = lb[2][c1_byte]; assign window_22 = lb[2][c2_byte]; assign window_23 = lb[2][c3_byte]; assign window_24 = lb[2][c4_byte];
-    assign window_30 = lb[3][c0_byte]; assign window_31 = lb[3][c1_byte]; assign window_32 = lb[3][c2_byte]; assign window_33 = lb[3][c3_byte]; assign window_34 = lb[3][c4_byte];
-    assign window_40 = lb[4][c0_byte]; assign window_41 = lb[4][c1_byte]; assign window_42 = lb[4][c2_byte]; assign window_43 = lb[4][c3_byte]; assign window_44 = lb[4][c4_byte];
+    assign window_00 = compact_window[0];  assign window_01 = compact_window[1];  assign window_02 = compact_window[2];  assign window_03 = compact_window[3];  assign window_04 = compact_window[4];
+    assign window_10 = compact_window[5];  assign window_11 = compact_window[6];  assign window_12 = compact_window[7];  assign window_13 = compact_window[8];  assign window_14 = compact_window[9];
+    assign window_20 = compact_window[10]; assign window_21 = compact_window[11]; assign window_22 = compact_window[12]; assign window_23 = compact_window[13]; assign window_24 = compact_window[14];
+    assign window_30 = compact_window[15]; assign window_31 = compact_window[16]; assign window_32 = compact_window[17]; assign window_33 = compact_window[18]; assign window_34 = compact_window[19];
+    assign window_40 = compact_window[20]; assign window_41 = compact_window[21]; assign window_42 = compact_window[22]; assign window_43 = compact_window[23]; assign window_44 = compact_window[24];
 
 endmodule

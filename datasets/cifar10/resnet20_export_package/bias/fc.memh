@@ -1,0 +1,17 @@
+// ResNet-20 R0.5 export package
+// layer: fc
+// source_tensor: fc.bias
+// shape: [10]
+// accumulator_scale: 0.0004893275068715541
+// ordering: output_channel_or_neuron_order
+// dtype: INT32
+0000004f
+fffffd64
+000000ea
+000002df
+0000023d
+fffffdad
+000001b0
+ffffff55
+0000014e
+fffffcaf

@@ -1,0 +1,750 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "memory_allocated_bytes": 289984,
+  "memory_max_end_address": 289984,
+  "memory_peak_live_bytes": 49152,
+  "memory_total_bytes": 1048576,
+  "policy": {
+    "activation_dtype": "INT8",
+    "addressing": "byte_addressed",
+    "alignment_bytes": 64,
+    "allocation_strategy": "conservative_unique_tensor_allocation_no_reuse",
+    "memory_bytes": 1048576,
+    "null_address_policy": "address_0_reserved_to_preserve_task_checker_null_address_reject",
+    "physical_organization": "32768 x 256-bit beat",
+    "reserved_null_bytes": 64
+  },
+  "status": "memory_map_generated",
+  "tensor_count": 33,
+  "tensors": [
+    {
+      "aligned_byte_size": 3072,
+      "base_addr": 64,
+      "byte_size": 3072,
+      "consumer_tasks": [
+        0
+      ],
+      "dtype": "INT8",
+      "element_count": 3072,
+      "end_addr": 3136,
+      "lifetime": {
+        "end_task": 0,
+        "start_task": 0
+      },
+      "name": "input.image",
+      "producer_task": null,
+      "shape": [
+        3,
+        32,
+        32
+      ]
+    },
+    {
+      "aligned_byte_size": 16384,
+      "base_addr": 3136,
+      "byte_size": 16384,
+      "consumer_tasks": [
+        1,
+        3
+      ],
+      "dtype": "INT8",
+      "element_count": 16384,
+      "end_addr": 19520,
+      "lifetime": {
+        "end_task": 3,
+        "start_task": 0
+      },
+      "name": "conv1.relu",
+      "producer_task": 0,
+      "shape": [
+        16,
+        32,
+        32
+      ]
+    },
+    {
+      "aligned_byte_size": 16384,
+      "base_addr": 19520,
+      "byte_size": 16384,
+      "consumer_tasks": [
+        2
+      ],
+      "dtype": "INT8",
+      "element_count": 16384,
+      "end_addr": 35904,
+      "lifetime": {
+        "end_task": 2,
+        "start_task": 1
+      },
+      "name": "layer1.0.conv1.relu",
+      "producer_task": 1,
+      "shape": [
+        16,
+        32,
+        32
+      ]
+    },
+    {
+      "aligned_byte_size": 16384,
+      "base_addr": 35904,
+      "byte_size": 16384,
+      "consumer_tasks": [
+        3
+      ],
+      "dtype": "INT8",
+      "element_count": 16384,
+      "end_addr": 52288,
+      "lifetime": {
+        "end_task": 3,
+        "start_task": 2
+      },
+      "name": "layer1.0.conv2.pre_add_main",
+      "producer_task": 2,
+      "shape": [
+        16,
+        32,
+        32
+      ]
+    },
+    {
+      "aligned_byte_size": 16384,
+      "base_addr": 52288,
+      "byte_size": 16384,
+      "consumer_tasks": [
+        4,
+        6
+      ],
+      "dtype": "INT8",
+      "element_count": 16384,
+      "end_addr": 68672,
+      "lifetime": {
+        "end_task": 6,
+        "start_task": 3
+      },
+      "name": "layer1.0.add.relu",
+      "producer_task": 3,
+      "shape": [
+        16,
+        32,
+        32
+      ]
+    },
+    {
+      "aligned_byte_size": 16384,
+      "base_addr": 68672,
+      "byte_size": 16384,
+      "consumer_tasks": [
+        5
+      ],
+      "dtype": "INT8",
+      "element_count": 16384,
+      "end_addr": 85056,
+      "lifetime": {
+        "end_task": 5,
+        "start_task": 4
+      },
+      "name": "layer1.1.conv1.relu",
+      "producer_task": 4,
+      "shape": [
+        16,
+        32,
+        32
+      ]
+    },
+    {
+      "aligned_byte_size": 16384,
+      "base_addr": 85056,
+      "byte_size": 16384,
+      "consumer_tasks": [
+        6
+      ],
+      "dtype": "INT8",
+      "element_count": 16384,
+      "end_addr": 101440,
+      "lifetime": {
+        "end_task": 6,
+        "start_task": 5
+      },
+      "name": "layer1.1.conv2.pre_add_main",
+      "producer_task": 5,
+      "shape": [
+        16,
+        32,
+        32
+      ]
+    },
+    {
+      "aligned_byte_size": 16384,
+      "base_addr": 101440,
+      "byte_size": 16384,
+      "consumer_tasks": [
+        7,
+        9
+      ],
+      "dtype": "INT8",
+      "element_count": 16384,
+      "end_addr": 117824,
+      "lifetime": {
+        "end_task": 9,
+        "start_task": 6
+      },
+      "name": "layer1.1.add.relu",
+      "producer_task": 6,
+      "shape": [
+        16,
+        32,
+        32
+      ]
+    },
+    {
+      "aligned_byte_size": 16384,
+      "base_addr": 117824,
+      "byte_size": 16384,
+      "consumer_tasks": [
+        8
+      ],
+      "dtype": "INT8",
+      "element_count": 16384,
+      "end_addr": 134208,
+      "lifetime": {
+        "end_task": 8,
+        "start_task": 7
+      },
+      "name": "layer1.2.conv1.relu",
+      "producer_task": 7,
+      "shape": [
+        16,
+        32,
+        32
+      ]
+    },
+    {
+      "aligned_byte_size": 16384,
+      "base_addr": 134208,
+      "byte_size": 16384,
+      "consumer_tasks": [
+        9
+      ],
+      "dtype": "INT8",
+      "element_count": 16384,
+      "end_addr": 150592,
+      "lifetime": {
+        "end_task": 9,
+        "start_task": 8
+      },
+      "name": "layer1.2.conv2.pre_add_main",
+      "producer_task": 8,
+      "shape": [
+        16,
+        32,
+        32
+      ]
+    },
+    {
+      "aligned_byte_size": 16384,
+      "base_addr": 150592,
+      "byte_size": 16384,
+      "consumer_tasks": [
+        10,
+        12
+      ],
+      "dtype": "INT8",
+      "element_count": 16384,
+      "end_addr": 166976,
+      "lifetime": {
+        "end_task": 12,
+        "start_task": 9
+      },
+      "name": "layer1.2.add.relu",
+      "producer_task": 9,
+      "shape": [
+        16,
+        32,
+        32
+      ]
+    },
+    {
+      "aligned_byte_size": 8192,
+      "base_addr": 166976,
+      "byte_size": 8192,
+      "consumer_tasks": [
+        11
+      ],
+      "dtype": "INT8",
+      "element_count": 8192,
+      "end_addr": 175168,
+      "lifetime": {
+        "end_task": 11,
+        "start_task": 10
+      },
+      "name": "layer2.0.conv1.relu",
+      "producer_task": 10,
+      "shape": [
+        32,
+        16,
+        16
+      ]
+    },
+    {
+      "aligned_byte_size": 8192,
+      "base_addr": 175168,
+      "byte_size": 8192,
+      "consumer_tasks": [
+        13
+      ],
+      "dtype": "INT8",
+      "element_count": 8192,
+      "end_addr": 183360,
+      "lifetime": {
+        "end_task": 13,
+        "start_task": 11
+      },
+      "name": "layer2.0.conv2.pre_add_main",
+      "producer_task": 11,
+      "shape": [
+        32,
+        16,
+        16
+      ]
+    },
+    {
+      "aligned_byte_size": 8192,
+      "base_addr": 183360,
+      "byte_size": 8192,
+      "consumer_tasks": [
+        13
+      ],
+      "dtype": "INT8",
+      "element_count": 8192,
+      "end_addr": 191552,
+      "lifetime": {
+        "end_task": 13,
+        "start_task": 12
+      },
+      "name": "layer2.0.shortcut.pre_add",
+      "producer_task": 12,
+      "shape": [
+        32,
+        16,
+        16
+      ]
+    },
+    {
+      "aligned_byte_size": 8192,
+      "base_addr": 191552,
+      "byte_size": 8192,
+      "consumer_tasks": [
+        14,
+        16
+      ],
+      "dtype": "INT8",
+      "element_count": 8192,
+      "end_addr": 199744,
+      "lifetime": {
+        "end_task": 16,
+        "start_task": 13
+      },
+      "name": "layer2.0.add.relu",
+      "producer_task": 13,
+      "shape": [
+        32,
+        16,
+        16
+      ]
+    },
+    {
+      "aligned_byte_size": 8192,
+      "base_addr": 199744,
+      "byte_size": 8192,
+      "consumer_tasks": [
+        15
+      ],
+      "dtype": "INT8",
+      "element_count": 8192,
+      "end_addr": 207936,
+      "lifetime": {
+        "end_task": 15,
+        "start_task": 14
+      },
+      "name": "layer2.1.conv1.relu",
+      "producer_task": 14,
+      "shape": [
+        32,
+        16,
+        16
+      ]
+    },
+    {
+      "aligned_byte_size": 8192,
+      "base_addr": 207936,
+      "byte_size": 8192,
+      "consumer_tasks": [
+        16
+      ],
+      "dtype": "INT8",
+      "element_count": 8192,
+      "end_addr": 216128,
+      "lifetime": {
+        "end_task": 16,
+        "start_task": 15
+      },
+      "name": "layer2.1.conv2.pre_add_main",
+      "producer_task": 15,
+      "shape": [
+        32,
+        16,
+        16
+      ]
+    },
+    {
+      "aligned_byte_size": 8192,
+      "base_addr": 216128,
+      "byte_size": 8192,
+      "consumer_tasks": [
+        17,
+        19
+      ],
+      "dtype": "INT8",
+      "element_count": 8192,
+      "end_addr": 224320,
+      "lifetime": {
+        "end_task": 19,
+        "start_task": 16
+      },
+      "name": "layer2.1.add.relu",
+      "producer_task": 16,
+      "shape": [
+        32,
+        16,
+        16
+      ]
+    },
+    {
+      "aligned_byte_size": 8192,
+      "base_addr": 224320,
+      "byte_size": 8192,
+      "consumer_tasks": [
+        18
+      ],
+      "dtype": "INT8",
+      "element_count": 8192,
+      "end_addr": 232512,
+      "lifetime": {
+        "end_task": 18,
+        "start_task": 17
+      },
+      "name": "layer2.2.conv1.relu",
+      "producer_task": 17,
+      "shape": [
+        32,
+        16,
+        16
+      ]
+    },
+    {
+      "aligned_byte_size": 8192,
+      "base_addr": 232512,
+      "byte_size": 8192,
+      "consumer_tasks": [
+        19
+      ],
+      "dtype": "INT8",
+      "element_count": 8192,
+      "end_addr": 240704,
+      "lifetime": {
+        "end_task": 19,
+        "start_task": 18
+      },
+      "name": "layer2.2.conv2.pre_add_main",
+      "producer_task": 18,
+      "shape": [
+        32,
+        16,
+        16
+      ]
+    },
+    {
+      "aligned_byte_size": 8192,
+      "base_addr": 240704,
+      "byte_size": 8192,
+      "consumer_tasks": [
+        20,
+        22
+      ],
+      "dtype": "INT8",
+      "element_count": 8192,
+      "end_addr": 248896,
+      "lifetime": {
+        "end_task": 22,
+        "start_task": 19
+      },
+      "name": "layer2.2.add.relu",
+      "producer_task": 19,
+      "shape": [
+        32,
+        16,
+        16
+      ]
+    },
+    {
+      "aligned_byte_size": 4096,
+      "base_addr": 248896,
+      "byte_size": 4096,
+      "consumer_tasks": [
+        21
+      ],
+      "dtype": "INT8",
+      "element_count": 4096,
+      "end_addr": 252992,
+      "lifetime": {
+        "end_task": 21,
+        "start_task": 20
+      },
+      "name": "layer3.0.conv1.relu",
+      "producer_task": 20,
+      "shape": [
+        64,
+        8,
+        8
+      ]
+    },
+    {
+      "aligned_byte_size": 4096,
+      "base_addr": 252992,
+      "byte_size": 4096,
+      "consumer_tasks": [
+        23
+      ],
+      "dtype": "INT8",
+      "element_count": 4096,
+      "end_addr": 257088,
+      "lifetime": {
+        "end_task": 23,
+        "start_task": 21
+      },
+      "name": "layer3.0.conv2.pre_add_main",
+      "producer_task": 21,
+      "shape": [
+        64,
+        8,
+        8
+      ]
+    },
+    {
+      "aligned_byte_size": 4096,
+      "base_addr": 257088,
+      "byte_size": 4096,
+      "consumer_tasks": [
+        23
+      ],
+      "dtype": "INT8",
+      "element_count": 4096,
+      "end_addr": 261184,
+      "lifetime": {
+        "end_task": 23,
+        "start_task": 22
+      },
+      "name": "layer3.0.shortcut.pre_add",
+      "producer_task": 22,
+      "shape": [
+        64,
+        8,
+        8
+      ]
+    },
+    {
+      "aligned_byte_size": 4096,
+      "base_addr": 261184,
+      "byte_size": 4096,
+      "consumer_tasks": [
+        24,
+        26
+      ],
+      "dtype": "INT8",
+      "element_count": 4096,
+      "end_addr": 265280,
+      "lifetime": {
+        "end_task": 26,
+        "start_task": 23
+      },
+      "name": "layer3.0.add.relu",
+      "producer_task": 23,
+      "shape": [
+        64,
+        8,
+        8
+      ]
+    },
+    {
+      "aligned_byte_size": 4096,
+      "base_addr": 265280,
+      "byte_size": 4096,
+      "consumer_tasks": [
+        25
+      ],
+      "dtype": "INT8",
+      "element_count": 4096,
+      "end_addr": 269376,
+      "lifetime": {
+        "end_task": 25,
+        "start_task": 24
+      },
+      "name": "layer3.1.conv1.relu",
+      "producer_task": 24,
+      "shape": [
+        64,
+        8,
+        8
+      ]
+    },
+    {
+      "aligned_byte_size": 4096,
+      "base_addr": 269376,
+      "byte_size": 4096,
+      "consumer_tasks": [
+        26
+      ],
+      "dtype": "INT8",
+      "element_count": 4096,
+      "end_addr": 273472,
+      "lifetime": {
+        "end_task": 26,
+        "start_task": 25
+      },
+      "name": "layer3.1.conv2.pre_add_main",
+      "producer_task": 25,
+      "shape": [
+        64,
+        8,
+        8
+      ]
+    },
+    {
+      "aligned_byte_size": 4096,
+      "base_addr": 273472,
+      "byte_size": 4096,
+      "consumer_tasks": [
+        27,
+        29
+      ],
+      "dtype": "INT8",
+      "element_count": 4096,
+      "end_addr": 277568,
+      "lifetime": {
+        "end_task": 29,
+        "start_task": 26
+      },
+      "name": "layer3.1.add.relu",
+      "producer_task": 26,
+      "shape": [
+        64,
+        8,
+        8
+      ]
+    },
+    {
+      "aligned_byte_size": 4096,
+      "base_addr": 277568,
+      "byte_size": 4096,
+      "consumer_tasks": [
+        28
+      ],
+      "dtype": "INT8",
+      "element_count": 4096,
+      "end_addr": 281664,
+      "lifetime": {
+        "end_task": 28,
+        "start_task": 27
+      },
+      "name": "layer3.2.conv1.relu",
+      "producer_task": 27,
+      "shape": [
+        64,
+        8,
+        8
+      ]
+    },
+    {
+      "aligned_byte_size": 4096,
+      "base_addr": 281664,
+      "byte_size": 4096,
+      "consumer_tasks": [
+        29
+      ],
+      "dtype": "INT8",
+      "element_count": 4096,
+      "end_addr": 285760,
+      "lifetime": {
+        "end_task": 29,
+        "start_task": 28
+      },
+      "name": "layer3.2.conv2.pre_add_main",
+      "producer_task": 28,
+      "shape": [
+        64,
+        8,
+        8
+      ]
+    },
+    {
+      "aligned_byte_size": 4096,
+      "base_addr": 285760,
+      "byte_size": 4096,
+      "consumer_tasks": [
+        30
+      ],
+      "dtype": "INT8",
+      "element_count": 4096,
+      "end_addr": 289856,
+      "lifetime": {
+        "end_task": 30,
+        "start_task": 29
+      },
+      "name": "layer3.2.add.relu",
+      "producer_task": 29,
+      "shape": [
+        64,
+        8,
+        8
+      ]
+    },
+    {
+      "aligned_byte_size": 64,
+      "base_addr": 289856,
+      "byte_size": 64,
+      "consumer_tasks": [
+        31
+      ],
+      "dtype": "INT8",
+      "element_count": 64,
+      "end_addr": 289920,
+      "lifetime": {
+        "end_task": 31,
+        "start_task": 30
+      },
+      "name": "gap.output",
+      "producer_task": 30,
+      "shape": [
+        64
+      ]
+    },
+    {
+      "aligned_byte_size": 64,
+      "base_addr": 289920,
+      "byte_size": 10,
+      "consumer_tasks": [],
+      "dtype": "INT8",
+      "element_count": 10,
+      "end_addr": 289984,
+      "lifetime": {
+        "end_task": 31,
+        "start_task": 31
+      },
+      "name": "fc.logits",
+      "producer_task": 31,
+      "shape": [
+        10
+      ]
+    }
+  ]
+}

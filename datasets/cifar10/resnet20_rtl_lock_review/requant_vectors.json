@@ -1,0 +1,889 @@
+{
+  "contract": "clamp(round_half_away_from_zero(acc * multiplier / 2^shift), -128, 127)",
+  "deterministic_vectors": [
+    {
+      "acc": 0,
+      "clamped_int8": 0,
+      "multiplier_int": 1,
+      "name": "zero_identity",
+      "product": 0,
+      "rounded": 0,
+      "shift": 0
+    },
+    {
+      "acc": 1,
+      "clamped_int8": 1,
+      "multiplier_int": 1,
+      "name": "positive_half",
+      "product": 1,
+      "rounded": 1,
+      "shift": 1
+    },
+    {
+      "acc": -1,
+      "clamped_int8": -1,
+      "multiplier_int": 1,
+      "name": "negative_half",
+      "product": -1,
+      "rounded": -1,
+      "shift": 1
+    },
+    {
+      "acc": -101,
+      "clamped_int8": -51,
+      "multiplier_int": 1,
+      "name": "rtl_unit_negative_half_away",
+      "product": -101,
+      "rounded": -51,
+      "shift": 1
+    },
+    {
+      "acc": 255,
+      "clamped_int8": 127,
+      "multiplier_int": 1,
+      "name": "rtl_unit_clamp_pos",
+      "product": 255,
+      "rounded": 128,
+      "shift": 1
+    },
+    {
+      "acc": -300,
+      "clamped_int8": -128,
+      "multiplier_int": 1,
+      "name": "rtl_unit_clamp_neg",
+      "product": -300,
+      "rounded": -150,
+      "shift": 1
+    },
+    {
+      "acc": 253,
+      "clamped_int8": 127,
+      "multiplier_int": 1,
+      "name": "near_clamp_pos_half",
+      "product": 253,
+      "rounded": 127,
+      "shift": 1
+    },
+    {
+      "acc": -255,
+      "clamped_int8": -128,
+      "multiplier_int": 1,
+      "name": "near_clamp_neg_half",
+      "product": -255,
+      "rounded": -128,
+      "shift": 1
+    },
+    {
+      "acc": 2147483647,
+      "clamped_int8": 127,
+      "multiplier_int": 1,
+      "name": "large_acc_pos",
+      "product": 2147483647,
+      "rounded": 128,
+      "shift": 24
+    },
+    {
+      "acc": -2147483648,
+      "clamped_int8": -128,
+      "multiplier_int": 1,
+      "name": "large_acc_neg",
+      "product": -2147483648,
+      "rounded": -128,
+      "shift": 24
+    }
+  ],
+  "f3_plan_examples": [
+    {
+      "multiplier_int": 792567,
+      "op": "conv1",
+      "real_multiplier": 0.0029525419417169097,
+      "relative_error": 7.256938542847845e-08,
+      "shift": 28,
+      "source": "conv_fc",
+      "vectors": [
+        {
+          "acc": -4096,
+          "clamped_int8": -12,
+          "multiplier_int": 792567,
+          "product": -3246354432,
+          "rounded": -12,
+          "shift": 28
+        },
+        {
+          "acc": -257,
+          "clamped_int8": -1,
+          "multiplier_int": 792567,
+          "product": -203689719,
+          "rounded": -1,
+          "shift": 28
+        },
+        {
+          "acc": -1,
+          "clamped_int8": 0,
+          "multiplier_int": 792567,
+          "product": -792567,
+          "rounded": 0,
+          "shift": 28
+        },
+        {
+          "acc": 0,
+          "clamped_int8": 0,
+          "multiplier_int": 792567,
+          "product": 0,
+          "rounded": 0,
+          "shift": 28
+        },
+        {
+          "acc": 1,
+          "clamped_int8": 0,
+          "multiplier_int": 792567,
+          "product": 792567,
+          "rounded": 0,
+          "shift": 28
+        },
+        {
+          "acc": 257,
+          "clamped_int8": 1,
+          "multiplier_int": 792567,
+          "product": 203689719,
+          "rounded": 1,
+          "shift": 28
+        },
+        {
+          "acc": 4096,
+          "clamped_int8": 12,
+          "multiplier_int": 792567,
+          "product": 3246354432,
+          "rounded": 12,
+          "shift": 28
+        }
+      ]
+    },
+    {
+      "multiplier_int": 11913625,
+      "op": "layer1.0.conv1",
+      "real_multiplier": 0.005547714041450509,
+      "relative_error": 1.5763041050702625e-08,
+      "shift": 31,
+      "source": "conv_fc",
+      "vectors": [
+        {
+          "acc": -4096,
+          "clamped_int8": -23,
+          "multiplier_int": 11913625,
+          "product": -48798208000,
+          "rounded": -23,
+          "shift": 31
+        },
+        {
+          "acc": -257,
+          "clamped_int8": -1,
+          "multiplier_int": 11913625,
+          "product": -3061801625,
+          "rounded": -1,
+          "shift": 31
+        },
+        {
+          "acc": -1,
+          "clamped_int8": 0,
+          "multiplier_int": 11913625,
+          "product": -11913625,
+          "rounded": 0,
+          "shift": 31
+        },
+        {
+          "acc": 0,
+          "clamped_int8": 0,
+          "multiplier_int": 11913625,
+          "product": 0,
+          "rounded": 0,
+          "shift": 31
+        },
+        {
+          "acc": 1,
+          "clamped_int8": 0,
+          "multiplier_int": 11913625,
+          "product": 11913625,
+          "rounded": 0,
+          "shift": 31
+        },
+        {
+          "acc": 257,
+          "clamped_int8": 1,
+          "multiplier_int": 11913625,
+          "product": 3061801625,
+          "rounded": 1,
+          "shift": 31
+        },
+        {
+          "acc": 4096,
+          "clamped_int8": 23,
+          "multiplier_int": 11913625,
+          "product": 48798208000,
+          "rounded": 23,
+          "shift": 31
+        }
+      ]
+    },
+    {
+      "multiplier_int": 405287,
+      "op": "layer1.0.conv2",
+      "real_multiplier": 0.001509811839371889,
+      "relative_error": 7.297542145495706e-08,
+      "shift": 28,
+      "source": "conv_fc",
+      "vectors": [
+        {
+          "acc": -4096,
+          "clamped_int8": -6,
+          "multiplier_int": 405287,
+          "product": -1660055552,
+          "rounded": -6,
+          "shift": 28
+        },
+        {
+          "acc": -257,
+          "clamped_int8": 0,
+          "multiplier_int": 405287,
+          "product": -104158759,
+          "rounded": 0,
+          "shift": 28
+        },
+        {
+          "acc": -1,
+          "clamped_int8": 0,
+          "multiplier_int": 405287,
+          "product": -405287,
+          "rounded": 0,
+          "shift": 28
+        },
+        {
+          "acc": 0,
+          "clamped_int8": 0,
+          "multiplier_int": 405287,
+          "product": 0,
+          "rounded": 0,
+          "shift": 28
+        },
+        {
+          "acc": 1,
+          "clamped_int8": 0,
+          "multiplier_int": 405287,
+          "product": 405287,
+          "rounded": 0,
+          "shift": 28
+        },
+        {
+          "acc": 257,
+          "clamped_int8": 0,
+          "multiplier_int": 405287,
+          "product": 104158759,
+          "rounded": 0,
+          "shift": 28
+        },
+        {
+          "acc": 4096,
+          "clamped_int8": 6,
+          "multiplier_int": 405287,
+          "product": 1660055552,
+          "rounded": 6,
+          "shift": 28
+        }
+      ]
+    },
+    {
+      "multiplier_int": 8086073,
+      "op": "layer1.1.conv1",
+      "real_multiplier": 0.003765371036845849,
+      "relative_error": 3.335620926176709e-08,
+      "shift": 31,
+      "source": "conv_fc",
+      "vectors": [
+        {
+          "acc": -4096,
+          "clamped_int8": -15,
+          "multiplier_int": 8086073,
+          "product": -33120555008,
+          "rounded": -15,
+          "shift": 31
+        },
+        {
+          "acc": -257,
+          "clamped_int8": -1,
+          "multiplier_int": 8086073,
+          "product": -2078120761,
+          "rounded": -1,
+          "shift": 31
+        },
+        {
+          "acc": -1,
+          "clamped_int8": 0,
+          "multiplier_int": 8086073,
+          "product": -8086073,
+          "rounded": 0,
+          "shift": 31
+        },
+        {
+          "acc": 0,
+          "clamped_int8": 0,
+          "multiplier_int": 8086073,
+          "product": 0,
+          "rounded": 0,
+          "shift": 31
+        },
+        {
+          "acc": 1,
+          "clamped_int8": 0,
+          "multiplier_int": 8086073,
+          "product": 8086073,
+          "rounded": 0,
+          "shift": 31
+        },
+        {
+          "acc": 257,
+          "clamped_int8": 1,
+          "multiplier_int": 8086073,
+          "product": 2078120761,
+          "rounded": 1,
+          "shift": 31
+        },
+        {
+          "acc": 4096,
+          "clamped_int8": 15,
+          "multiplier_int": 8086073,
+          "product": 33120555008,
+          "rounded": 15,
+          "shift": 31
+        }
+      ]
+    },
+    {
+      "multiplier_int": 3504399,
+      "op": "layer1.1.conv2",
+      "real_multiplier": 0.0032637257862668605,
+      "relative_error": 3.4590236793078844e-08,
+      "shift": 30,
+      "source": "conv_fc",
+      "vectors": [
+        {
+          "acc": -4096,
+          "clamped_int8": -13,
+          "multiplier_int": 3504399,
+          "product": -14354018304,
+          "rounded": -13,
+          "shift": 30
+        },
+        {
+          "acc": -257,
+          "clamped_int8": -1,
+          "multiplier_int": 3504399,
+          "product": -900630543,
+          "rounded": -1,
+          "shift": 30
+        },
+        {
+          "acc": -1,
+          "clamped_int8": 0,
+          "multiplier_int": 3504399,
+          "product": -3504399,
+          "rounded": 0,
+          "shift": 30
+        },
+        {
+          "acc": 0,
+          "clamped_int8": 0,
+          "multiplier_int": 3504399,
+          "product": 0,
+          "rounded": 0,
+          "shift": 30
+        },
+        {
+          "acc": 1,
+          "clamped_int8": 0,
+          "multiplier_int": 3504399,
+          "product": 3504399,
+          "rounded": 0,
+          "shift": 30
+        },
+        {
+          "acc": 257,
+          "clamped_int8": 1,
+          "multiplier_int": 3504399,
+          "product": 900630543,
+          "rounded": 1,
+          "shift": 30
+        },
+        {
+          "acc": 4096,
+          "clamped_int8": 13,
+          "multiplier_int": 3504399,
+          "product": 14354018304,
+          "rounded": 13,
+          "shift": 30
+        }
+      ]
+    },
+    {
+      "multiplier_int": 2232771,
+      "op": "fc",
+      "real_multiplier": 0.0020794302122697163,
+      "relative_error": 8.464960193183656e-08,
+      "shift": 30,
+      "source": "conv_fc",
+      "vectors": [
+        {
+          "acc": -4096,
+          "clamped_int8": -9,
+          "multiplier_int": 2232771,
+          "product": -9145430016,
+          "rounded": -9,
+          "shift": 30
+        },
+        {
+          "acc": -257,
+          "clamped_int8": -1,
+          "multiplier_int": 2232771,
+          "product": -573822147,
+          "rounded": -1,
+          "shift": 30
+        },
+        {
+          "acc": -1,
+          "clamped_int8": 0,
+          "multiplier_int": 2232771,
+          "product": -2232771,
+          "rounded": 0,
+          "shift": 30
+        },
+        {
+          "acc": 0,
+          "clamped_int8": 0,
+          "multiplier_int": 2232771,
+          "product": 0,
+          "rounded": 0,
+          "shift": 30
+        },
+        {
+          "acc": 1,
+          "clamped_int8": 0,
+          "multiplier_int": 2232771,
+          "product": 2232771,
+          "rounded": 0,
+          "shift": 30
+        },
+        {
+          "acc": 257,
+          "clamped_int8": 1,
+          "multiplier_int": 2232771,
+          "product": 573822147,
+          "rounded": 1,
+          "shift": 30
+        },
+        {
+          "acc": 4096,
+          "clamped_int8": 9,
+          "multiplier_int": 2232771,
+          "product": 9145430016,
+          "rounded": 9,
+          "shift": 30
+        }
+      ]
+    },
+    {
+      "multiplier_int": 1,
+      "op": "layer1.0.add",
+      "real_multiplier": 1.0,
+      "relative_error": 0.0,
+      "shift": 0,
+      "source": "residual_add_main_to_target",
+      "vectors": [
+        {
+          "acc": -4096,
+          "clamped_int8": -128,
+          "multiplier_int": 1,
+          "product": -4096,
+          "rounded": -4096,
+          "shift": 0
+        },
+        {
+          "acc": -257,
+          "clamped_int8": -128,
+          "multiplier_int": 1,
+          "product": -257,
+          "rounded": -257,
+          "shift": 0
+        },
+        {
+          "acc": -1,
+          "clamped_int8": -1,
+          "multiplier_int": 1,
+          "product": -1,
+          "rounded": -1,
+          "shift": 0
+        },
+        {
+          "acc": 0,
+          "clamped_int8": 0,
+          "multiplier_int": 1,
+          "product": 0,
+          "rounded": 0,
+          "shift": 0
+        },
+        {
+          "acc": 1,
+          "clamped_int8": 1,
+          "multiplier_int": 1,
+          "product": 1,
+          "rounded": 1,
+          "shift": 0
+        },
+        {
+          "acc": 257,
+          "clamped_int8": 127,
+          "multiplier_int": 1,
+          "product": 257,
+          "rounded": 257,
+          "shift": 0
+        },
+        {
+          "acc": 4096,
+          "clamped_int8": 127,
+          "multiplier_int": 1,
+          "product": 4096,
+          "rounded": 4096,
+          "shift": 0
+        }
+      ]
+    },
+    {
+      "multiplier_int": 1538797815,
+      "op": "layer1.0.add",
+      "real_multiplier": 0.7165585713792074,
+      "relative_error": 8.377400561941956e-11,
+      "shift": 31,
+      "source": "residual_add_shortcut_to_target",
+      "vectors": [
+        {
+          "acc": -4096,
+          "clamped_int8": -128,
+          "multiplier_int": 1538797815,
+          "product": -6302915850240,
+          "rounded": -2935,
+          "shift": 31
+        },
+        {
+          "acc": -257,
+          "clamped_int8": -128,
+          "multiplier_int": 1538797815,
+          "product": -395471038455,
+          "rounded": -184,
+          "shift": 31
+        },
+        {
+          "acc": -1,
+          "clamped_int8": -1,
+          "multiplier_int": 1538797815,
+          "product": -1538797815,
+          "rounded": -1,
+          "shift": 31
+        },
+        {
+          "acc": 0,
+          "clamped_int8": 0,
+          "multiplier_int": 1538797815,
+          "product": 0,
+          "rounded": 0,
+          "shift": 31
+        },
+        {
+          "acc": 1,
+          "clamped_int8": 1,
+          "multiplier_int": 1538797815,
+          "product": 1538797815,
+          "rounded": 1,
+          "shift": 31
+        },
+        {
+          "acc": 257,
+          "clamped_int8": 127,
+          "multiplier_int": 1538797815,
+          "product": 395471038455,
+          "rounded": 184,
+          "shift": 31
+        },
+        {
+          "acc": 4096,
+          "clamped_int8": 127,
+          "multiplier_int": 1538797815,
+          "product": 6302915850240,
+          "rounded": 2935,
+          "shift": 31
+        }
+      ]
+    },
+    {
+      "multiplier_int": 1092759583,
+      "op": "layer1.1.add",
+      "real_multiplier": 0.5088558340196175,
+      "relative_error": 2.3195333424342055e-10,
+      "shift": 31,
+      "source": "residual_add_main_to_target",
+      "vectors": [
+        {
+          "acc": -4096,
+          "clamped_int8": -128,
+          "multiplier_int": 1092759583,
+          "product": -4475943251968,
+          "rounded": -2084,
+          "shift": 31
+        },
+        {
+          "acc": -257,
+          "clamped_int8": -128,
+          "multiplier_int": 1092759583,
+          "product": -280839212831,
+          "rounded": -131,
+          "shift": 31
+        },
+        {
+          "acc": -1,
+          "clamped_int8": -1,
+          "multiplier_int": 1092759583,
+          "product": -1092759583,
+          "rounded": -1,
+          "shift": 31
+        },
+        {
+          "acc": 0,
+          "clamped_int8": 0,
+          "multiplier_int": 1092759583,
+          "product": 0,
+          "rounded": 0,
+          "shift": 31
+        },
+        {
+          "acc": 1,
+          "clamped_int8": 1,
+          "multiplier_int": 1092759583,
+          "product": 1092759583,
+          "rounded": 1,
+          "shift": 31
+        },
+        {
+          "acc": 257,
+          "clamped_int8": 127,
+          "multiplier_int": 1092759583,
+          "product": 280839212831,
+          "rounded": 131,
+          "shift": 31
+        },
+        {
+          "acc": 4096,
+          "clamped_int8": 127,
+          "multiplier_int": 1092759583,
+          "product": 4475943251968,
+          "rounded": 2084,
+          "shift": 31
+        }
+      ]
+    },
+    {
+      "multiplier_int": 1440484421,
+      "op": "layer1.1.add",
+      "real_multiplier": 0.6707778298624085,
+      "relative_error": 4.890604685452724e-11,
+      "shift": 31,
+      "source": "residual_add_shortcut_to_target",
+      "vectors": [
+        {
+          "acc": -4096,
+          "clamped_int8": -128,
+          "multiplier_int": 1440484421,
+          "product": -5900224188416,
+          "rounded": -2748,
+          "shift": 31
+        },
+        {
+          "acc": -257,
+          "clamped_int8": -128,
+          "multiplier_int": 1440484421,
+          "product": -370204496197,
+          "rounded": -172,
+          "shift": 31
+        },
+        {
+          "acc": -1,
+          "clamped_int8": -1,
+          "multiplier_int": 1440484421,
+          "product": -1440484421,
+          "rounded": -1,
+          "shift": 31
+        },
+        {
+          "acc": 0,
+          "clamped_int8": 0,
+          "multiplier_int": 1440484421,
+          "product": 0,
+          "rounded": 0,
+          "shift": 31
+        },
+        {
+          "acc": 1,
+          "clamped_int8": 1,
+          "multiplier_int": 1440484421,
+          "product": 1440484421,
+          "rounded": 1,
+          "shift": 31
+        },
+        {
+          "acc": 257,
+          "clamped_int8": 127,
+          "multiplier_int": 1440484421,
+          "product": 370204496197,
+          "rounded": 172,
+          "shift": 31
+        },
+        {
+          "acc": 4096,
+          "clamped_int8": 127,
+          "multiplier_int": 1440484421,
+          "product": 5900224188416,
+          "rounded": 2748,
+          "shift": 31
+        }
+      ]
+    },
+    {
+      "multiplier_int": 571527757,
+      "op": "layer1.2.add",
+      "real_multiplier": 1.0645534043458704,
+      "relative_error": 1.117569835280649e-10,
+      "shift": 29,
+      "source": "residual_add_main_to_target",
+      "vectors": [
+        {
+          "acc": -4096,
+          "clamped_int8": -128,
+          "multiplier_int": 571527757,
+          "product": -2340977692672,
+          "rounded": -4360,
+          "shift": 29
+        },
+        {
+          "acc": -257,
+          "clamped_int8": -128,
+          "multiplier_int": 571527757,
+          "product": -146882633549,
+          "rounded": -274,
+          "shift": 29
+        },
+        {
+          "acc": -1,
+          "clamped_int8": -1,
+          "multiplier_int": 571527757,
+          "product": -571527757,
+          "rounded": -1,
+          "shift": 29
+        },
+        {
+          "acc": 0,
+          "clamped_int8": 0,
+          "multiplier_int": 571527757,
+          "product": 0,
+          "rounded": 0,
+          "shift": 29
+        },
+        {
+          "acc": 1,
+          "clamped_int8": 1,
+          "multiplier_int": 571527757,
+          "product": 571527757,
+          "rounded": 1,
+          "shift": 29
+        },
+        {
+          "acc": 257,
+          "clamped_int8": 127,
+          "multiplier_int": 571527757,
+          "product": 146882633549,
+          "rounded": 274,
+          "shift": 29
+        },
+        {
+          "acc": 4096,
+          "clamped_int8": 127,
+          "multiplier_int": 571527757,
+          "product": 2340977692672,
+          "rounded": 4360,
+          "shift": 29
+        }
+      ]
+    },
+    {
+      "multiplier_int": 1342069241,
+      "op": "layer1.2.add",
+      "real_multiplier": 1.2498993811280903,
+      "relative_error": 2.30201869178022e-10,
+      "shift": 30,
+      "source": "residual_add_shortcut_to_target",
+      "vectors": [
+        {
+          "acc": -4096,
+          "clamped_int8": -128,
+          "multiplier_int": 1342069241,
+          "product": -5497115611136,
+          "rounded": -5120,
+          "shift": 30
+        },
+        {
+          "acc": -257,
+          "clamped_int8": -128,
+          "multiplier_int": 1342069241,
+          "product": -344911794937,
+          "rounded": -321,
+          "shift": 30
+        },
+        {
+          "acc": -1,
+          "clamped_int8": -1,
+          "multiplier_int": 1342069241,
+          "product": -1342069241,
+          "rounded": -1,
+          "shift": 30
+        },
+        {
+          "acc": 0,
+          "clamped_int8": 0,
+          "multiplier_int": 1342069241,
+          "product": 0,
+          "rounded": 0,
+          "shift": 30
+        },
+        {
+          "acc": 1,
+          "clamped_int8": 1,
+          "multiplier_int": 1342069241,
+          "product": 1342069241,
+          "rounded": 1,
+          "shift": 30
+        },
+        {
+          "acc": 257,
+          "clamped_int8": 127,
+          "multiplier_int": 1342069241,
+          "product": 344911794937,
+          "rounded": 321,
+          "shift": 30
+        },
+        {
+          "acc": 4096,
+          "clamped_int8": 127,
+          "multiplier_int": 1342069241,
+          "product": 5497115611136,
+          "rounded": 5120,
+          "shift": 30
+        }
+      ]
+    }
+  ]
+}

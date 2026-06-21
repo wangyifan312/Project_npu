@@ -110,7 +110,16 @@ module npu_top #(
     localparam FSM_FC_LOAD_WGT = 5'd18;
     localparam FSM_FC_LOAD_WAIT= 5'd19;
     localparam FSM_REQUANT_COMPUTE = 5'd21;
+    localparam FSM_REQUANT_DRAIN   = 5'd30;
     localparam FSM_TASK_SETUP  = 5'd22;
+    localparam FSM_LOAD_BIAS   = 5'd23;
+    localparam FSM_BIAS_WAIT   = 5'd24;
+    localparam FSM_BIAS_EXTRACT= 5'd25;
+    localparam FSM_LOAD_ADD_SRC1 = 5'd26;
+    localparam FSM_ADD_SRC1_WAIT = 5'd27;
+    localparam FSM_ADD_COMPUTE   = 5'd28;
+    localparam FSM_GAP_COMPUTE   = 5'd29;
+    localparam FSM_ADD_DRAIN     = 5'd31;
     localparam FSM_DONE        = 5'd15;
 
     function [7:0] hb_beat_byte;
@@ -126,6 +135,21 @@ module npu_top #(
         input [2:0] word_sel;
         begin
             hb_beat_word = beat[word_sel * 32 +: 32];
+        end
+    endfunction
+
+    function [15:0] conv_out_dim;
+        input [15:0] in_dim;
+        input [15:0] kernel;
+        input [15:0] stride;
+        input        same_pad;
+        begin
+            if (same_pad)
+                conv_out_dim = (stride == 16'd2) ? ((in_dim + 16'd1) >> 1) : in_dim;
+            else if (in_dim >= kernel)
+                conv_out_dim = ((in_dim - kernel) / stride) + 16'd1;
+            else
+                conv_out_dim = 16'd0;
         end
     endfunction
     localparam FSM_ERROR       = 5'd14;
@@ -151,7 +175,7 @@ module npu_top #(
     // npu_ctrl signals
     // ============================================================
     wire        task_start;
-    wire [1:0]  task_type;
+    wire [2:0]  task_type;
     wire [31:0] input_addr, weight_addr, output_addr;
     wire [31:0] input_bytes, weight_bytes, output_bytes;
     wire [15:0] input_h, input_w, input_c, output_c;
@@ -161,6 +185,31 @@ module npu_top #(
     wire [5:0]  requant_shift;
     wire [1:0]  cluster_mode_cfg;
     wire [5:0]  cluster_mask_cfg;
+    wire [31:0] conv_cfg;
+    wire [31:0] bias_addr;
+    wire [31:0] bias_bytes;
+    wire [31:0] src1_addr;
+    wire [31:0] src1_bytes;
+    wire [31:0] add_cfg;
+    wire [31:0] gap_cfg;
+    wire [31:0] postproc_cfg_ext;
+    wire [31:0] add_src0_multiplier;
+    wire [5:0]  add_src0_shift;
+    wire [31:0] add_src1_multiplier;
+    wire [5:0]  add_src1_shift;
+    wire [31:0] add_out_multiplier;
+    wire [5:0]  add_out_shift;
+    wire [1:0]  conv_kernel_sel = conv_cfg[1:0];
+    wire        conv_stride2 = conv_cfg[2];
+    wire        conv_same_pad = conv_cfg[3];
+    wire        bias_enabled = conv_cfg[4] && ((task_type == 3'd0) || (task_type == 3'd1));
+    wire [15:0] conv_kernel_size =
+        (conv_kernel_sel == 2'd1) ? 16'd1 :
+        (conv_kernel_sel == 2'd2) ? 16'd3 :
+                                    16'd5;
+    wire [15:0] conv_stride = conv_stride2 ? 16'd2 : 16'd1;
+    wire [15:0] conv_kernel_area = conv_kernel_size * conv_kernel_size;
+    wire [15:0] conv_total_out_cols = conv_out_dim(input_w, conv_kernel_size, conv_stride, conv_same_pad);
     wire        ctrl_busy, ctrl_done, ctrl_error, task_go;
     wire [7:0]  ctrl_error_code;
 
@@ -183,6 +232,8 @@ module npu_top #(
     wire [15:0] blk_in_rows, blk_out_rows;
     wire [31:0] blk_wgt_per_cin;
     wire [15:0] blk_cin_total;
+    wire [31:0] blk_conv_output_elements =
+        {16'd0, blk_out_rows} * {16'd0, conv_total_out_cols} * {16'd0, output_c};
 
     // ============================================================
     // npu_ctrl
@@ -210,6 +261,12 @@ module npu_top #(
         .relu_en(relu_en), .pool_en(pool_en),
         .requant_slot_sel(requant_slot_sel), .requant_multiplier(requant_multiplier), .requant_shift(requant_shift),
         .cluster_mode_cfg(cluster_mode_cfg), .cluster_mask_cfg(cluster_mask_cfg),
+        .conv_cfg(conv_cfg), .bias_addr(bias_addr), .bias_bytes(bias_bytes),
+        .src1_addr(src1_addr), .src1_bytes(src1_bytes), .add_cfg(add_cfg),
+        .gap_cfg(gap_cfg), .postproc_cfg_ext(postproc_cfg_ext),
+        .add_src0_multiplier(add_src0_multiplier), .add_src0_shift(add_src0_shift),
+        .add_src1_multiplier(add_src1_multiplier), .add_src1_shift(add_src1_shift),
+        .add_out_multiplier(add_out_multiplier), .add_out_shift(add_out_shift),
         .task_done_i(task_done_fb), .task_error_i(task_error_fb),
         .task_error_code_i(task_error_code_fb),
         .check_done_i(check_done_fb), .checks_pass_i(checks_pass_fb),
@@ -236,7 +293,14 @@ module npu_top #(
         .output_addr(output_addr), .input_bytes(input_bytes), .weight_bytes(weight_bytes),
         .output_bytes(output_bytes), .input_h(input_h), .input_w(input_w),
         .input_c(input_c), .output_c(output_c), .relu_en(relu_en), .pool_en(pool_en),
+        .conv_cfg(conv_cfg),
+        .bias_addr(bias_addr), .bias_bytes(bias_bytes),
+        .src1_addr(src1_addr), .src1_bytes(src1_bytes),
+        .add_cfg(add_cfg), .gap_cfg(gap_cfg), .postproc_cfg_ext(postproc_cfg_ext),
         .requant_multiplier(requant_multiplier), .requant_shift(requant_shift),
+        .add_src0_multiplier(add_src0_multiplier), .add_src0_shift(add_src0_shift),
+        .add_src1_multiplier(add_src1_multiplier), .add_src1_shift(add_src1_shift),
+        .add_out_multiplier(add_out_multiplier), .add_out_shift(add_out_shift),
         .checks_pass(checks_pass_fb), .error_code(task_error_code_fb), .check_done(check_done_fb)
     );
 
@@ -430,6 +494,7 @@ module npu_top #(
         .window_valid(cf_window_valid_i),
         .channel_sel(cf_channel_sel),
         .input_w(input_w), .input_h(input_h), .input_c(input_c),
+        .conv_cfg(conv_cfg),
         .block_out_rows(blk_out_rows), .block_in_rows(blk_in_rows),
         .start(cf_start), .window_hold(cf_window_hold),
         .done(cf_done), .cur_row(cf_cur_row), .cur_col(cf_cur_col)
@@ -464,10 +529,12 @@ module npu_top #(
     wire [5:0]                perf_cluster_enable;
     wire [2:0]                perf_cluster_count;
     wire                      perf_schedule_valid;
-    wire is_fc_mode      = (task_type == 2'd1);
-    wire is_pool_mode    = (task_type == 2'd2);
-    wire is_conv_mode    = (task_type == 2'd0);
-    wire is_requant_mode = (task_type == 2'd3);
+    wire is_fc_mode      = (task_type == 3'd1);
+    wire is_pool_mode    = (task_type == 3'd2);
+    wire is_conv_mode    = (task_type == 3'd0);
+    wire is_requant_mode = (task_type == 3'd3);
+    wire is_add_mode     = (task_type == 3'd4);
+    wire is_gap_mode     = (task_type == 3'd5);
     wire [15:0] array_active_rows;
     wire [15:0] array_active_cols;
     wire [15:0] array_drain_offset;
@@ -490,7 +557,7 @@ module npu_top #(
     integer arb_prev_i;
     integer arb_global_col_i;
     integer arb_route_col_i;
-    assign array_active_rows = is_fc_mode ? fc_chunk_inputs : KERNEL_SPATIAL_16;
+    assign array_active_rows = is_fc_mode ? fc_chunk_inputs : conv_kernel_area;
     assign array_active_cols = is_fc_mode ? fc_tile_outputs : output_c;
     // Drain latency is max(PE_ROWS - active_rows, 0) plus the fixed pipeline tail.
     // Conv kernels can use more active rows than the physical PE row count.
@@ -673,6 +740,7 @@ module npu_top #(
     // Accumulation: per-window column accumulator (collect one column per cycle)
     reg [15:0] acc_col_idx;         // which output column to accumulate
     reg        acc_collect_wait;     // wait for synchronous acc_buffer read
+    reg        acc_collect_skip_write;
     reg [31:0] col_results [0:63];  // latched array column results (max 64 columns)
     reg                 rq_acc_wr_en_r;
     reg [BUF_ADDR_W-1:0] rq_acc_wr_addr_r;
@@ -684,6 +752,34 @@ module npu_top #(
     reg [31:0]          rq_store_addr;
     reg [31:0]          rq_store_bytes;
     reg                 rq_src_wait;
+    reg                 rq_mode_internal;
+    reg                 rq_word_store_mode;
+    wire                rq_internal_write_phase =
+        ((fsm_state == FSM_REQUANT_COMPUTE) || (fsm_state == FSM_REQUANT_DRAIN)) &&
+        rq_mode_internal;
+    reg [4:0]           bias_return_state;
+    reg [31:0]          bias_load_phase;
+    reg [31:0]          bias_load_words;
+    reg                 bias_load_wait;
+    reg signed [31:0]   bias_reg [0:63];
+    reg [31:0]          add_src_idx;
+    reg                 add_src_wait;
+    reg [1:0]           add_pack_idx;
+    reg [31:0]          add_pack_word;
+    reg                 add_acc_wr_en_r;
+    reg [BUF_ADDR_W-1:0] add_acc_wr_addr_r;
+    reg [31:0]          add_acc_wr_data_r;
+    wire                add_write_phase =
+        (fsm_state == FSM_ADD_COMPUTE) || (fsm_state == FSM_ADD_DRAIN);
+    reg [15:0]          gap_channel_idx;
+    reg [5:0]           gap_sp_idx;
+    reg signed [31:0]   gap_sum;
+    reg                 gap_src_wait;
+    reg [1:0]           gap_pack_idx;
+    reg [31:0]          gap_pack_word;
+    reg                 gap_acc_wr_en_r;
+    reg [BUF_ADDR_W-1:0] gap_acc_wr_addr_r;
+    reg [31:0]          gap_acc_wr_data_r;
 
     // ============================================================
     // perf counter
@@ -710,9 +806,10 @@ module npu_top #(
     assign perf_array_active_evt = perf_conv_array_active || perf_fc_array_active;
     assign perf_array_stall_evt = perf_conv_array_stall;
     assign perf_conv_window_count =
-        ((input_h >= 16'd5) && (input_w >= 16'd5)) ? ((input_h - 16'd4) * (input_w - 16'd4)) : 64'd0;
+        conv_out_dim(input_h, conv_kernel_size, conv_stride, conv_same_pad) *
+        conv_out_dim(input_w, conv_kernel_size, conv_stride, conv_same_pad);
     assign perf_conv_channel_work = input_c * output_c;
-    assign perf_conv_mac_count = perf_conv_window_count * perf_conv_channel_work * 64'd25;
+    assign perf_conv_mac_count = perf_conv_window_count * perf_conv_channel_work * conv_kernel_area;
     assign perf_fc_mac_count = input_bytes * output_c;
     assign perf_mac_lo = is_conv_mode ? perf_conv_mac_count[31:0] :
                          is_fc_mode   ? perf_fc_mac_count[31:0] :
@@ -765,16 +862,87 @@ module npu_top #(
     wire [HB_BEAT_BYTE_BITS-1:0] fc_act_byte_sel = fc_act_byte_idx[4:0];
     wire [7:0] fc_weight_byte = hb_beat_byte(wgt_rd_data, fc_weight_byte_sel);
     wire [31:0] conv_weight_dma_byte_idx = wgt_load_phase + {27'd0, wgt_dma_byte_offset};
+    wire [31:0] add_byte_idx = add_src_idx;
+    wire [31:0] add_next_byte_idx = add_src_idx + 32'd1;
+    wire [BUF_ADDR_W-1:0] add_src_beat_addr = add_byte_idx[BUF_ADDR_W+4:5];
+    wire [BUF_ADDR_W-1:0] add_next_beat_addr = add_next_byte_idx[BUF_ADDR_W+4:5];
+    wire [HB_BEAT_BYTE_BITS-1:0] add_byte_sel = add_byte_idx[4:0];
+    wire [31:0] gap_byte_idx = ({16'd0, gap_sp_idx} * {16'd0, input_c}) + {16'd0, gap_channel_idx};
+    wire [31:0] gap_next_sp_idx = {26'd0, gap_sp_idx} + 32'd1;
+    wire [31:0] gap_next_byte_idx =
+        (gap_next_sp_idx * {16'd0, input_c}) + {16'd0, gap_channel_idx};
+    wire [BUF_ADDR_W-1:0] gap_src_beat_addr = gap_byte_idx[BUF_ADDR_W+4:5];
+    wire [BUF_ADDR_W-1:0] gap_next_beat_addr = gap_next_byte_idx[BUF_ADDR_W+4:5];
+    wire [HB_BEAT_BYTE_BITS-1:0] gap_byte_sel = gap_byte_idx[4:0];
     wire [BUF_ADDR_W-1:0] rq_src_beat_addr = rq_src_idx[BUF_ADDR_W+2:3];
     wire [2:0] rq_src_word_sel = rq_src_idx[2:0];
     wire [31:0] rq_src_word = hb_beat_word(act_rd_data, rq_src_word_sel);
     wire signed [7:0] rq_q;
+    wire signed [7:0] rq_bias_q;
+    wire signed [7:0] rq_q_selected = rq_mode_internal ? rq_bias_q : rq_q;
+    wire signed [7:0] add_src0_i8 = hb_beat_byte(act_rd_data, add_byte_sel);
+    wire signed [7:0] add_src1_i8 = hb_beat_byte(wgt_rd_data, add_byte_sel);
+    wire signed [7:0] add_src0_aligned;
+    wire signed [7:0] add_src1_aligned;
+    wire signed [31:0] add_raw_sum;
+    wire signed [31:0] add_relu_sum;
+    wire signed [7:0] add_q;
+    wire signed [7:0] gap_sample_i8 = hb_beat_byte(act_rd_data, gap_byte_sel);
+    wire signed [31:0] gap_sample_i32 = {{24{gap_sample_i8[7]}}, gap_sample_i8};
+    wire signed [31:0] gap_sum_next = gap_sum + gap_sample_i32;
+    wire signed [31:0] gap_avg_i32;
+    wire signed [7:0] gap_q;
 
     requant_i32_to_i8 u_requant (
         .acc_i($signed(rq_src_word)),
         .multiplier_i(requant_multiplier),
         .shift_i(requant_shift),
         .q_o(rq_q)
+    );
+
+    wire [5:0] rq_bias_idx =
+        is_fc_mode ? rq_src_idx[5:0] :
+        (output_c == 16'd0) ? 6'd0 : (rq_src_idx % {16'd0, output_c});
+    wire signed [31:0] rq_bias_value = bias_reg[rq_bias_idx];
+    wire signed [31:0] rq_bias_acc;
+
+    bias_add_requant_i32_to_i8 u_bias_requant (
+        .acc_i($signed(acc_rd_data)),
+        .bias_i(rq_bias_value),
+        .bias_en_i(bias_enabled && rq_mode_internal),
+        .relu_en_i(relu_en && rq_mode_internal),
+        .multiplier_i(requant_multiplier),
+        .shift_i(requant_shift),
+        .biased_acc_o(rq_bias_acc),
+        .q_o(rq_bias_q)
+    );
+
+    residual_add_requant_i8 u_residual_add (
+        .src0_i(add_src0_i8),
+        .src1_i(add_src1_i8),
+        .relu_en_i(add_cfg[2] || postproc_cfg_ext[0]),
+        .requant_en_i(add_cfg[3] || postproc_cfg_ext[1]),
+        .src0_multiplier_i(add_src0_multiplier),
+        .src0_shift_i(add_src0_shift),
+        .src1_multiplier_i(add_src1_multiplier),
+        .src1_shift_i(add_src1_shift),
+        .out_multiplier_i(add_out_multiplier),
+        .out_shift_i(add_out_shift),
+        .src0_aligned_o(add_src0_aligned),
+        .src1_aligned_o(add_src1_aligned),
+        .add_raw_o(add_raw_sum),
+        .add_relu_o(add_relu_sum),
+        .out_o(add_q)
+    );
+
+    gap8x8_requant_i8 u_gap8x8 (
+        .sum_i(gap_sum_next),
+        .avg_shift_i(gap_cfg[25:20]),
+        .requant_en_i(postproc_cfg_ext[1]),
+        .multiplier_i(requant_multiplier),
+        .shift_i(requant_shift),
+        .avg_i32_o(gap_avg_i32),
+        .out_o(gap_q)
     );
 
     assign array_weight_ld = (fsm_state == FSM_WGT_LD);
@@ -797,6 +965,8 @@ module npu_top #(
 
     assign act_rd_addr  = is_pool_mode    ? act_pool_beat_addr :
                           is_fc_mode      ? fc_act_beat_addr :
+                          is_add_mode     ? add_src_beat_addr :
+                          is_gap_mode     ? gap_src_beat_addr :
                           is_requant_mode ? rq_src_beat_addr :
                                             act_feed_beat_addr;
 
@@ -809,8 +979,20 @@ module npu_top #(
     wire [31:0] fc_wgt_dma_base = blk_wgt_addr + fc_out_start * input_c;
     wire [31:0] conv_wgt_dma_base = blk_wgt_addr + cin_idx * wgt_per_cin;
     wire [31:0] conv_next_wgt_dma_base = blk_wgt_addr + (cin_idx + 16'd1) * wgt_per_cin;
-    wire [31:0] conv_wgt_valid_bytes = 32'd25 * output_c;
-    assign wgt_rd_addr  = (is_fc_mode && (fsm_state == FSM_LOAD_ARRAY)) ? fc_weight_beat_addr : wgt_mac_addr;
+    wire [31:0] conv_wgt_valid_bytes = {16'd0, conv_kernel_area} * output_c;
+    wire [31:0] bias_dma_base = is_fc_mode ? (bias_addr + fc_out_start * 32'd4) : bias_addr;
+    wire [31:0] bias_byte_idx = (bias_load_phase << 2) + {27'd0, wgt_dma_byte_offset};
+    wire [31:0] bias_next_byte_idx = bias_byte_idx + 32'd4;
+    wire [BUF_ADDR_W-1:0] bias_beat_addr = bias_byte_idx[BUF_ADDR_W+4:5];
+    wire [BUF_ADDR_W-1:0] bias_next_beat_addr = bias_next_byte_idx[BUF_ADDR_W+4:5];
+    wire [2:0] bias_word_sel = bias_byte_idx[4:2];
+    wire [31:0] bias_word = hb_beat_word(wgt_rd_data, bias_word_sel);
+    wire [BUF_ADDR_W-1:0] rq_acc_rd_addr = rq_src_idx[BUF_ADDR_W-1:0];
+
+    assign wgt_rd_addr  = (fsm_state == FSM_BIAS_EXTRACT) ? bias_beat_addr :
+                          (fsm_state == FSM_ADD_COMPUTE) ? add_src_beat_addr :
+                          (is_fc_mode && (fsm_state == FSM_LOAD_ARRAY)) ? fc_weight_beat_addr :
+                          wgt_mac_addr;
     assign wgt_rd_bank  = wgt_consume_bank;
 
     // ============================================================
@@ -913,21 +1095,37 @@ module npu_top #(
     // ============================================================
     reg [BUF_ADDR_W-1:0] acc_wr_ptr;
     reg [BUF_ADDR_W-1:0] acc_partial_addr;  // partial sum address during COLLECT
+    reg [31:0]           conv_collect_base_next;
     assign acc_wr_addr = ((fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_COLLECT))
                          ? acc_partial_addr
-                         : (is_requant_mode ? rq_acc_wr_addr_r : acc_wr_ptr);
+                         : add_write_phase
+                         ? add_acc_wr_addr_r
+                         : (fsm_state == FSM_GAP_COMPUTE)
+                         ? gap_acc_wr_addr_r
+                         : (rq_internal_write_phase || is_requant_mode)
+                         ? rq_acc_wr_addr_r
+                         : acc_wr_ptr;
     wire array_first_accum = is_fc_mode ? (fc_in_base == 16'd0) : (cin_idx == 16'd0);
     wire array_final_accum = is_fc_mode ? (fc_in_base + fc_chunk_inputs >= input_c) :
                                          (cin_idx + 16'd1 >= cin_total);
     wire [31:0] array_acc_sum =
         array_first_accum ? col_results[acc_col_idx] : (acc_rd_data + col_results[acc_col_idx]);
-    wire array_relu_final = relu_en && array_final_accum && array_acc_sum[31];
+    wire array_relu_final = relu_en && !bias_enabled && array_final_accum && array_acc_sum[31];
     wire [31:0] array_acc_wr_data = array_relu_final ? 32'd0 : array_acc_sum;
-    assign acc_wr_data = (is_conv_mode || is_fc_mode) ? array_acc_wr_data :
+    assign acc_wr_data = add_write_phase ? add_acc_wr_data_r :
+                         (fsm_state == FSM_GAP_COMPUTE) ? gap_acc_wr_data_r :
+                         rq_internal_write_phase ? rq_acc_wr_data_r :
+                         (is_conv_mode || is_fc_mode) ? array_acc_wr_data :
                          is_requant_mode ? rq_acc_wr_data_r :
                                            pp_data_out;
-    assign acc_wr_en   = (is_conv_mode || is_fc_mode)
-        ? ((fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_COLLECT) && !acc_collect_wait)
+    assign acc_wr_en   = add_write_phase ? add_acc_wr_en_r :
+        (fsm_state == FSM_GAP_COMPUTE) ? gap_acc_wr_en_r :
+        rq_internal_write_phase ? rq_acc_wr_en_r :
+        (is_conv_mode || is_fc_mode)
+        ? ((fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_COLLECT) &&
+           !acc_collect_wait && !acc_collect_skip_write &&
+           (!is_conv_mode || ((comp_win_idx < comp_total_wins) &&
+                              (acc_col_idx < array_active_cols))))
         : is_requant_mode ? rq_acc_wr_en_r
         : pp_data_valid_o;
     assign acc_wr_bank = acc_load_bank;
@@ -944,6 +1142,7 @@ module npu_top #(
         .input_addr(input_addr), .weight_addr(weight_addr), .output_addr(output_addr),
         .input_bytes(input_bytes), .weight_bytes(weight_bytes), .output_bytes(output_bytes),
         .input_h(input_h), .input_w(input_w), .input_c(input_c), .output_c(output_c),
+        .conv_cfg(conv_cfg),
         .block_done(blk_done), .block_valid(blk_valid), .all_blocks_done(blk_all_done),
         .blk_input_addr(blk_in_addr), .blk_weight_addr(blk_wgt_addr), .blk_output_addr(blk_out_addr),
         .blk_input_bytes(blk_in_bytes), .blk_weight_bytes(blk_wgt_bytes), .blk_output_bytes(blk_out_bytes),
@@ -984,12 +1183,17 @@ module npu_top #(
     reg [AXI_DMA_DATA_W-1:0] dma_wr_data_r;
     reg dma_wr_valid_r;
 
-    assign acc_rd_addr = ((fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_COLLECT))
+    assign acc_rd_addr = ((fsm_state == FSM_REQUANT_COMPUTE) && rq_mode_internal)
+                         ? rq_acc_rd_addr
+                         : ((fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_COLLECT))
                          ? acc_partial_addr
                          : dma_rd_ptr;
     assign acc_rd_bank = acc_load_bank;
     assign dma_wr_data = dma_wr_data_r;
-    wire [31:0] store_bytes_active = is_fc_mode ? fc_store_bytes :
+    wire [31:0] store_bytes_active = rq_mode_internal ? rq_store_bytes :
+                                     is_add_mode ? output_bytes :
+                                     is_gap_mode ? output_bytes :
+                                     is_fc_mode ? fc_store_bytes :
                                      is_requant_mode ? rq_store_bytes :
                                                        blk_out_bytes;
     wire [31:0] store_words_active = (store_bytes_active + 32'd3) >> 2;
@@ -1048,12 +1252,36 @@ module npu_top #(
             wgt_per_cin <= 32'd0;
             acc_col_idx <= 16'd0;
             acc_collect_wait <= 1'b0;
+            acc_collect_skip_write <= 1'b0;
             fc_out_start <= 16'd0; fc_tile_outputs <= 16'd0;
             fc_in_base <= 16'd0; fc_chunk_inputs <= 16'd0;
             fc_store_addr <= 32'd0; fc_store_bytes <= 32'd0;
             rq_acc_wr_en_r <= 1'b0; rq_acc_wr_addr_r <= {BUF_ADDR_W{1'b0}}; rq_acc_wr_data_r <= 32'd0;
             rq_src_idx <= 32'd0; rq_src_wait <= 1'b0; rq_total_words <= 32'd0; rq_pack_idx <= 2'd0; rq_pack_word <= 32'd0;
             rq_store_addr <= 32'd0; rq_store_bytes <= 32'd0;
+            rq_mode_internal <= 1'b0;
+            rq_word_store_mode <= 1'b0;
+            bias_return_state <= FSM_IDLE;
+            bias_load_phase <= 32'd0; bias_load_words <= 32'd0; bias_load_wait <= 1'b0;
+            add_src_idx <= 32'd0; add_src_wait <= 1'b0;
+            add_pack_idx <= 2'd0; add_pack_word <= 32'd0;
+            add_acc_wr_en_r <= 1'b0;
+            add_acc_wr_addr_r <= {BUF_ADDR_W{1'b0}};
+            add_acc_wr_data_r <= 32'd0;
+            gap_channel_idx <= 16'd0;
+            gap_sp_idx <= 6'd0;
+            gap_sum <= 32'sd0;
+            gap_src_wait <= 1'b0;
+            gap_pack_idx <= 2'd0;
+            gap_pack_word <= 32'd0;
+            gap_acc_wr_en_r <= 1'b0;
+            gap_acc_wr_addr_r <= {BUF_ADDR_W{1'b0}};
+            gap_acc_wr_data_r <= 32'd0;
+            begin
+                integer bi;
+                for (bi = 0; bi < 64; bi = bi + 1)
+                    bias_reg[bi] <= 32'sd0;
+            end
         end else begin
             // Default: pulse signals low
             act_dma_start <= 1'b0; wgt_dma_start <= 1'b0; dma_wr_start <= 1'b0;
@@ -1065,6 +1293,8 @@ module npu_top #(
             blk_done <= 1'b0;
             wgt_buf_flush <= 1'b0;
             rq_acc_wr_en_r <= 1'b0;
+            add_acc_wr_en_r <= 1'b0;
+            gap_acc_wr_en_r <= 1'b0;
 
             if (fsm_state == FSM_COMPUTE && comp_sub_state == CP_FEED_ACT) begin
                 cf_last_row <= cf_cur_row;
@@ -1090,12 +1320,69 @@ module npu_top #(
                         // Capture per-task block parameters after block_scheduler has advanced
                         cin_total <= blk_cin_total;
                         wgt_per_cin <= blk_wgt_per_cin;
-                        act_dma_start <= 1'b1;
-                        act_dma_addr <= blk_in_addr;
-                        act_dma_bytes <= blk_in_bytes;
-                        act_load_start <= 1'b1;
-                        act_load_bank <= block_bank;
-                        fsm_state <= FSM_LOAD_ACT;
+                        if (bias_enabled && is_conv_mode) begin
+                            bias_load_words <= {16'd0, output_c};
+                            bias_return_state <= FSM_LOAD_ACT;
+                            wgt_buf_flush <= 1'b1;
+                            fsm_state <= FSM_LOAD_BIAS;
+                        end else begin
+                            act_dma_start <= 1'b1;
+                            act_dma_addr <= blk_in_addr;
+                            act_dma_bytes <= blk_in_bytes;
+                            act_load_start <= 1'b1;
+                            act_load_bank <= block_bank;
+                            fsm_state <= FSM_LOAD_ACT;
+                        end
+                    end
+                end
+
+                FSM_LOAD_BIAS: begin
+                    wgt_dma_start <= 1'b1;
+                    wgt_dma_addr <= {bias_dma_base[31:5], 5'b0};
+                    wgt_dma_byte_offset <= bias_dma_base[4:0];
+                    wgt_dma_bytes <= (bias_load_words << 2) +
+                                     {27'd0, bias_dma_base[4:0]};
+                    wgt_load_start <= 1'b1;
+                    wgt_load_bank <= block_bank;
+                    fsm_state <= FSM_BIAS_WAIT;
+                end
+
+                FSM_BIAS_WAIT: begin
+                    if (wgt_dma_done) begin
+                        wgt_load_done <= 1'b1;
+                        wgt_consume_bank <= wgt_load_bank;
+                        bias_load_phase <= 32'd0;
+                        bias_load_wait <= 1'b1;
+                        fsm_state <= FSM_BIAS_EXTRACT;
+                    end else if (wgt_dma_error) begin
+                        task_error_r <= 1'b1; task_error_code_r <= wgt_dma_error_code;
+                        fsm_state <= FSM_ERROR;
+                    end
+                end
+
+                FSM_BIAS_EXTRACT: begin
+                    if (bias_load_wait) begin
+                        bias_load_wait <= 1'b0;
+                    end else begin
+                        if (bias_load_phase < 32'd64)
+                            bias_reg[bias_load_phase[5:0]] <= bias_word;
+
+                        if (bias_load_phase + 32'd1 >= bias_load_words) begin
+                            if (bias_return_state == FSM_LOAD_ACT) begin
+                                act_dma_start <= 1'b1;
+                                act_dma_addr <= blk_in_addr;
+                                act_dma_bytes <= blk_in_bytes;
+                                act_load_start <= 1'b1;
+                                act_load_bank <= block_bank;
+                                fsm_state <= FSM_LOAD_ACT;
+                            end else begin
+                                fsm_state <= bias_return_state;
+                            end
+                        end else begin
+                            if (bias_beat_addr != bias_next_beat_addr)
+                                bias_load_wait <= 1'b1;
+                            bias_load_phase <= bias_load_phase + 32'd1;
+                        end
                     end
                 end
 
@@ -1111,12 +1398,26 @@ module npu_top #(
                         act_feed_ptr <= 0;
                         act_feed_wait <= 1'b1;
                         act_feed_done_cnt <= 16'd0;
-                        if (is_pool_mode) begin
+                        if (is_add_mode) begin
+                            wgt_buf_flush <= 1'b1;
+                            fsm_state <= FSM_LOAD_ADD_SRC1;
+                        end else if (is_gap_mode) begin
+                            gap_channel_idx <= 16'd0;
+                            gap_sp_idx <= 6'd0;
+                            gap_sum <= 32'sd0;
+                            gap_src_wait <= 1'b1;
+                            gap_pack_idx <= 2'd0;
+                            gap_pack_word <= 32'd0;
+                            acc_load_start <= 1'b1;
+                            fsm_state <= FSM_GAP_COMPUTE;
+                        end else if (is_pool_mode) begin
                             fsm_state <= FSM_COMPUTE;
                             comp_sub_state <= CP_WAIT_WIN;
                             comp_total_wins <= 16'd1;
                             comp_win_idx <= 16'd0;
                         end else if (is_requant_mode) begin
+                            rq_mode_internal <= 1'b0;
+                            rq_word_store_mode <= 1'b0;
                             rq_src_idx <= 32'd0;
                             rq_src_wait <= 1'b1;
                             rq_total_words <= (blk_in_bytes >> 2);
@@ -1132,13 +1433,128 @@ module npu_top #(
                             fsm_state <= FSM_FC_TILE_PREP;
                         end else begin
                             // Conv: start conv_frontend
-                            comp_total_wins <= blk_out_rows * (input_w - 16'd5 + 16'd1);
+                            comp_total_wins <= blk_out_rows * conv_total_out_cols;
                             comp_win_idx <= 16'd0;
                             fsm_state <= FSM_CF_START;
                         end
                     end else if (act_dma_error) begin
                         task_error_r <= 1'b1; task_error_code_r <= act_dma_error_code;
                         fsm_state <= FSM_ERROR;
+                    end
+                end
+
+                FSM_LOAD_ADD_SRC1: begin
+                    wgt_dma_start <= 1'b1;
+                    wgt_dma_addr <= {src1_addr[31:5], 5'b0};
+                    wgt_dma_byte_offset <= src1_addr[4:0];
+                    wgt_dma_bytes <= src1_bytes + {27'd0, src1_addr[4:0]};
+                    wgt_load_start <= 1'b1;
+                    wgt_load_bank <= block_bank;
+                    fsm_state <= FSM_ADD_SRC1_WAIT;
+                end
+
+                FSM_ADD_SRC1_WAIT: begin
+                    if (wgt_dma_done) begin
+                        wgt_load_done <= 1'b1;
+                        wgt_consume_bank <= wgt_load_bank;
+                        act_comp_start <= 1'b1;
+                        act_comp_bank <= act_load_bank;
+                        acc_load_bank <= act_load_bank;
+                        add_src_idx <= 32'd0;
+                        add_src_wait <= 1'b1;
+                        add_pack_idx <= 2'd0;
+                        add_pack_word <= 32'd0;
+                        acc_load_start <= 1'b1;
+                        fsm_state <= FSM_ADD_COMPUTE;
+                    end else if (wgt_dma_error) begin
+                        task_error_r <= 1'b1; task_error_code_r <= wgt_dma_error_code;
+                        fsm_state <= FSM_ERROR;
+                    end
+                end
+
+                FSM_ADD_COMPUTE: begin
+                    reg [31:0] add_pack_word_next;
+                    if (add_src_wait) begin
+                        add_src_wait <= 1'b0;
+                    end else begin
+                        add_pack_word_next = add_pack_word;
+                        case (add_pack_idx)
+                            2'd0: add_pack_word_next[7:0]   = add_q;
+                            2'd1: add_pack_word_next[15:8]  = add_q;
+                            2'd2: add_pack_word_next[23:16] = add_q;
+                            default: add_pack_word_next[31:24] = add_q;
+                        endcase
+
+                        if ((add_pack_idx == 2'd3) || (add_src_idx + 32'd1 >= input_bytes)) begin
+                            add_acc_wr_en_r <= 1'b1;
+                            add_acc_wr_addr_r <= add_src_idx[BUF_ADDR_W+1:2];
+                            add_acc_wr_data_r <= add_pack_word_next;
+                            add_pack_idx <= 2'd0;
+                            add_pack_word <= 32'd0;
+                        end else begin
+                            add_pack_idx <= add_pack_idx + 2'd1;
+                            add_pack_word <= add_pack_word_next;
+                        end
+
+                        if (add_src_idx + 32'd1 < input_bytes) begin
+                            if (add_src_beat_addr != add_next_beat_addr)
+                                add_src_wait <= 1'b1;
+                            add_src_idx <= add_src_idx + 32'd1;
+                        end else begin
+                            act_comp_done <= 1'b1;
+                            fsm_state <= FSM_ADD_DRAIN;
+                        end
+                    end
+                end
+
+                FSM_ADD_DRAIN: begin
+                    // add_acc_wr_en_r is registered; give the final ADD packed
+                    // word one cycle to commit before STORE reads acc_buffer.
+                    acc_load_start <= 1'b1;
+                    fsm_state <= FSM_STORE;
+                end
+
+                FSM_GAP_COMPUTE: begin
+                    reg [31:0] gap_pack_word_next;
+                    if (gap_src_wait) begin
+                        gap_src_wait <= 1'b0;
+                    end else begin
+                        if (gap_sp_idx == 6'd63) begin
+                            gap_pack_word_next = gap_pack_word;
+                            case (gap_pack_idx)
+                                2'd0: gap_pack_word_next[7:0]   = gap_q;
+                                2'd1: gap_pack_word_next[15:8]  = gap_q;
+                                2'd2: gap_pack_word_next[23:16] = gap_q;
+                                default: gap_pack_word_next[31:24] = gap_q;
+                            endcase
+
+                            if ((gap_pack_idx == 2'd3) || (gap_channel_idx + 16'd1 >= output_c)) begin
+                                gap_acc_wr_en_r <= 1'b1;
+                                gap_acc_wr_addr_r <= gap_channel_idx[BUF_ADDR_W+1:2];
+                                gap_acc_wr_data_r <= gap_pack_word_next;
+                                gap_pack_idx <= 2'd0;
+                                gap_pack_word <= 32'd0;
+                            end else begin
+                                gap_pack_idx <= gap_pack_idx + 2'd1;
+                                gap_pack_word <= gap_pack_word_next;
+                            end
+
+                            if (gap_channel_idx + 16'd1 < output_c) begin
+                                gap_channel_idx <= gap_channel_idx + 16'd1;
+                                gap_sp_idx <= 6'd0;
+                                gap_sum <= 32'sd0;
+                                gap_src_wait <= 1'b1;
+                            end else begin
+                                act_comp_done <= 1'b1;
+                                acc_load_start <= 1'b1;
+                                fsm_state <= FSM_STORE;
+                            end
+                        end else begin
+                            gap_sum <= gap_sum_next;
+                            gap_sp_idx <= gap_sp_idx + 6'd1;
+                            if (gap_src_beat_addr != gap_next_beat_addr)
+                                gap_src_wait <= 1'b1;
+                        end
                     end
                 end
 
@@ -1160,7 +1576,13 @@ module npu_top #(
                     fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
                     dma_rd_ptr <= 0;
                     wgt_buf_flush <= 1'b1;
-                    fsm_state <= FSM_FC_LOAD_WGT;
+                    if (bias_enabled) begin
+                        bias_load_words <= {16'd0, fc_tile_outputs_next};
+                        bias_return_state <= FSM_FC_LOAD_WGT;
+                        fsm_state <= FSM_LOAD_BIAS;
+                    end else begin
+                        fsm_state <= FSM_FC_LOAD_WGT;
+                    end
                 end
 
                 FSM_FC_LOAD_WGT: begin
@@ -1191,13 +1613,27 @@ module npu_top #(
                     reg [31:0] rq_pack_word_next;
                     if (rq_src_wait) begin
                         rq_src_wait <= 1'b0;
+                    end else if (rq_word_store_mode) begin
+                        rq_acc_wr_en_r <= 1'b1;
+                        rq_acc_wr_addr_r <= rq_src_idx[BUF_ADDR_W-1:0];
+                        rq_acc_wr_data_r <= {24'd0, rq_q_selected[7:0]};
+                        rq_pack_idx <= 2'd0;
+                        rq_pack_word <= 32'd0;
+
+                        if (rq_src_idx + 32'd1 < rq_total_words) begin
+                            if (rq_mode_internal)
+                                rq_src_wait <= 1'b1;
+                            rq_src_idx <= rq_src_idx + 32'd1;
+                        end else begin
+                            fsm_state <= FSM_REQUANT_DRAIN;
+                        end
                     end else begin
                         rq_pack_word_next = rq_pack_word;
                         case (rq_pack_idx)
-                            2'd0: rq_pack_word_next[7:0]   = rq_q;
-                            2'd1: rq_pack_word_next[15:8]  = rq_q;
-                            2'd2: rq_pack_word_next[23:16] = rq_q;
-                            default: rq_pack_word_next[31:24] = rq_q;
+                            2'd0: rq_pack_word_next[7:0]   = rq_q_selected;
+                            2'd1: rq_pack_word_next[15:8]  = rq_q_selected;
+                            2'd2: rq_pack_word_next[23:16] = rq_q_selected;
+                            default: rq_pack_word_next[31:24] = rq_q_selected;
                         endcase
 
                         if ((rq_pack_idx == 2'd3) || (rq_src_idx + 32'd1 >= rq_total_words)) begin
@@ -1212,16 +1648,23 @@ module npu_top #(
                         end
 
                         if (rq_src_idx + 32'd1 < rq_total_words) begin
-                            if ((rq_src_idx[2:0] == 3'd7) &&
-                                (rq_src_idx + 32'd1 < rq_total_words))
+                            if (rq_mode_internal ||
+                                ((rq_src_idx[2:0] == 3'd7) &&
+                                 (rq_src_idx + 32'd1 < rq_total_words)))
                                 rq_src_wait <= 1'b1;
                             rq_src_idx <= rq_src_idx + 32'd1;
                         end else begin
-                            acc_load_start <= 1'b1;
-                            act_comp_done <= 1'b1;
-                            fsm_state <= FSM_STORE;
+                            fsm_state <= FSM_REQUANT_DRAIN;
                         end
                     end
+                end
+
+                FSM_REQUANT_DRAIN: begin
+                    // rq_acc_wr_en_r is registered; give the final requant write
+                    // one cycle to commit before STORE starts reading acc_buffer.
+                    acc_load_start <= 1'b1;
+                    act_comp_done <= 1'b1;
+                    fsm_state <= FSM_STORE;
                 end
 
                 // ============================================================
@@ -1433,9 +1876,11 @@ module npu_top #(
                             end else begin
                                 comp_drain_cnt <= 16'd0;
                                 // Set up partial sum address for this window
-                                if (is_conv_mode)
-                                    acc_partial_addr <= acc_wr_ptr;
-                                else if (is_fc_mode)
+                                if (is_conv_mode) begin
+                                    conv_collect_base_next =
+                                        ({16'd0, comp_win_idx} * {16'd0, array_active_cols});
+                                    acc_partial_addr <= conv_collect_base_next[BUF_ADDR_W-1:0];
+                                end else if (is_fc_mode)
                                     acc_partial_addr <= {BUF_ADDR_W{1'b0}};
                                 comp_sub_state <= CP_DRAIN;
                             end
@@ -1485,8 +1930,16 @@ module npu_top #(
                                 comp_drain_cnt <= comp_drain_cnt + 16'd1;
                             end else begin
                                 acc_col_idx <= 16'd0;
-                                acc_partial_addr <= is_fc_mode ? {BUF_ADDR_W{1'b0}} : acc_wr_ptr;
+                                // Conv ownership was fixed in CP_FEED_ACT as
+                                // window_index * output_channels. Do not replace
+                                // it with the sequential write pointer here:
+                                // that pointer can lead the logical owner by one
+                                // after the first window. FC always accumulates
+                                // its current output tile from address zero.
+                                if (is_fc_mode)
+                                    acc_partial_addr <= {BUF_ADDR_W{1'b0}};
                                 acc_collect_wait <= 1'b1;
+                                acc_collect_skip_write <= 1'b0;
                                 comp_sub_state <= CP_COLLECT;
                             end
                         end
@@ -1499,7 +1952,14 @@ module npu_top #(
                                 acc_col_idx <= acc_col_idx + 16'd1;
                                 acc_partial_addr <= acc_partial_addr + 1;
                                 acc_collect_wait <= 1'b1;
+                                acc_collect_skip_write <=
+                                    is_conv_mode &&
+                                    (comp_total_wins != 16'd1) &&
+                                    (comp_win_idx + 16'd1 >= comp_total_wins) &&
+                                    (acc_col_idx + 16'd2 >= array_active_cols) &&
+                                    ((acc_partial_addr + {{(BUF_ADDR_W-1){1'b0}}, 1'b1}) == {BUF_ADDR_W{1'b0}});
                             end else begin
+                                acc_collect_skip_write <= 1'b0;
                                 if (is_fc_mode) begin
                                     if (fc_in_base + fc_chunk_inputs < input_c) begin
                                         fc_in_base <= fc_in_base + fc_chunk_inputs;
@@ -1511,10 +1971,24 @@ module npu_top #(
                                         wgt_load_reg <= 0;
                                         fsm_state <= FSM_LOAD_ARRAY;
                                     end else begin
-                                        fc_store_addr <= blk_out_addr + fc_out_start * 32'd4;
-                                        fc_store_bytes <= fc_tile_outputs * 32'd4;
-                                        acc_load_start <= 1'b1;
-                                        fsm_state <= FSM_STORE;
+                                        if (bias_enabled) begin
+                                            rq_mode_internal <= 1'b1;
+                                            rq_word_store_mode <= 1'b0;
+                                            rq_src_idx <= 32'd0;
+                                            rq_src_wait <= 1'b1;
+                                            rq_total_words <= {16'd0, fc_tile_outputs};
+                                            rq_pack_idx <= 2'd0;
+                                            rq_pack_word <= 32'd0;
+                                            rq_store_addr <= blk_out_addr + {16'd0, fc_out_start};
+                                            rq_store_bytes <= {16'd0, fc_tile_outputs};
+                                            acc_load_start <= 1'b1;
+                                            fsm_state <= FSM_REQUANT_COMPUTE;
+                                        end else begin
+                                            fc_store_addr <= blk_out_addr + fc_out_start * 32'd4;
+                                            fc_store_bytes <= fc_tile_outputs * 32'd4;
+                                            acc_load_start <= 1'b1;
+                                            fsm_state <= FSM_STORE;
+                                        end
                                     end
                                     comp_sub_state <= CP_WAIT_WIN;
                                 end else begin
@@ -1552,8 +2026,29 @@ module npu_top #(
                         fsm_state <= FSM_CIN_RESTART;
                     end else begin
                         act_comp_done <= 1'b1;
-                        acc_load_start <= 1'b1;
-                        fsm_state <= FSM_STORE;
+                        if (bias_enabled) begin
+                            rq_mode_internal <= 1'b1;
+                            // The scheduler's Conv block byte count is the legacy
+                            // 32-bit-word layout. A task that requests fewer bytes
+                            // explicitly selects dense INT8 requant packing.
+                            rq_word_store_mode <= (output_bytes == blk_out_bytes);
+                            rq_src_idx <= 32'd0;
+                            rq_src_wait <= 1'b1;
+                            rq_total_words <= blk_conv_output_elements;
+                            rq_pack_idx <= 2'd0;
+                            rq_pack_word <= 32'd0;
+                            rq_store_addr <= (output_bytes == blk_out_bytes)
+                                             ? blk_out_addr
+                                             : output_addr + ((blk_out_addr - output_addr) >> 2);
+                            rq_store_bytes <= (output_bytes == blk_out_bytes)
+                                              ? blk_out_bytes
+                                              : blk_conv_output_elements;
+                            acc_load_start <= 1'b1;
+                            fsm_state <= FSM_REQUANT_COMPUTE;
+                        end else begin
+                            acc_load_start <= 1'b1;
+                            fsm_state <= FSM_STORE;
+                        end
                     end
                 end
 
@@ -1571,10 +2066,16 @@ module npu_top #(
                 // FSM_STORE: DMA write acc_buffer to memory
                 // ============================================================
                 FSM_STORE: begin
-                    dma_wr_addr <= is_fc_mode ? fc_store_addr :
+                    dma_wr_addr <= rq_mode_internal ? rq_store_addr :
+                                   is_add_mode ? output_addr :
+                                   is_gap_mode ? output_addr :
+                                   is_fc_mode ? fc_store_addr :
                                    is_requant_mode ? rq_store_addr :
                                                      blk_out_addr;
-                    dma_wr_bytes <= is_fc_mode ? fc_store_bytes :
+                    dma_wr_bytes <= rq_mode_internal ? rq_store_bytes :
+                                    is_add_mode ? output_bytes :
+                                    is_gap_mode ? output_bytes :
+                                    is_fc_mode ? fc_store_bytes :
                                     is_requant_mode ? rq_store_bytes :
                                                       blk_out_bytes;
                     if (!dma_wr_started) begin
@@ -1638,6 +2139,8 @@ module npu_top #(
                     endcase
 
                     if (dma_wr_done) begin
+                        rq_mode_internal <= 1'b0;
+                        rq_word_store_mode <= 1'b0;
                         dma_wr_valid_r <= 1'b0;
                         dma_wr_started <= 1'b0;
                         dma_rd_ptr <= 0;
@@ -1654,7 +2157,7 @@ module npu_top #(
                                 blk_done <= 1'b1;
                                 fsm_state <= FSM_BLK_DONE;
                             end
-                        end else if (is_requant_mode) begin
+                        end else if (is_requant_mode || is_add_mode || is_gap_mode) begin
                             act_comp_done <= 1'b1;
                             blk_done <= 1'b1;
                             fsm_state <= FSM_BLK_DONE;

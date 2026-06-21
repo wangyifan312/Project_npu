@@ -1,0 +1,1117 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "contract_status": "handoff_skeleton",
+  "op_counts": {
+    "CONV1x1_PROJECTION": 2,
+    "CONV3x3": 19,
+    "FC10": 1,
+    "GAP8x8": 1,
+    "RESIDUAL_ADD": 9
+  },
+  "status": "task_sequence_generated",
+  "task_count": 32,
+  "tasks": [
+    {
+      "bias_file": "bias/conv1.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        3,
+        32,
+        32
+      ],
+      "input_tensors": [
+        "input.image"
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "memory": {
+        "inputs": {
+          "input.image": 64
+        },
+        "output": 3136
+      },
+      "name": "conv1",
+      "op_type": "CONV3x3",
+      "output_shape": [
+        16,
+        32,
+        32
+      ],
+      "output_tensor": "conv1.relu",
+      "requant_ref": "requant/conv_fc_requant.json#conv1",
+      "residual_add_ref": null,
+      "stride": 1,
+      "task_id": 0,
+      "weight_file": "weights/conv1.memh"
+    },
+    {
+      "bias_file": "bias/layer1_0_conv1.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        16,
+        32,
+        32
+      ],
+      "input_tensors": [
+        "conv1.relu"
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "memory": {
+        "inputs": {
+          "conv1.relu": 3136
+        },
+        "output": 19520
+      },
+      "name": "layer1.0.conv1",
+      "op_type": "CONV3x3",
+      "output_shape": [
+        16,
+        32,
+        32
+      ],
+      "output_tensor": "layer1.0.conv1.relu",
+      "requant_ref": "requant/conv_fc_requant.json#layer1.0.conv1",
+      "residual_add_ref": null,
+      "stride": 1,
+      "task_id": 1,
+      "weight_file": "weights/layer1_0_conv1.memh"
+    },
+    {
+      "bias_file": "bias/layer1_0_conv2.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        16,
+        32,
+        32
+      ],
+      "input_tensors": [
+        "layer1.0.conv1.relu"
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "memory": {
+        "inputs": {
+          "layer1.0.conv1.relu": 19520
+        },
+        "output": 35904
+      },
+      "name": "layer1.0.conv2",
+      "op_type": "CONV3x3",
+      "output_shape": [
+        16,
+        32,
+        32
+      ],
+      "output_tensor": "layer1.0.conv2.pre_add_main",
+      "requant_ref": "requant/conv_fc_requant.json#layer1.0.conv2",
+      "residual_add_ref": null,
+      "stride": 1,
+      "task_id": 2,
+      "weight_file": "weights/layer1_0_conv2.memh"
+    },
+    {
+      "bias_file": null,
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        16,
+        32,
+        32
+      ],
+      "input_tensors": [
+        "layer1.0.conv2.pre_add_main",
+        "conv1.relu"
+      ],
+      "kernel": null,
+      "memory": {
+        "inputs": {
+          "conv1.relu": 3136,
+          "layer1.0.conv2.pre_add_main": 35904
+        },
+        "output": 52288
+      },
+      "name": "layer1.0.add",
+      "op_type": "RESIDUAL_ADD",
+      "output_shape": [
+        16,
+        32,
+        32
+      ],
+      "output_tensor": "layer1.0.add.relu",
+      "requant_ref": null,
+      "residual_add_ref": "requant/residual_add_alignment.json#layer1.0.add",
+      "stride": null,
+      "task_id": 3,
+      "weight_file": null
+    },
+    {
+      "bias_file": "bias/layer1_1_conv1.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        16,
+        32,
+        32
+      ],
+      "input_tensors": [
+        "layer1.0.add.relu"
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "memory": {
+        "inputs": {
+          "layer1.0.add.relu": 52288
+        },
+        "output": 68672
+      },
+      "name": "layer1.1.conv1",
+      "op_type": "CONV3x3",
+      "output_shape": [
+        16,
+        32,
+        32
+      ],
+      "output_tensor": "layer1.1.conv1.relu",
+      "requant_ref": "requant/conv_fc_requant.json#layer1.1.conv1",
+      "residual_add_ref": null,
+      "stride": 1,
+      "task_id": 4,
+      "weight_file": "weights/layer1_1_conv1.memh"
+    },
+    {
+      "bias_file": "bias/layer1_1_conv2.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        16,
+        32,
+        32
+      ],
+      "input_tensors": [
+        "layer1.1.conv1.relu"
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "memory": {
+        "inputs": {
+          "layer1.1.conv1.relu": 68672
+        },
+        "output": 85056
+      },
+      "name": "layer1.1.conv2",
+      "op_type": "CONV3x3",
+      "output_shape": [
+        16,
+        32,
+        32
+      ],
+      "output_tensor": "layer1.1.conv2.pre_add_main",
+      "requant_ref": "requant/conv_fc_requant.json#layer1.1.conv2",
+      "residual_add_ref": null,
+      "stride": 1,
+      "task_id": 5,
+      "weight_file": "weights/layer1_1_conv2.memh"
+    },
+    {
+      "bias_file": null,
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        16,
+        32,
+        32
+      ],
+      "input_tensors": [
+        "layer1.1.conv2.pre_add_main",
+        "layer1.0.add.relu"
+      ],
+      "kernel": null,
+      "memory": {
+        "inputs": {
+          "layer1.0.add.relu": 52288,
+          "layer1.1.conv2.pre_add_main": 85056
+        },
+        "output": 101440
+      },
+      "name": "layer1.1.add",
+      "op_type": "RESIDUAL_ADD",
+      "output_shape": [
+        16,
+        32,
+        32
+      ],
+      "output_tensor": "layer1.1.add.relu",
+      "requant_ref": null,
+      "residual_add_ref": "requant/residual_add_alignment.json#layer1.1.add",
+      "stride": null,
+      "task_id": 6,
+      "weight_file": null
+    },
+    {
+      "bias_file": "bias/layer1_2_conv1.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        16,
+        32,
+        32
+      ],
+      "input_tensors": [
+        "layer1.1.add.relu"
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "memory": {
+        "inputs": {
+          "layer1.1.add.relu": 101440
+        },
+        "output": 117824
+      },
+      "name": "layer1.2.conv1",
+      "op_type": "CONV3x3",
+      "output_shape": [
+        16,
+        32,
+        32
+      ],
+      "output_tensor": "layer1.2.conv1.relu",
+      "requant_ref": "requant/conv_fc_requant.json#layer1.2.conv1",
+      "residual_add_ref": null,
+      "stride": 1,
+      "task_id": 7,
+      "weight_file": "weights/layer1_2_conv1.memh"
+    },
+    {
+      "bias_file": "bias/layer1_2_conv2.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        16,
+        32,
+        32
+      ],
+      "input_tensors": [
+        "layer1.2.conv1.relu"
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "memory": {
+        "inputs": {
+          "layer1.2.conv1.relu": 117824
+        },
+        "output": 134208
+      },
+      "name": "layer1.2.conv2",
+      "op_type": "CONV3x3",
+      "output_shape": [
+        16,
+        32,
+        32
+      ],
+      "output_tensor": "layer1.2.conv2.pre_add_main",
+      "requant_ref": "requant/conv_fc_requant.json#layer1.2.conv2",
+      "residual_add_ref": null,
+      "stride": 1,
+      "task_id": 8,
+      "weight_file": "weights/layer1_2_conv2.memh"
+    },
+    {
+      "bias_file": null,
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        16,
+        32,
+        32
+      ],
+      "input_tensors": [
+        "layer1.2.conv2.pre_add_main",
+        "layer1.1.add.relu"
+      ],
+      "kernel": null,
+      "memory": {
+        "inputs": {
+          "layer1.1.add.relu": 101440,
+          "layer1.2.conv2.pre_add_main": 134208
+        },
+        "output": 150592
+      },
+      "name": "layer1.2.add",
+      "op_type": "RESIDUAL_ADD",
+      "output_shape": [
+        16,
+        32,
+        32
+      ],
+      "output_tensor": "layer1.2.add.relu",
+      "requant_ref": null,
+      "residual_add_ref": "requant/residual_add_alignment.json#layer1.2.add",
+      "stride": null,
+      "task_id": 9,
+      "weight_file": null
+    },
+    {
+      "bias_file": "bias/layer2_0_conv1.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        16,
+        32,
+        32
+      ],
+      "input_tensors": [
+        "layer1.2.add.relu"
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "memory": {
+        "inputs": {
+          "layer1.2.add.relu": 150592
+        },
+        "output": 166976
+      },
+      "name": "layer2.0.conv1",
+      "op_type": "CONV3x3",
+      "output_shape": [
+        32,
+        16,
+        16
+      ],
+      "output_tensor": "layer2.0.conv1.relu",
+      "requant_ref": "requant/conv_fc_requant.json#layer2.0.conv1",
+      "residual_add_ref": null,
+      "stride": 2,
+      "task_id": 10,
+      "weight_file": "weights/layer2_0_conv1.memh"
+    },
+    {
+      "bias_file": "bias/layer2_0_conv2.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        32,
+        16,
+        16
+      ],
+      "input_tensors": [
+        "layer2.0.conv1.relu"
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "memory": {
+        "inputs": {
+          "layer2.0.conv1.relu": 166976
+        },
+        "output": 175168
+      },
+      "name": "layer2.0.conv2",
+      "op_type": "CONV3x3",
+      "output_shape": [
+        32,
+        16,
+        16
+      ],
+      "output_tensor": "layer2.0.conv2.pre_add_main",
+      "requant_ref": "requant/conv_fc_requant.json#layer2.0.conv2",
+      "residual_add_ref": null,
+      "stride": 1,
+      "task_id": 11,
+      "weight_file": "weights/layer2_0_conv2.memh"
+    },
+    {
+      "bias_file": "bias/layer2_0_shortcut_projection.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        16,
+        32,
+        32
+      ],
+      "input_tensors": [
+        "layer1.2.add.relu"
+      ],
+      "kernel": [
+        1,
+        1
+      ],
+      "memory": {
+        "inputs": {
+          "layer1.2.add.relu": 150592
+        },
+        "output": 183360
+      },
+      "name": "layer2.0.shortcut.projection",
+      "op_type": "CONV1x1_PROJECTION",
+      "output_shape": [
+        32,
+        16,
+        16
+      ],
+      "output_tensor": "layer2.0.shortcut.pre_add",
+      "requant_ref": "requant/conv_fc_requant.json#layer2.0.shortcut.projection",
+      "residual_add_ref": null,
+      "stride": 2,
+      "task_id": 12,
+      "weight_file": "weights/layer2_0_shortcut_projection.memh"
+    },
+    {
+      "bias_file": null,
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        32,
+        16,
+        16
+      ],
+      "input_tensors": [
+        "layer2.0.conv2.pre_add_main",
+        "layer2.0.shortcut.pre_add"
+      ],
+      "kernel": null,
+      "memory": {
+        "inputs": {
+          "layer2.0.conv2.pre_add_main": 175168,
+          "layer2.0.shortcut.pre_add": 183360
+        },
+        "output": 191552
+      },
+      "name": "layer2.0.add",
+      "op_type": "RESIDUAL_ADD",
+      "output_shape": [
+        32,
+        16,
+        16
+      ],
+      "output_tensor": "layer2.0.add.relu",
+      "requant_ref": null,
+      "residual_add_ref": "requant/residual_add_alignment.json#layer2.0.add",
+      "stride": null,
+      "task_id": 13,
+      "weight_file": null
+    },
+    {
+      "bias_file": "bias/layer2_1_conv1.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        32,
+        16,
+        16
+      ],
+      "input_tensors": [
+        "layer2.0.add.relu"
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "memory": {
+        "inputs": {
+          "layer2.0.add.relu": 191552
+        },
+        "output": 199744
+      },
+      "name": "layer2.1.conv1",
+      "op_type": "CONV3x3",
+      "output_shape": [
+        32,
+        16,
+        16
+      ],
+      "output_tensor": "layer2.1.conv1.relu",
+      "requant_ref": "requant/conv_fc_requant.json#layer2.1.conv1",
+      "residual_add_ref": null,
+      "stride": 1,
+      "task_id": 14,
+      "weight_file": "weights/layer2_1_conv1.memh"
+    },
+    {
+      "bias_file": "bias/layer2_1_conv2.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        32,
+        16,
+        16
+      ],
+      "input_tensors": [
+        "layer2.1.conv1.relu"
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "memory": {
+        "inputs": {
+          "layer2.1.conv1.relu": 199744
+        },
+        "output": 207936
+      },
+      "name": "layer2.1.conv2",
+      "op_type": "CONV3x3",
+      "output_shape": [
+        32,
+        16,
+        16
+      ],
+      "output_tensor": "layer2.1.conv2.pre_add_main",
+      "requant_ref": "requant/conv_fc_requant.json#layer2.1.conv2",
+      "residual_add_ref": null,
+      "stride": 1,
+      "task_id": 15,
+      "weight_file": "weights/layer2_1_conv2.memh"
+    },
+    {
+      "bias_file": null,
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        32,
+        16,
+        16
+      ],
+      "input_tensors": [
+        "layer2.1.conv2.pre_add_main",
+        "layer2.0.add.relu"
+      ],
+      "kernel": null,
+      "memory": {
+        "inputs": {
+          "layer2.0.add.relu": 191552,
+          "layer2.1.conv2.pre_add_main": 207936
+        },
+        "output": 216128
+      },
+      "name": "layer2.1.add",
+      "op_type": "RESIDUAL_ADD",
+      "output_shape": [
+        32,
+        16,
+        16
+      ],
+      "output_tensor": "layer2.1.add.relu",
+      "requant_ref": null,
+      "residual_add_ref": "requant/residual_add_alignment.json#layer2.1.add",
+      "stride": null,
+      "task_id": 16,
+      "weight_file": null
+    },
+    {
+      "bias_file": "bias/layer2_2_conv1.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        32,
+        16,
+        16
+      ],
+      "input_tensors": [
+        "layer2.1.add.relu"
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "memory": {
+        "inputs": {
+          "layer2.1.add.relu": 216128
+        },
+        "output": 224320
+      },
+      "name": "layer2.2.conv1",
+      "op_type": "CONV3x3",
+      "output_shape": [
+        32,
+        16,
+        16
+      ],
+      "output_tensor": "layer2.2.conv1.relu",
+      "requant_ref": "requant/conv_fc_requant.json#layer2.2.conv1",
+      "residual_add_ref": null,
+      "stride": 1,
+      "task_id": 17,
+      "weight_file": "weights/layer2_2_conv1.memh"
+    },
+    {
+      "bias_file": "bias/layer2_2_conv2.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        32,
+        16,
+        16
+      ],
+      "input_tensors": [
+        "layer2.2.conv1.relu"
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "memory": {
+        "inputs": {
+          "layer2.2.conv1.relu": 224320
+        },
+        "output": 232512
+      },
+      "name": "layer2.2.conv2",
+      "op_type": "CONV3x3",
+      "output_shape": [
+        32,
+        16,
+        16
+      ],
+      "output_tensor": "layer2.2.conv2.pre_add_main",
+      "requant_ref": "requant/conv_fc_requant.json#layer2.2.conv2",
+      "residual_add_ref": null,
+      "stride": 1,
+      "task_id": 18,
+      "weight_file": "weights/layer2_2_conv2.memh"
+    },
+    {
+      "bias_file": null,
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        32,
+        16,
+        16
+      ],
+      "input_tensors": [
+        "layer2.2.conv2.pre_add_main",
+        "layer2.1.add.relu"
+      ],
+      "kernel": null,
+      "memory": {
+        "inputs": {
+          "layer2.1.add.relu": 216128,
+          "layer2.2.conv2.pre_add_main": 232512
+        },
+        "output": 240704
+      },
+      "name": "layer2.2.add",
+      "op_type": "RESIDUAL_ADD",
+      "output_shape": [
+        32,
+        16,
+        16
+      ],
+      "output_tensor": "layer2.2.add.relu",
+      "requant_ref": null,
+      "residual_add_ref": "requant/residual_add_alignment.json#layer2.2.add",
+      "stride": null,
+      "task_id": 19,
+      "weight_file": null
+    },
+    {
+      "bias_file": "bias/layer3_0_conv1.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        32,
+        16,
+        16
+      ],
+      "input_tensors": [
+        "layer2.2.add.relu"
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "memory": {
+        "inputs": {
+          "layer2.2.add.relu": 240704
+        },
+        "output": 248896
+      },
+      "name": "layer3.0.conv1",
+      "op_type": "CONV3x3",
+      "output_shape": [
+        64,
+        8,
+        8
+      ],
+      "output_tensor": "layer3.0.conv1.relu",
+      "requant_ref": "requant/conv_fc_requant.json#layer3.0.conv1",
+      "residual_add_ref": null,
+      "stride": 2,
+      "task_id": 20,
+      "weight_file": "weights/layer3_0_conv1.memh"
+    },
+    {
+      "bias_file": "bias/layer3_0_conv2.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        64,
+        8,
+        8
+      ],
+      "input_tensors": [
+        "layer3.0.conv1.relu"
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "memory": {
+        "inputs": {
+          "layer3.0.conv1.relu": 248896
+        },
+        "output": 252992
+      },
+      "name": "layer3.0.conv2",
+      "op_type": "CONV3x3",
+      "output_shape": [
+        64,
+        8,
+        8
+      ],
+      "output_tensor": "layer3.0.conv2.pre_add_main",
+      "requant_ref": "requant/conv_fc_requant.json#layer3.0.conv2",
+      "residual_add_ref": null,
+      "stride": 1,
+      "task_id": 21,
+      "weight_file": "weights/layer3_0_conv2.memh"
+    },
+    {
+      "bias_file": "bias/layer3_0_shortcut_projection.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        32,
+        16,
+        16
+      ],
+      "input_tensors": [
+        "layer2.2.add.relu"
+      ],
+      "kernel": [
+        1,
+        1
+      ],
+      "memory": {
+        "inputs": {
+          "layer2.2.add.relu": 240704
+        },
+        "output": 257088
+      },
+      "name": "layer3.0.shortcut.projection",
+      "op_type": "CONV1x1_PROJECTION",
+      "output_shape": [
+        64,
+        8,
+        8
+      ],
+      "output_tensor": "layer3.0.shortcut.pre_add",
+      "requant_ref": "requant/conv_fc_requant.json#layer3.0.shortcut.projection",
+      "residual_add_ref": null,
+      "stride": 2,
+      "task_id": 22,
+      "weight_file": "weights/layer3_0_shortcut_projection.memh"
+    },
+    {
+      "bias_file": null,
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        64,
+        8,
+        8
+      ],
+      "input_tensors": [
+        "layer3.0.conv2.pre_add_main",
+        "layer3.0.shortcut.pre_add"
+      ],
+      "kernel": null,
+      "memory": {
+        "inputs": {
+          "layer3.0.conv2.pre_add_main": 252992,
+          "layer3.0.shortcut.pre_add": 257088
+        },
+        "output": 261184
+      },
+      "name": "layer3.0.add",
+      "op_type": "RESIDUAL_ADD",
+      "output_shape": [
+        64,
+        8,
+        8
+      ],
+      "output_tensor": "layer3.0.add.relu",
+      "requant_ref": null,
+      "residual_add_ref": "requant/residual_add_alignment.json#layer3.0.add",
+      "stride": null,
+      "task_id": 23,
+      "weight_file": null
+    },
+    {
+      "bias_file": "bias/layer3_1_conv1.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        64,
+        8,
+        8
+      ],
+      "input_tensors": [
+        "layer3.0.add.relu"
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "memory": {
+        "inputs": {
+          "layer3.0.add.relu": 261184
+        },
+        "output": 265280
+      },
+      "name": "layer3.1.conv1",
+      "op_type": "CONV3x3",
+      "output_shape": [
+        64,
+        8,
+        8
+      ],
+      "output_tensor": "layer3.1.conv1.relu",
+      "requant_ref": "requant/conv_fc_requant.json#layer3.1.conv1",
+      "residual_add_ref": null,
+      "stride": 1,
+      "task_id": 24,
+      "weight_file": "weights/layer3_1_conv1.memh"
+    },
+    {
+      "bias_file": "bias/layer3_1_conv2.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        64,
+        8,
+        8
+      ],
+      "input_tensors": [
+        "layer3.1.conv1.relu"
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "memory": {
+        "inputs": {
+          "layer3.1.conv1.relu": 265280
+        },
+        "output": 269376
+      },
+      "name": "layer3.1.conv2",
+      "op_type": "CONV3x3",
+      "output_shape": [
+        64,
+        8,
+        8
+      ],
+      "output_tensor": "layer3.1.conv2.pre_add_main",
+      "requant_ref": "requant/conv_fc_requant.json#layer3.1.conv2",
+      "residual_add_ref": null,
+      "stride": 1,
+      "task_id": 25,
+      "weight_file": "weights/layer3_1_conv2.memh"
+    },
+    {
+      "bias_file": null,
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        64,
+        8,
+        8
+      ],
+      "input_tensors": [
+        "layer3.1.conv2.pre_add_main",
+        "layer3.0.add.relu"
+      ],
+      "kernel": null,
+      "memory": {
+        "inputs": {
+          "layer3.0.add.relu": 261184,
+          "layer3.1.conv2.pre_add_main": 269376
+        },
+        "output": 273472
+      },
+      "name": "layer3.1.add",
+      "op_type": "RESIDUAL_ADD",
+      "output_shape": [
+        64,
+        8,
+        8
+      ],
+      "output_tensor": "layer3.1.add.relu",
+      "requant_ref": null,
+      "residual_add_ref": "requant/residual_add_alignment.json#layer3.1.add",
+      "stride": null,
+      "task_id": 26,
+      "weight_file": null
+    },
+    {
+      "bias_file": "bias/layer3_2_conv1.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        64,
+        8,
+        8
+      ],
+      "input_tensors": [
+        "layer3.1.add.relu"
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "memory": {
+        "inputs": {
+          "layer3.1.add.relu": 273472
+        },
+        "output": 277568
+      },
+      "name": "layer3.2.conv1",
+      "op_type": "CONV3x3",
+      "output_shape": [
+        64,
+        8,
+        8
+      ],
+      "output_tensor": "layer3.2.conv1.relu",
+      "requant_ref": "requant/conv_fc_requant.json#layer3.2.conv1",
+      "residual_add_ref": null,
+      "stride": 1,
+      "task_id": 27,
+      "weight_file": "weights/layer3_2_conv1.memh"
+    },
+    {
+      "bias_file": "bias/layer3_2_conv2.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        64,
+        8,
+        8
+      ],
+      "input_tensors": [
+        "layer3.2.conv1.relu"
+      ],
+      "kernel": [
+        3,
+        3
+      ],
+      "memory": {
+        "inputs": {
+          "layer3.2.conv1.relu": 277568
+        },
+        "output": 281664
+      },
+      "name": "layer3.2.conv2",
+      "op_type": "CONV3x3",
+      "output_shape": [
+        64,
+        8,
+        8
+      ],
+      "output_tensor": "layer3.2.conv2.pre_add_main",
+      "requant_ref": "requant/conv_fc_requant.json#layer3.2.conv2",
+      "residual_add_ref": null,
+      "stride": 1,
+      "task_id": 28,
+      "weight_file": "weights/layer3_2_conv2.memh"
+    },
+    {
+      "bias_file": null,
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        64,
+        8,
+        8
+      ],
+      "input_tensors": [
+        "layer3.2.conv2.pre_add_main",
+        "layer3.1.add.relu"
+      ],
+      "kernel": null,
+      "memory": {
+        "inputs": {
+          "layer3.1.add.relu": 273472,
+          "layer3.2.conv2.pre_add_main": 281664
+        },
+        "output": 285760
+      },
+      "name": "layer3.2.add",
+      "op_type": "RESIDUAL_ADD",
+      "output_shape": [
+        64,
+        8,
+        8
+      ],
+      "output_tensor": "layer3.2.add.relu",
+      "requant_ref": null,
+      "residual_add_ref": "requant/residual_add_alignment.json#layer3.2.add",
+      "stride": null,
+      "task_id": 29,
+      "weight_file": null
+    },
+    {
+      "bias_file": null,
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        64,
+        8,
+        8
+      ],
+      "input_tensors": [
+        "layer3.2.add.relu"
+      ],
+      "kernel": [
+        8,
+        8
+      ],
+      "memory": {
+        "inputs": {
+          "layer3.2.add.relu": 285760
+        },
+        "output": 289856
+      },
+      "name": "gap",
+      "op_type": "GAP8x8",
+      "output_shape": [
+        64
+      ],
+      "output_tensor": "gap.output",
+      "requant_ref": "requant/gap_requant.json#gap.output",
+      "residual_add_ref": null,
+      "stride": null,
+      "task_id": 30,
+      "weight_file": null
+    },
+    {
+      "bias_file": "bias/fc.memh",
+      "contract_status": "handoff_skeleton",
+      "input_shape": [
+        64
+      ],
+      "input_tensors": [
+        "gap.output"
+      ],
+      "kernel": null,
+      "memory": {
+        "inputs": {
+          "gap.output": 289856
+        },
+        "output": 289920
+      },
+      "name": "fc",
+      "op_type": "FC10",
+      "output_shape": [
+        10
+      ],
+      "output_tensor": "fc.logits",
+      "requant_ref": "requant/conv_fc_requant.json#fc",
+      "residual_add_ref": null,
+      "stride": null,
+      "task_id": 31,
+      "weight_file": "weights/fc.memh"
+    }
+  ]
+}

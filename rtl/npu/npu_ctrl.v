@@ -42,7 +42,7 @@ module npu_ctrl #(
     output wire [7:0]                  ctrl_error_code,
     output wire                        task_go,      // high only after checks pass
     output wire                        task_start,
-    output wire [1:0]                  task_type,
+    output wire [2:0]                  task_type,
     output wire [31:0]                 input_addr,
     output wire [31:0]                 weight_addr,
     output wire [31:0]                 output_addr,
@@ -60,6 +60,20 @@ module npu_ctrl #(
     output wire [5:0]                  requant_shift,
     output wire [1:0]                  cluster_mode_cfg,
     output wire [5:0]                  cluster_mask_cfg,
+    output wire [31:0]                 conv_cfg,
+    output wire [31:0]                 bias_addr,
+    output wire [31:0]                 bias_bytes,
+    output wire [31:0]                 src1_addr,
+    output wire [31:0]                 src1_bytes,
+    output wire [31:0]                 add_cfg,
+    output wire [31:0]                 gap_cfg,
+    output wire [31:0]                 postproc_cfg_ext,
+    output wire [31:0]                 add_src0_multiplier,
+    output wire [5:0]                  add_src0_shift,
+    output wire [31:0]                 add_src1_multiplier,
+    output wire [5:0]                  add_src1_shift,
+    output wire [31:0]                 add_out_multiplier,
+    output wire [5:0]                  add_out_shift,
 
     // === Task status inputs (from NPU internals) ===
     input  wire                        task_done_i,
@@ -89,7 +103,7 @@ module npu_ctrl #(
     // ============================================================
     localparam ADDR_CTRL           = 6'd0;   // 0x00: [0]=start,[1]=busy,[2]=done,[3]=error
     localparam ADDR_STATUS         = 6'd1;   // 0x04: [7:0]=error_code
-    localparam ADDR_TASK_TYPE      = 6'd2;   // 0x08: [1:0]=task_type
+    localparam ADDR_TASK_TYPE      = 6'd2;   // 0x08: [2:0]=task_type
     localparam ADDR_INPUT_ADDR     = 6'd3;   // 0x0C
     localparam ADDR_WEIGHT_ADDR    = 6'd4;   // 0x10
     localparam ADDR_OUTPUT_ADDR    = 6'd5;   // 0x14
@@ -123,6 +137,37 @@ module npu_ctrl #(
     localparam ADDR_REQUANT3_SHIFT      = 6'd33;  // 0x84: [5:0]=shift
     localparam ADDR_CLUSTER_MODE        = 6'd34;  // 0x88: [1:0]=cluster mode
     localparam ADDR_CLUSTER_MASK        = 6'd35;  // 0x8C: [5:0]=cluster mask
+    localparam ADDR_VERSION             = 6'd36;  // 0x90: R1a register map version
+    localparam ADDR_CAPABILITY          = 6'd37;  // 0x94: supported RTL capability bits
+    localparam ADDR_CONV_CFG            = 6'd38;  // 0x98: future generalized Conv config
+    localparam ADDR_BIAS_ADDR           = 6'd39;  // 0x9C: future folded bias base
+    localparam ADDR_BIAS_BYTES          = 6'd40;  // 0xA0: future folded bias bytes
+    localparam ADDR_SRC1_ADDR           = 6'd41;  // 0xA4: future residual source1 base
+    localparam ADDR_SRC1_BYTES          = 6'd42;  // 0xA8: future residual source1 bytes
+    localparam ADDR_ADD_CFG             = 6'd43;  // 0xAC: future residual ADD config
+    localparam ADDR_GAP_CFG             = 6'd44;  // 0xB0: future GAP config
+    localparam ADDR_POSTPROC_CFG        = 6'd45;  // 0xB4: future extended postproc config
+    localparam ADDR_ADD_SRC0_MULT       = 6'd46;  // 0xB8: R1d ADD src0 pre-align multiplier
+    localparam ADDR_ADD_SRC0_SHIFT      = 6'd47;  // 0xBC: R1d ADD src0 pre-align shift
+    localparam ADDR_ADD_SRC1_MULT       = 6'd48;  // 0xC0: R1d ADD src1 pre-align multiplier
+    localparam ADDR_ADD_SRC1_SHIFT      = 6'd49;  // 0xC4: R1d ADD src1 pre-align shift
+    localparam ADDR_ADD_OUT_MULT        = 6'd50;  // 0xC8: R1d ADD post-requant multiplier
+    localparam ADDR_ADD_OUT_SHIFT       = 6'd51;  // 0xCC: R1d ADD post-requant shift
+
+    localparam [31:0] R1A_VERSION_VALUE = 32'h0001_000A;
+    localparam [31:0] CAP_CONV_5X5      = 32'h0000_0001;
+    localparam [31:0] CAP_BIAS          = 32'h0000_0020;
+    localparam [31:0] CAP_ADD           = 32'h0000_0040;
+    localparam [31:0] CAP_GAP           = 32'h0000_0080;
+    localparam [31:0] CAP_ADD_RELU      = 32'h0000_0100;
+    localparam [31:0] CAP_ADD_REQUANT   = 32'h0000_0200;
+    localparam [31:0] CAP_FC            = 32'h0000_0800;
+    localparam [31:0] CAP_POOL          = 32'h0000_1000;
+    localparam [31:0] CAP_REQUANT       = 32'h0000_2000;
+    localparam [31:0] CAP_CLUSTER_CFG   = 32'h0000_4000;
+    localparam [31:0] CAPABILITY_VALUE  =
+        CAP_CONV_5X5 | CAP_BIAS | CAP_ADD | CAP_GAP | CAP_ADD_RELU | CAP_ADD_REQUANT |
+        CAP_FC | CAP_POOL | CAP_REQUANT | CAP_CLUSTER_CFG;
 
     function [31:0] apply_wstrb;
         input [31:0] old_value;
@@ -151,7 +196,13 @@ module npu_ctrl #(
                 ADDR_REQUANT1_MULT, ADDR_REQUANT1_SHIFT,
                 ADDR_REQUANT2_MULT, ADDR_REQUANT2_SHIFT,
                 ADDR_REQUANT3_MULT, ADDR_REQUANT3_SHIFT,
-                ADDR_CLUSTER_MODE, ADDR_CLUSTER_MASK:
+                ADDR_CLUSTER_MODE, ADDR_CLUSTER_MASK,
+                ADDR_CONV_CFG, ADDR_BIAS_ADDR, ADDR_BIAS_BYTES,
+                ADDR_SRC1_ADDR, ADDR_SRC1_BYTES,
+                ADDR_ADD_CFG, ADDR_GAP_CFG, ADDR_POSTPROC_CFG,
+                ADDR_ADD_SRC0_MULT, ADDR_ADD_SRC0_SHIFT,
+                ADDR_ADD_SRC1_MULT, ADDR_ADD_SRC1_SHIFT,
+                ADDR_ADD_OUT_MULT, ADDR_ADD_OUT_SHIFT:
                     is_write_addr_valid = 1'b1;
                 default:
                     is_write_addr_valid = 1'b0;
@@ -178,7 +229,14 @@ module npu_ctrl #(
                 ADDR_REQUANT1_MULT, ADDR_REQUANT1_SHIFT,
                 ADDR_REQUANT2_MULT, ADDR_REQUANT2_SHIFT,
                 ADDR_REQUANT3_MULT, ADDR_REQUANT3_SHIFT,
-                ADDR_CLUSTER_MODE, ADDR_CLUSTER_MASK:
+                ADDR_CLUSTER_MODE, ADDR_CLUSTER_MASK,
+                ADDR_VERSION, ADDR_CAPABILITY,
+                ADDR_CONV_CFG, ADDR_BIAS_ADDR, ADDR_BIAS_BYTES,
+                ADDR_SRC1_ADDR, ADDR_SRC1_BYTES,
+                ADDR_ADD_CFG, ADDR_GAP_CFG, ADDR_POSTPROC_CFG,
+                ADDR_ADD_SRC0_MULT, ADDR_ADD_SRC0_SHIFT,
+                ADDR_ADD_SRC1_MULT, ADDR_ADD_SRC1_SHIFT,
+                ADDR_ADD_OUT_MULT, ADDR_ADD_OUT_SHIFT:
                     is_read_addr_valid = 1'b1;
                 default:
                     is_read_addr_valid = 1'b0;
@@ -315,6 +373,20 @@ module npu_ctrl #(
     reg  [31:0] cfg_requant_shift [0:3];
     reg  [31:0] cfg_cluster_mode;
     reg  [31:0] cfg_cluster_mask;
+    reg  [31:0] cfg_conv_cfg;
+    reg  [31:0] cfg_bias_addr;
+    reg  [31:0] cfg_bias_bytes;
+    reg  [31:0] cfg_src1_addr;
+    reg  [31:0] cfg_src1_bytes;
+    reg  [31:0] cfg_add_cfg;
+    reg  [31:0] cfg_gap_cfg;
+    reg  [31:0] cfg_postproc_cfg_ext;
+    reg  [31:0] cfg_add_src0_mult;
+    reg  [31:0] cfg_add_src0_shift;
+    reg  [31:0] cfg_add_src1_mult;
+    reg  [31:0] cfg_add_src1_shift;
+    reg  [31:0] cfg_add_out_mult;
+    reg  [31:0] cfg_add_out_shift;
 
     // Status registers (HW-managed)
     reg         busy;
@@ -324,7 +396,7 @@ module npu_ctrl #(
 
     // Task latched outputs
     reg         task_start_r;
-    reg  [1:0]  task_type_r;
+    reg  [2:0]  task_type_r;
     reg  [31:0] input_addr_r;
     reg  [31:0] weight_addr_r;
     reg  [31:0] output_addr_r;
@@ -337,6 +409,20 @@ module npu_ctrl #(
     reg  [15:0] output_c_r;
     reg         relu_en_r;
     reg         pool_en_r;
+    reg  [31:0] conv_cfg_r;
+    reg  [31:0] bias_addr_r;
+    reg  [31:0] bias_bytes_r;
+    reg  [31:0] src1_addr_r;
+    reg  [31:0] src1_bytes_r;
+    reg  [31:0] add_cfg_r;
+    reg  [31:0] gap_cfg_r;
+    reg  [31:0] postproc_cfg_ext_r;
+    reg  [31:0] add_src0_mult_r;
+    reg  [5:0]  add_src0_shift_r;
+    reg  [31:0] add_src1_mult_r;
+    reg  [5:0]  add_src1_shift_r;
+    reg  [31:0] add_out_mult_r;
+    reg  [5:0]  add_out_shift_r;
     reg  [1:0]  requant_slot_sel_r;
     reg  [31:0] requant_multiplier_r;
     reg  [5:0]  requant_shift_r;
@@ -367,9 +453,23 @@ module npu_ctrl #(
             cfg_requant_shift[3] <= 32'd0;
             cfg_cluster_mode <= {30'd0, DEFAULT_CLUSTER_MODE};
             cfg_cluster_mask <= {26'd0, DEFAULT_CLUSTER_MASK};
+            cfg_conv_cfg <= 32'h0;
+            cfg_bias_addr <= 32'h0;
+            cfg_bias_bytes <= 32'h0;
+            cfg_src1_addr <= 32'h0;
+            cfg_src1_bytes <= 32'h0;
+            cfg_add_cfg <= 32'h0;
+            cfg_gap_cfg <= 32'h0;
+            cfg_postproc_cfg_ext <= 32'h0;
+            cfg_add_src0_mult <= 32'd0;
+            cfg_add_src0_shift <= 32'd0;
+            cfg_add_src1_mult <= 32'd0;
+            cfg_add_src1_shift <= 32'd0;
+            cfg_add_out_mult <= 32'd0;
+            cfg_add_out_shift <= 32'd0;
         end else if (write_hs && wr_allowed && is_write_addr_valid(wr_addr)) begin
             case (wr_addr)
-                ADDR_TASK_TYPE:    cfg_task_type    <= apply_wstrb(cfg_task_type, write_data, write_strb);
+                ADDR_TASK_TYPE:    cfg_task_type    <= apply_wstrb(cfg_task_type, write_data, write_strb) & 32'h0000_0007;
                 ADDR_INPUT_ADDR:   cfg_input_addr   <= apply_wstrb(cfg_input_addr, write_data, write_strb);
                 ADDR_WEIGHT_ADDR:  cfg_weight_addr  <= apply_wstrb(cfg_weight_addr, write_data, write_strb);
                 ADDR_OUTPUT_ADDR:  cfg_output_addr  <= apply_wstrb(cfg_output_addr, write_data, write_strb);
@@ -390,6 +490,20 @@ module npu_ctrl #(
                 ADDR_REQUANT3_SHIFT:cfg_requant_shift[3] <= apply_wstrb(cfg_requant_shift[3], write_data, write_strb);
                 ADDR_CLUSTER_MODE:  cfg_cluster_mode      <= apply_wstrb(cfg_cluster_mode, write_data, write_strb) & 32'h0000_0003;
                 ADDR_CLUSTER_MASK:  cfg_cluster_mask      <= apply_wstrb(cfg_cluster_mask, write_data, write_strb) & 32'h0000_003f;
+                ADDR_CONV_CFG:      cfg_conv_cfg          <= apply_wstrb(cfg_conv_cfg, write_data, write_strb) & 32'h0000_003f;
+                ADDR_BIAS_ADDR:     cfg_bias_addr         <= apply_wstrb(cfg_bias_addr, write_data, write_strb);
+                ADDR_BIAS_BYTES:    cfg_bias_bytes        <= apply_wstrb(cfg_bias_bytes, write_data, write_strb);
+                ADDR_SRC1_ADDR:     cfg_src1_addr         <= apply_wstrb(cfg_src1_addr, write_data, write_strb);
+                ADDR_SRC1_BYTES:    cfg_src1_bytes        <= apply_wstrb(cfg_src1_bytes, write_data, write_strb);
+                ADDR_ADD_CFG:       cfg_add_cfg           <= apply_wstrb(cfg_add_cfg, write_data, write_strb) & 32'h0000_000f;
+                ADDR_GAP_CFG:       cfg_gap_cfg           <= apply_wstrb(cfg_gap_cfg, write_data, write_strb) & 32'h03ff_ffff;
+                ADDR_POSTPROC_CFG:  cfg_postproc_cfg_ext  <= apply_wstrb(cfg_postproc_cfg_ext, write_data, write_strb);
+                ADDR_ADD_SRC0_MULT: cfg_add_src0_mult     <= apply_wstrb(cfg_add_src0_mult, write_data, write_strb);
+                ADDR_ADD_SRC0_SHIFT:cfg_add_src0_shift    <= apply_wstrb(cfg_add_src0_shift, write_data, write_strb) & 32'h0000_003f;
+                ADDR_ADD_SRC1_MULT: cfg_add_src1_mult     <= apply_wstrb(cfg_add_src1_mult, write_data, write_strb);
+                ADDR_ADD_SRC1_SHIFT:cfg_add_src1_shift    <= apply_wstrb(cfg_add_src1_shift, write_data, write_strb) & 32'h0000_003f;
+                ADDR_ADD_OUT_MULT:  cfg_add_out_mult      <= apply_wstrb(cfg_add_out_mult, write_data, write_strb);
+                ADDR_ADD_OUT_SHIFT: cfg_add_out_shift     <= apply_wstrb(cfg_add_out_shift, write_data, write_strb) & 32'h0000_003f;
                 default: ;
             endcase
         end
@@ -414,7 +528,7 @@ module npu_ctrl #(
             checking   <= 1'b0;
 
             task_start_r    <= 1'b0;
-            task_type_r     <= 2'b00;
+            task_type_r     <= 3'b000;
             input_addr_r    <= 32'h0;
             weight_addr_r   <= 32'h0;
             output_addr_r   <= 32'h0;
@@ -427,6 +541,20 @@ module npu_ctrl #(
             output_c_r      <= 16'h0;
             relu_en_r       <= 1'b0;
             pool_en_r       <= 1'b0;
+            conv_cfg_r      <= 32'h0;
+            bias_addr_r      <= 32'h0;
+            bias_bytes_r     <= 32'h0;
+            src1_addr_r      <= 32'h0;
+            src1_bytes_r     <= 32'h0;
+            add_cfg_r        <= 32'h0;
+            gap_cfg_r        <= 32'h0;
+            postproc_cfg_ext_r <= 32'h0;
+            add_src0_mult_r  <= 32'd0;
+            add_src0_shift_r <= 6'd0;
+            add_src1_mult_r  <= 32'd0;
+            add_src1_shift_r <= 6'd0;
+            add_out_mult_r   <= 32'd0;
+            add_out_shift_r  <= 6'd0;
             requant_slot_sel_r <= 2'b00;
             requant_multiplier_r <= 32'd1;
             requant_shift_r <= 6'd0;
@@ -459,7 +587,7 @@ module npu_ctrl #(
                     error_code <= task_error_code_i;
                 end
             end else if (write_new_start) begin
-                task_type_r     <= cfg_task_type[1:0];
+                task_type_r     <= cfg_task_type[2:0];
                 input_addr_r    <= cfg_input_addr;
                 weight_addr_r   <= cfg_weight_addr;
                 output_addr_r   <= cfg_output_addr;
@@ -472,6 +600,20 @@ module npu_ctrl #(
                 output_c_r      <= cfg_dim_out[31:16];
                 relu_en_r       <= cfg_postproc[0];
                 pool_en_r       <= cfg_postproc[1];
+                conv_cfg_r      <= cfg_conv_cfg;
+                bias_addr_r     <= cfg_bias_addr;
+                bias_bytes_r    <= cfg_bias_bytes;
+                src1_addr_r     <= cfg_src1_addr;
+                src1_bytes_r    <= cfg_src1_bytes;
+                add_cfg_r       <= cfg_add_cfg;
+                gap_cfg_r       <= cfg_gap_cfg;
+                postproc_cfg_ext_r <= cfg_postproc_cfg_ext;
+                add_src0_mult_r <= cfg_add_src0_mult;
+                add_src0_shift_r <= cfg_add_src0_shift[5:0];
+                add_src1_mult_r <= cfg_add_src1_mult;
+                add_src1_shift_r <= cfg_add_src1_shift[5:0];
+                add_out_mult_r <= cfg_add_out_mult;
+                add_out_shift_r <= cfg_add_out_shift[5:0];
                 requant_slot_sel_r <= cfg_requant_sel[1:0];
                 case (cfg_requant_sel[1:0])
                     2'd0: begin
@@ -533,6 +675,20 @@ module npu_ctrl #(
     assign requant_shift = requant_shift_r;
     assign cluster_mode_cfg = cfg_cluster_mode[1:0];
     assign cluster_mask_cfg = cfg_cluster_mask[5:0];
+    assign conv_cfg = conv_cfg_r;
+    assign bias_addr = bias_addr_r;
+    assign bias_bytes = bias_bytes_r;
+    assign src1_addr = src1_addr_r;
+    assign src1_bytes = src1_bytes_r;
+    assign add_cfg = add_cfg_r;
+    assign gap_cfg = gap_cfg_r;
+    assign postproc_cfg_ext = postproc_cfg_ext_r;
+    assign add_src0_multiplier = add_src0_mult_r;
+    assign add_src0_shift = add_src0_shift_r;
+    assign add_src1_multiplier = add_src1_mult_r;
+    assign add_src1_shift = add_src1_shift_r;
+    assign add_out_multiplier = add_out_mult_r;
+    assign add_out_shift = add_out_shift_r;
 
     // ============================================================
     // AXI read data generation
@@ -577,6 +733,22 @@ module npu_ctrl #(
         (rd_addr == ADDR_REQUANT3_SHIFT)     ? cfg_requant_shift[3]  :
         (rd_addr == ADDR_CLUSTER_MODE)        ? cfg_cluster_mode      :
         (rd_addr == ADDR_CLUSTER_MASK)        ? cfg_cluster_mask      :
+        (rd_addr == ADDR_VERSION)             ? R1A_VERSION_VALUE     :
+        (rd_addr == ADDR_CAPABILITY)          ? CAPABILITY_VALUE      :
+        (rd_addr == ADDR_CONV_CFG)            ? cfg_conv_cfg          :
+        (rd_addr == ADDR_BIAS_ADDR)           ? cfg_bias_addr         :
+        (rd_addr == ADDR_BIAS_BYTES)          ? cfg_bias_bytes        :
+        (rd_addr == ADDR_SRC1_ADDR)           ? cfg_src1_addr         :
+        (rd_addr == ADDR_SRC1_BYTES)          ? cfg_src1_bytes        :
+        (rd_addr == ADDR_ADD_CFG)             ? cfg_add_cfg           :
+        (rd_addr == ADDR_GAP_CFG)             ? cfg_gap_cfg           :
+        (rd_addr == ADDR_POSTPROC_CFG)        ? cfg_postproc_cfg_ext  :
+        (rd_addr == ADDR_ADD_SRC0_MULT)       ? cfg_add_src0_mult     :
+        (rd_addr == ADDR_ADD_SRC0_SHIFT)      ? cfg_add_src0_shift    :
+        (rd_addr == ADDR_ADD_SRC1_MULT)       ? cfg_add_src1_mult     :
+        (rd_addr == ADDR_ADD_SRC1_SHIFT)      ? cfg_add_src1_shift    :
+        (rd_addr == ADDR_ADD_OUT_MULT)        ? cfg_add_out_mult      :
+        (rd_addr == ADDR_ADD_OUT_SHIFT)       ? cfg_add_out_shift     :
         32'h0;
 
     always @(posedge clk) begin

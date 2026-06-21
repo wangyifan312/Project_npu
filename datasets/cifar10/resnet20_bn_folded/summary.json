@@ -1,0 +1,39 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "checkpoint": "datasets/cifar10/models/resnet20_float_candidate_mps_continue_stage2.pt",
+  "conv_bn_pair_count": 21,
+  "equivalence_check": {
+    "accuracy_match": true,
+    "checked_sample_count": 256,
+    "folded_accuracy": 0.859375,
+    "max_abs_logit_diff": 7.62939453125e-06,
+    "mean_abs_logit_diff": 1.2664153473451733e-06,
+    "original_accuracy": 0.859375,
+    "pass": true
+  },
+  "fc_recorded": true,
+  "fixed_point_accuracy_gate": {
+    "reason": "BN folding equivalence is folded-float only, not fixed-point inference",
+    "required_accuracy": 0.8,
+    "status": "not_evaluated"
+  },
+  "fixed_point_status": "not_implemented",
+  "generated_memh_files": [],
+  "memory_reuse_map": null,
+  "outputs": {
+    "equivalence_check": "equivalence_check.json",
+    "folded_layers": "folded_layers.json"
+  },
+  "projection_shortcut_fold_count": 2,
+  "r0_5_unfinished": [
+    "actual_fixed_point_inference",
+    "accuracy_gate_80_percent",
+    "real_cifar10_full_fixed_point_eval",
+    "int8_weights_memh",
+    "int32_folded_bias_memh",
+    "final_task_sequence",
+    "one_mb_memory_reuse_map"
+  ],
+  "status": "bn_folding_metadata_complete",
+  "task_sequence": null
+}

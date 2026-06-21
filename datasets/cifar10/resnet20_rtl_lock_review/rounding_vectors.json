@@ -1,0 +1,71 @@
+{
+  "contract": "round_half_away_from_zero",
+  "vectors": [
+    {
+      "denominator": 1,
+      "expected_round_half_away": 0,
+      "name": "zero",
+      "numerator": 0
+    },
+    {
+      "denominator": 2,
+      "expected_round_half_away": 1,
+      "name": "positive_half",
+      "numerator": 1
+    },
+    {
+      "denominator": 2,
+      "expected_round_half_away": -1,
+      "name": "negative_half",
+      "numerator": -1
+    },
+    {
+      "denominator": 2,
+      "expected_round_half_away": 2,
+      "name": "positive_one_point_five",
+      "numerator": 3
+    },
+    {
+      "denominator": 2,
+      "expected_round_half_away": -2,
+      "name": "negative_one_point_five",
+      "numerator": -3
+    },
+    {
+      "denominator": 100,
+      "expected_round_half_away": 0,
+      "name": "positive_below_half",
+      "numerator": 49
+    },
+    {
+      "denominator": 100,
+      "expected_round_half_away": 0,
+      "name": "negative_below_half",
+      "numerator": -49
+    },
+    {
+      "denominator": 100,
+      "expected_round_half_away": 1,
+      "name": "positive_above_half",
+      "numerator": 51
+    },
+    {
+      "denominator": 100,
+      "expected_round_half_away": -1,
+      "name": "negative_above_half",
+      "numerator": -51
+    },
+    {
+      "denominator": 2,
+      "expected_round_half_away": 127,
+      "name": "positive_near_int8_max_half",
+      "numerator": 253
+    },
+    {
+      "denominator": 2,
+      "expected_round_half_away": -128,
+      "name": "negative_near_int8_min_half",
+      "numerator": -255
+    }
+  ]
+}

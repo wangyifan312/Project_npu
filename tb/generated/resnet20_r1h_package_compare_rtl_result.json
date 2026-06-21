@@ -1,0 +1,20 @@
+{
+  "scope": "R1h package-faithful npu_top input.image_to_conv1 compare",
+  "task": "conv1",
+  "input_addr": 64,
+  "output_addr": 3136,
+  "input_addr_nonzero": true,
+  "compared_bytes": 16384,
+  "mismatch_count": 0,
+  "unknown_bytes": 0,
+  "first_unknown_idx": -1,
+  "first_unknown_expected": "0x00",
+  "first_mismatch": -1,
+  "first_expected": "0x00",
+  "first_actual": "0x00",
+  "first_actual_unknown": 0,
+  "final_checksum": "0x482186f6",
+  "expected_checksum": "0x482186f6",
+  "numeric_match": 1,
+  "full_resnet20": false
+}

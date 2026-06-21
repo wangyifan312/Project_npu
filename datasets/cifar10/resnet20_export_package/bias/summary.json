@@ -1,0 +1,383 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "bias_file_count": 22,
+  "dtype": "INT32",
+  "entries": [
+    {
+      "abs_checksum": 45588,
+      "accumulator_scale": 0.00020275651665805283,
+      "checksum": 25494,
+      "dtype": "INT32",
+      "element_count": 16,
+      "file": "bias/conv1.memh",
+      "layer": "conv1",
+      "max": 9908,
+      "min": -4613,
+      "module_name": "conv1",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        16
+      ],
+      "source_tensor": "conv1.bias"
+    },
+    {
+      "abs_checksum": 41777,
+      "accumulator_scale": 0.0003153362695378878,
+      "checksum": 13211,
+      "dtype": "INT32",
+      "element_count": 16,
+      "file": "bias/layer1_0_conv1.memh",
+      "layer": "layer1.0.conv1",
+      "max": 5472,
+      "min": -5301,
+      "module_name": "layer1.0.conv1",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        16
+      ],
+      "source_tensor": "layer1.0.conv1.bias"
+    },
+    {
+      "abs_checksum": 67430,
+      "accumulator_scale": 0.0001446937849241517,
+      "checksum": 31622,
+      "dtype": "INT32",
+      "element_count": 16,
+      "file": "bias/layer1_0_conv2.memh",
+      "layer": "layer1.0.conv2",
+      "max": 8964,
+      "min": -12075,
+      "module_name": "layer1.0.conv2",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        16
+      ],
+      "source_tensor": "layer1.0.conv2.bias"
+    },
+    {
+      "abs_checksum": 60480,
+      "accumulator_scale": 0.0001709152862729886,
+      "checksum": -12122,
+      "dtype": "INT32",
+      "element_count": 16,
+      "file": "bias/layer1_1_conv1.memh",
+      "layer": "layer1.1.conv1",
+      "max": 7729,
+      "min": -12103,
+      "module_name": "layer1.1.conv1",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        16
+      ],
+      "source_tensor": "layer1.1.conv1.bias"
+    },
+    {
+      "abs_checksum": 46026,
+      "accumulator_scale": 0.00019825563220182064,
+      "checksum": 37644,
+      "dtype": "INT32",
+      "element_count": 16,
+      "file": "bias/layer1_1_conv2.memh",
+      "layer": "layer1.1.conv2",
+      "max": 6434,
+      "min": -2935,
+      "module_name": "layer1.1.conv2",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        16
+      ],
+      "source_tensor": "layer1.1.conv2.bias"
+    },
+    {
+      "abs_checksum": 40201,
+      "accumulator_scale": 0.00017543202706989979,
+      "checksum": -11253,
+      "dtype": "INT32",
+      "element_count": 16,
+      "file": "bias/layer1_2_conv1.memh",
+      "layer": "layer1.2.conv1",
+      "max": 5081,
+      "min": -6138,
+      "module_name": "layer1.2.conv1",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        16
+      ],
+      "source_tensor": "layer1.2.conv1.bias"
+    },
+    {
+      "abs_checksum": 44767,
+      "accumulator_scale": 0.0002142975367796978,
+      "checksum": 22351,
+      "dtype": "INT32",
+      "element_count": 16,
+      "file": "bias/layer1_2_conv2.memh",
+      "layer": "layer1.2.conv2",
+      "max": 8467,
+      "min": -3397,
+      "module_name": "layer1.2.conv2",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        16
+      ],
+      "source_tensor": "layer1.2.conv2.bias"
+    },
+    {
+      "abs_checksum": 204013,
+      "accumulator_scale": 0.0001274017239560457,
+      "checksum": 27777,
+      "dtype": "INT32",
+      "element_count": 32,
+      "file": "bias/layer2_0_conv1.memh",
+      "layer": "layer2.0.conv1",
+      "max": 15806,
+      "min": -14297,
+      "module_name": "layer2.0.conv1",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        32
+      ],
+      "source_tensor": "layer2.0.conv1.bias"
+    },
+    {
+      "abs_checksum": 108436,
+      "accumulator_scale": 0.00015880910895971258,
+      "checksum": 52546,
+      "dtype": "INT32",
+      "element_count": 32,
+      "file": "bias/layer2_0_conv2.memh",
+      "layer": "layer2.0.conv2",
+      "max": 9696,
+      "min": -7032,
+      "module_name": "layer2.0.conv2",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        32
+      ],
+      "source_tensor": "layer2.0.conv2.bias"
+    },
+    {
+      "abs_checksum": 46871,
+      "accumulator_scale": 0.0004828641281597111,
+      "checksum": -41,
+      "dtype": "INT32",
+      "element_count": 32,
+      "file": "bias/layer2_0_shortcut_projection.memh",
+      "layer": "layer2.0.shortcut.projection",
+      "max": 4978,
+      "min": -4745,
+      "module_name": "layer2.0.shortcut",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        32
+      ],
+      "source_tensor": "layer2.0.shortcut.bias"
+    },
+    {
+      "abs_checksum": 116896,
+      "accumulator_scale": 9.922583391502379e-05,
+      "checksum": 2022,
+      "dtype": "INT32",
+      "element_count": 32,
+      "file": "bias/layer2_1_conv1.memh",
+      "layer": "layer2.1.conv1",
+      "max": 10692,
+      "min": -9951,
+      "module_name": "layer2.1.conv1",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        32
+      ],
+      "source_tensor": "layer2.1.conv1.bias"
+    },
+    {
+      "abs_checksum": 94857,
+      "accumulator_scale": 0.00012715045170207622,
+      "checksum": 17679,
+      "dtype": "INT32",
+      "element_count": 32,
+      "file": "bias/layer2_1_conv2.memh",
+      "layer": "layer2.1.conv2",
+      "max": 13070,
+      "min": -5927,
+      "module_name": "layer2.1.conv2",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        32
+      ],
+      "source_tensor": "layer2.1.conv2.bias"
+    },
+    {
+      "abs_checksum": 182767,
+      "accumulator_scale": 7.520534321111821e-05,
+      "checksum": 11881,
+      "dtype": "INT32",
+      "element_count": 32,
+      "file": "bias/layer2_2_conv1.memh",
+      "layer": "layer2.2.conv1",
+      "max": 15341,
+      "min": -19560,
+      "module_name": "layer2.2.conv1",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        32
+      ],
+      "source_tensor": "layer2.2.conv1.bias"
+    },
+    {
+      "abs_checksum": 96988,
+      "accumulator_scale": 0.0001296893719421086,
+      "checksum": 37644,
+      "dtype": "INT32",
+      "element_count": 32,
+      "file": "bias/layer2_2_conv2.memh",
+      "layer": "layer2.2.conv2",
+      "max": 7536,
+      "min": -5492,
+      "module_name": "layer2.2.conv2",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        32
+      ],
+      "source_tensor": "layer2.2.conv2.bias"
+    },
+    {
+      "abs_checksum": 391093,
+      "accumulator_scale": 8.9077176589975e-05,
+      "checksum": 153439,
+      "dtype": "INT32",
+      "element_count": 64,
+      "file": "bias/layer3_0_conv1.memh",
+      "layer": "layer3.0.conv1",
+      "max": 18071,
+      "min": -15556,
+      "module_name": "layer3.0.conv1",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        64
+      ],
+      "source_tensor": "layer3.0.conv1.bias"
+    },
+    {
+      "abs_checksum": 190640,
+      "accumulator_scale": 0.00013628157071625657,
+      "checksum": 69140,
+      "dtype": "INT32",
+      "element_count": 64,
+      "file": "bias/layer3_0_conv2.memh",
+      "layer": "layer3.0.conv2",
+      "max": 13506,
+      "min": -4652,
+      "module_name": "layer3.0.conv2",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        64
+      ],
+      "source_tensor": "layer3.0.conv2.bias"
+    },
+    {
+      "abs_checksum": 114594,
+      "accumulator_scale": 0.0002523032030922352,
+      "checksum": -49200,
+      "dtype": "INT32",
+      "element_count": 64,
+      "file": "bias/layer3_0_shortcut_projection.memh",
+      "layer": "layer3.0.shortcut.projection",
+      "max": 3782,
+      "min": -4334,
+      "module_name": "layer3.0.shortcut",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        64
+      ],
+      "source_tensor": "layer3.0.shortcut.bias"
+    },
+    {
+      "abs_checksum": 170854,
+      "accumulator_scale": 0.00012100997083217437,
+      "checksum": 32890,
+      "dtype": "INT32",
+      "element_count": 64,
+      "file": "bias/layer3_1_conv1.memh",
+      "layer": "layer3.1.conv1",
+      "max": 7718,
+      "min": -8547,
+      "module_name": "layer3.1.conv1",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        64
+      ],
+      "source_tensor": "layer3.1.conv1.bias"
+    },
+    {
+      "abs_checksum": 140845,
+      "accumulator_scale": 0.00017433912067179067,
+      "checksum": 63995,
+      "dtype": "INT32",
+      "element_count": 64,
+      "file": "bias/layer3_1_conv2.memh",
+      "layer": "layer3.1.conv2",
+      "max": 6157,
+      "min": -4583,
+      "module_name": "layer3.1.conv2",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        64
+      ],
+      "source_tensor": "layer3.1.conv2.bias"
+    },
+    {
+      "abs_checksum": 160424,
+      "accumulator_scale": 0.00013017126623705776,
+      "checksum": 3656,
+      "dtype": "INT32",
+      "element_count": 64,
+      "file": "bias/layer3_2_conv1.memh",
+      "layer": "layer3.2.conv1",
+      "max": 10389,
+      "min": -5677,
+      "module_name": "layer3.2.conv1",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        64
+      ],
+      "source_tensor": "layer3.2.conv1.bias"
+    },
+    {
+      "abs_checksum": 279732,
+      "accumulator_scale": 8.77356000425201e-05,
+      "checksum": -131244,
+      "dtype": "INT32",
+      "element_count": 64,
+      "file": "bias/layer3_2_conv2.memh",
+      "layer": "layer3.2.conv2",
+      "max": 10287,
+      "min": -14155,
+      "module_name": "layer3.2.conv2",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        64
+      ],
+      "source_tensor": "layer3.2.conv2.bias"
+    },
+    {
+      "abs_checksum": 4670,
+      "accumulator_scale": 0.0004893275068715541,
+      "checksum": 104,
+      "dtype": "INT32",
+      "element_count": 10,
+      "file": "bias/fc.memh",
+      "layer": "fc",
+      "max": 735,
+      "min": -849,
+      "module_name": "fc",
+      "ordering": "output_channel_or_neuron_order",
+      "shape": [
+        10
+      ],
+      "source_tensor": "fc.bias"
+    }
+  ],
+  "ordering": "output_channel_or_neuron_order",
+  "status": "bias_exported"
+}

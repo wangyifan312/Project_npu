@@ -1,0 +1,38 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "conv_fc_requant_count": 22,
+  "f2_same_scale_pending_count": 9,
+  "fixed_point_accuracy_gate": {
+    "reason": "requant planning does not run actual end-to-end fixed-point inference",
+    "required_accuracy": 0.8,
+    "status": "not_evaluated"
+  },
+  "fixed_point_status": "not_implemented",
+  "generated_memh_files": [],
+  "invalid_scale_count": 0,
+  "max_relative_error": 1.0778770604353305e-07,
+  "mean_relative_error": 2.8291384236134632e-08,
+  "memory_reuse_map": null,
+  "outputs": {
+    "conv_fc_requant": "conv_fc_requant.json",
+    "multiplier_shift_check": "multiplier_shift_check.json",
+    "residual_add_alignment": "residual_add_alignment.json"
+  },
+  "r0_5_unfinished": [
+    "actual_fixed_point_inference",
+    "accuracy_gate_80_percent",
+    "real_cifar10_full_fixed_point_eval",
+    "int8_weights_memh",
+    "int32_folded_bias_memh",
+    "final_task_sequence",
+    "one_mb_memory_reuse_map"
+  ],
+  "residual_add_alignment_count": 9,
+  "residual_same_scale_status": "planned_alignment_not_end_to_end_verified",
+  "source_folded_layers": "datasets/cifar10/resnet20_bn_folded/folded_layers.json",
+  "source_quant_params": "datasets/cifar10/resnet20_quant_calibration/quant_params.json",
+  "source_requant_plan": "datasets/cifar10/resnet20_quant_calibration/requant_plan.json",
+  "status": "requant_search_skeleton",
+  "task_sequence": null,
+  "warning": false
+}

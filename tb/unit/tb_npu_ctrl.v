@@ -26,7 +26,7 @@ module tb_npu_ctrl;
 
     // Task outputs
     wire        task_start;
-    wire [1:0]  task_type;
+    wire [2:0]  task_type;
     wire [31:0] input_addr;
     wire [31:0] weight_addr;
     wire [31:0] output_addr;
@@ -42,6 +42,22 @@ module tb_npu_ctrl;
     wire [1:0]  requant_slot_sel;
     wire [31:0] requant_multiplier;
     wire [5:0]  requant_shift;
+    wire [1:0]  cluster_mode_cfg;
+    wire [5:0]  cluster_mask_cfg;
+    wire [31:0] conv_cfg;
+    wire [31:0] bias_addr;
+    wire [31:0] bias_bytes;
+    wire [31:0] src1_addr;
+    wire [31:0] src1_bytes;
+    wire [31:0] add_cfg;
+    wire [31:0] gap_cfg;
+    wire [31:0] postproc_cfg_ext;
+    wire [31:0] add_src0_multiplier;
+    wire [5:0]  add_src0_shift;
+    wire [31:0] add_src1_multiplier;
+    wire [5:0]  add_src1_shift;
+    wire [31:0] add_out_multiplier;
+    wire [5:0]  add_out_shift;
 
     // Task status
     reg         task_done;
@@ -111,6 +127,22 @@ module tb_npu_ctrl;
         .requant_slot_sel(requant_slot_sel),
         .requant_multiplier(requant_multiplier),
         .requant_shift   (requant_shift),
+        .cluster_mode_cfg(cluster_mode_cfg),
+        .cluster_mask_cfg(cluster_mask_cfg),
+        .conv_cfg        (conv_cfg),
+        .bias_addr       (bias_addr),
+        .bias_bytes      (bias_bytes),
+        .src1_addr       (src1_addr),
+        .src1_bytes      (src1_bytes),
+        .add_cfg         (add_cfg),
+        .gap_cfg         (gap_cfg),
+        .postproc_cfg_ext(postproc_cfg_ext),
+        .add_src0_multiplier(add_src0_multiplier),
+        .add_src0_shift  (add_src0_shift),
+        .add_src1_multiplier(add_src1_multiplier),
+        .add_src1_shift  (add_src1_shift),
+        .add_out_multiplier(add_out_multiplier),
+        .add_out_shift   (add_out_shift),
         .task_done_i     (task_done),
         .task_error_i    (task_error),
         .task_error_code_i(task_error_code),

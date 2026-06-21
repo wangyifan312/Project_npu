@@ -1,0 +1,100 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "checkpoint": "datasets/cifar10/models/resnet20_float_candidate_mps_continue_stage2.pt",
+  "coverage": "conv1.relu, residual add ReLU outputs, GAP output, FC logits",
+  "layers": {
+    "conv1.relu": {
+      "clamp_max_count": 1,
+      "clamp_max_ratio": 6.103515625e-08,
+      "clamp_min_count": 0,
+      "clamp_min_ratio": 0.0,
+      "total_count": 16384000
+    },
+    "fc.logits": {
+      "clamp_max_count": 0,
+      "clamp_max_ratio": 0.0,
+      "clamp_min_count": 0,
+      "clamp_min_ratio": 0.0,
+      "total_count": 10000
+    },
+    "gap.output": {
+      "clamp_max_count": 3,
+      "clamp_max_ratio": 4.6875e-05,
+      "clamp_min_count": 0,
+      "clamp_min_ratio": 0.0,
+      "total_count": 64000
+    },
+    "layer1.0.add.relu": {
+      "clamp_max_count": 4,
+      "clamp_max_ratio": 2.44140625e-07,
+      "clamp_min_count": 0,
+      "clamp_min_ratio": 0.0,
+      "total_count": 16384000
+    },
+    "layer1.1.add.relu": {
+      "clamp_max_count": 0,
+      "clamp_max_ratio": 0.0,
+      "clamp_min_count": 0,
+      "clamp_min_ratio": 0.0,
+      "total_count": 16384000
+    },
+    "layer1.2.add.relu": {
+      "clamp_max_count": 20,
+      "clamp_max_ratio": 1.220703125e-06,
+      "clamp_min_count": 0,
+      "clamp_min_ratio": 0.0,
+      "total_count": 16384000
+    },
+    "layer2.0.add.relu": {
+      "clamp_max_count": 5,
+      "clamp_max_ratio": 6.103515625e-07,
+      "clamp_min_count": 0,
+      "clamp_min_ratio": 0.0,
+      "total_count": 8192000
+    },
+    "layer2.1.add.relu": {
+      "clamp_max_count": 5,
+      "clamp_max_ratio": 6.103515625e-07,
+      "clamp_min_count": 0,
+      "clamp_min_ratio": 0.0,
+      "total_count": 8192000
+    },
+    "layer2.2.add.relu": {
+      "clamp_max_count": 3,
+      "clamp_max_ratio": 3.662109375e-07,
+      "clamp_min_count": 0,
+      "clamp_min_ratio": 0.0,
+      "total_count": 8192000
+    },
+    "layer3.0.add.relu": {
+      "clamp_max_count": 0,
+      "clamp_max_ratio": 0.0,
+      "clamp_min_count": 0,
+      "clamp_min_ratio": 0.0,
+      "total_count": 4096000
+    },
+    "layer3.1.add.relu": {
+      "clamp_max_count": 0,
+      "clamp_max_ratio": 0.0,
+      "clamp_min_count": 0,
+      "clamp_min_ratio": 0.0,
+      "total_count": 4096000
+    },
+    "layer3.2.add.relu": {
+      "clamp_max_count": 0,
+      "clamp_max_ratio": 0.0,
+      "clamp_min_count": 0,
+      "clamp_min_ratio": 0.0,
+      "total_count": 4096000
+    }
+  },
+  "max_risk_layer": {
+    "clamp_max_count": 3,
+    "clamp_max_ratio": 4.6875e-05,
+    "clamp_min_count": 0,
+    "clamp_min_ratio": 0.0,
+    "layer": "gap.output",
+    "total_clamp_ratio": 4.6875e-05,
+    "total_count": 64000
+  }
+}

@@ -1,0 +1,23 @@
+// ResNet-20 R0.5 export package
+// layer: layer1.0.conv2
+// source_tensor: layer1.0.conv2.bias
+// shape: [16]
+// accumulator_scale: 0.0001446937849241517
+// ordering: output_channel_or_neuron_order
+// dtype: INT32
+00002200
+00001a9b
+00002304
+fffff468
+000015e4
+fffffe12
+00001198
+0000116c
+fffffff6
+00001411
+fffff72f
+ffffff9c
+00000006
+00000b7f
+00000959
+ffffd0d5

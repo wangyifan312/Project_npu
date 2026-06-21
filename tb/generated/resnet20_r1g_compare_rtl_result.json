@@ -1,0 +1,17 @@
+{
+  "scope": "R1g compact npu_top fixed-point compare",
+  "slice": ["layer1.0.conv1", "layer1.0.conv2", "layer1.0.add"],
+  "full_resnet20": false,
+  "compact_alias": true,
+  "compact_contract": "Conv inputs are dense HWC INT8 bytes; Conv outputs use current RTL lane0-word physical store; ADD consumes physical bytes",
+  "compared_bytes": 108,
+  "mismatch_count": 0,
+  "unknown_bytes": 0,
+  "stages": [
+    {"idx": 0, "name": "layer1.0.conv1", "logical_output_elements": 9, "stored_bytes": 36, "compared_bytes": 36, "mismatch_count": 0, "unknown_bytes": 0, "first_mismatch_idx": -1, "first_expected": "0x00", "first_actual": "0x00", "first_actual_unknown": 0, "last_expected_word_bytes": ["0x09", "0x00", "0x00", "0x00"], "last_actual_word_bytes": ["0x09", "0x00", "0x00", "0x00"]},
+    {"idx": 1, "name": "layer1.0.conv2", "logical_output_elements": 9, "stored_bytes": 36, "compared_bytes": 36, "mismatch_count": 0, "unknown_bytes": 0, "first_mismatch_idx": -1, "first_expected": "0x00", "first_actual": "0x00", "first_actual_unknown": 0, "last_expected_word_bytes": ["0x0d", "0x00", "0x00", "0x00"], "last_actual_word_bytes": ["0x0d", "0x00", "0x00", "0x00"]},
+    {"idx": 2, "name": "layer1.0.add", "logical_output_elements": 9, "stored_bytes": 36, "compared_bytes": 36, "mismatch_count": 0, "unknown_bytes": 0, "first_mismatch_idx": -1, "first_expected": "0x00", "first_actual": "0x00", "first_actual_unknown": 0, "last_expected_word_bytes": ["0x00", "0x00", "0x00", "0x00"], "last_actual_word_bytes": ["0x00", "0x00", "0x00", "0x00"]}
+  ],
+  "final_checksum_masked": "0x00001bb0",
+  "status": "match"
+}

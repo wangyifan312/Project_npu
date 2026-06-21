@@ -1,0 +1,20 @@
+{
+  "alignment_status": "pass",
+  "arch": "cifar10_resnet20_v1",
+  "conv_task_count": 21,
+  "errors": [],
+  "fc_task_count": 1,
+  "gap_task_count": 1,
+  "live_range_overlap_status": "pass",
+  "memory_map": "datasets/cifar10/resnet20_export_package/memory_map.json",
+  "memory_max_end_address": 289984,
+  "memory_peak_live_bytes": 49152,
+  "memory_total_bytes": 1048576,
+  "null_address_error_count": 0,
+  "null_address_status": "pass",
+  "residual_add_task_count": 9,
+  "task_count": 32,
+  "task_sequence": "datasets/cifar10/resnet20_export_package/task_sequence.json",
+  "validation_status": "pass",
+  "warnings": []
+}

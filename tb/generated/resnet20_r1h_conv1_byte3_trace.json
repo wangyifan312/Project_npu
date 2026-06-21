@@ -1,0 +1,17 @@
+{
+  "scope": "R1h conv1 byte3 ownership trace",
+  "logical_output": {"index": 3, "oh": 0, "ow": 0, "oc": 3},
+  "expected_owner": {"acc_buffer_addr": 3, "dense_store_byte_offset": 3, "expected_byte": "0x18"},
+  "requant_read": {"seen": 1, "fsm": 21, "acc_data": 5434, "bias": 2763, "acc_after_bias": 8197, "q_i8": 24, "q_byte": "0x18", "word_store_mode": 0},
+  "acc3_write_event_count": 4,
+  "acc3_write_events": [
+    {"event": 0, "fsm": 9, "sub": 3, "cin_idx": 0, "comp_win_idx": 0, "acc_col_idx": 3, "wr_addr": 3, "wr_data": "3129", "is_collect": 1, "is_internal_requant": 0},
+    {"event": 1, "fsm": 9, "sub": 3, "cin_idx": 1, "comp_win_idx": 0, "acc_col_idx": 3, "wr_addr": 3, "wr_data": "5753", "is_collect": 1, "is_internal_requant": 0},
+    {"event": 2, "fsm": 9, "sub": 3, "cin_idx": 2, "comp_win_idx": 0, "acc_col_idx": 3, "wr_addr": 3, "wr_data": "5434", "is_collect": 1, "is_internal_requant": 0},
+    {"event": 3, "fsm": 21, "sub": 4, "cin_idx": 2, "comp_win_idx": 1024, "acc_col_idx": 15, "wr_addr": 3, "wr_data": "655360", "is_collect": 0, "is_internal_requant": 1}
+  ],
+  "stored_bytes_0_15": ["0x00", "0x00", "0x00", "0x18", "0x00", "0x00", "0x3d", "0x0e", "0x00", "0x0a", "0x07", "0x00", "0x00", "0x00", "0x0a", "0x00"],
+  "pre_fix_root_cause": "q3 was owned by acc_buffer[3] but lane0-word store placed it at byte12 while package dense HWC requires byte3",
+  "post_fix_ownership_status": "dense packed requant maps q3 to stored byte3",
+  "not_full_resnet20": true
+}

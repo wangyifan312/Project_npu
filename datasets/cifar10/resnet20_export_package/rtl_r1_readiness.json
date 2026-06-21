@@ -1,0 +1,128 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "blockers": [],
+  "current_rtl_capability_summary": {
+    "control_model": "single_task_register_triggered",
+    "current_task_types": {
+      "0": "Conv_legacy_5x5_valid_stride1",
+      "1": "FC_arrayized",
+      "2": "Pool",
+      "3": "Requant"
+    },
+    "dma_store_path": "256_bit_axi4_incr_with_32bit_word_to_256bit_beat_packing",
+    "requant_primitive": "round_half_away_from_zero_signed_int8_clamp",
+    "runtime_cluster_config": "AXI_Lite_CLUSTER_MODE_CLUSTER_MASK"
+  },
+  "export_package_validation_status": "pass",
+  "fixed_point_accuracy": 0.8639,
+  "handoff_package_status": "ready_for_rtl_r1_review",
+  "immutable_contracts": [
+    "LeNet existing behavior and task encodings 0..3",
+    "existing AXI-Lite register meanings and addresses through 0x8C",
+    "requant_i32_to_i8 round-half-away-from-zero semantics",
+    "signed INT8 clamp [-128,127]",
+    "1MB shared memory = 32768 x 256-bit beat",
+    "64B task base address alignment",
+    "AXI/HB completed project subset",
+    "acc_buffer to DMA writer 32-bit word to 256-bit beat packing",
+    "last-beat WSTRB generated from actual byte count",
+    "single-task register-triggered control model unless explicitly approved",
+    "R0.5 fixed-point export package numerical semantics"
+  ],
+  "inspected_rtl_files": [
+    "rtl/npu/npu_top.v",
+    "rtl/npu/npu_ctrl.v",
+    "rtl/npu/task_checker.v",
+    "rtl/npu/block_scheduler.v",
+    "rtl/npu/conv_frontend.v",
+    "rtl/npu/requant_i32_to_i8.v",
+    "rtl/npu/compute_core_6cluster.v",
+    "rtl/npu/output_arbiter.v",
+    "rtl/npu/dma_axi_reader.v",
+    "rtl/npu/dma_axi_writer.v",
+    "rtl/npu/npu_buffer.v",
+    "rtl/npu/postproc.v",
+    "rtl/npu/fc_frontend.v",
+    "rtl/npu/act_read_path.v",
+    "rtl/npu/weight_read_path.v",
+    "rtl/npu/perf_counter.v"
+  ],
+  "non_blockers": [
+    "add 3-bit task_type path",
+    "add append-only ResNet configuration registers",
+    "generalize Conv for 3x3 and 1x1 kernels",
+    "add stride1/stride2 and same padding handling",
+    "add projection 1x1 Conv support",
+    "add folded INT32 bias path",
+    "add residual ADD datapath or postprocess op",
+    "add GAP8x8 datapath or macro task",
+    "add task_sequence and memory_map driven ResNet fixture runner"
+  ],
+  "recommended_slices": [
+    {
+      "id": "R1a",
+      "scope": "descriptor/task decode extension skeleton"
+    },
+    {
+      "id": "R1b",
+      "scope": "generalized Conv 3x3/1x1 stride support"
+    },
+    {
+      "id": "R1c",
+      "scope": "folded bias plus requant integration"
+    },
+    {
+      "id": "R1d",
+      "scope": "residual ADD op"
+    },
+    {
+      "id": "R1e",
+      "scope": "GAP8x8 op"
+    },
+    {
+      "id": "R1f",
+      "scope": "ResNet task-sequence testbench smoke"
+    },
+    {
+      "id": "R1g",
+      "scope": "small fixture fixed-point comparison"
+    }
+  ],
+  "required_modules": [
+    "rtl/npu/npu_ctrl.v",
+    "rtl/npu/task_checker.v",
+    "rtl/npu/block_scheduler.v",
+    "rtl/npu/conv_frontend.v",
+    "rtl/npu/npu_top.v",
+    "rtl/npu/requant_i32_to_i8.v",
+    "rtl/npu/postproc.v",
+    "rtl/npu/compute_core_6cluster.v",
+    "rtl/npu/output_arbiter.v",
+    "rtl/npu/dma_axi_reader.v",
+    "rtl/npu/dma_axi_writer.v",
+    "rtl/npu/npu_buffer.v"
+  ],
+  "required_r1_changes": [
+    "expand task_type from 2 bit to at least 3 bit without changing legacy encodings",
+    "add append-only VERSION/CAPABILITY/CONV_CFG/BIAS/SRC1/ADD/GAP/POSTPROC registers",
+    "generalize Conv frontend and scheduler for 1x1/3x3/5x5, stride1/stride2, valid/same",
+    "add 1x1 stride2 projection Conv support",
+    "add INT32 folded bias accumulator-domain path",
+    "add residual ADD same-scale datapath or postprocess op",
+    "add GAP8x8 fixed reciprocal/shift datapath or macro task",
+    "interpret R0.5 weight/bias/requant package metadata",
+    "consume generated task_sequence.json and memory_map.json from a ResNet fixture runner"
+  ],
+  "rtl_modified": false,
+  "rtl_r1_ready_for_implementation": true,
+  "rtl_r1_ready_for_implementation_scope": "R1a/R1 foundation coding, not complete ResNet RTL",
+  "rtl_r1_ready_for_review": true,
+  "rtl_r1_started": false,
+  "source_export_validation": "datasets/cifar10/resnet20_export_package/validation_report.json",
+  "source_fixed_eval": "datasets/cifar10/resnet20_fixed_point_eval_10000/summary.json",
+  "source_handoff_contract": "datasets/cifar10/resnet20_handoff_contract/summary.json",
+  "source_task_memory_validation": "datasets/cifar10/resnet20_export_package/task_memory_validation.json",
+  "task_memory_validation_status": "pass",
+  "testbench_modified": false,
+  "unresolved_questions": []
+}

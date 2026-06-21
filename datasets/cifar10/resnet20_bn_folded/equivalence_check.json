@@ -1,0 +1,20 @@
+{
+  "acceptance_target": {
+    "accuracy_match_required": true,
+    "max_abs_logit_diff_lte": 0.0001
+  },
+  "accuracy_match": true,
+  "checked_sample_count": 256,
+  "checkpoint": "datasets/cifar10/models/resnet20_float_candidate_mps_continue_stage2.pt",
+  "dataset_source": "cifar10_tar:datasets/cifar10/cifar-10-python.tar.gz:test",
+  "folded_accuracy": 0.859375,
+  "folded_correct": 220,
+  "folded_total": 256,
+  "max_abs_logit_diff": 7.62939453125e-06,
+  "mean_abs_logit_diff": 1.2664153473451733e-06,
+  "original_accuracy": 0.859375,
+  "original_correct": 220,
+  "original_total": 256,
+  "pass": true,
+  "split": "test"
+}

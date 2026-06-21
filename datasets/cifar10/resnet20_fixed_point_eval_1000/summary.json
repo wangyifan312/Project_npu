@@ -1,0 +1,201 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "batch_size": 16,
+  "both_wrong_count": 122,
+  "checkpoint": "datasets/cifar10/models/resnet20_float_candidate_mps_continue_stage2.pt",
+  "dataset_source": "cifar10_tar:datasets/cifar10/cifar-10-python.tar.gz:test",
+  "device": "cpu",
+  "f3_multiplier_shift_used": true,
+  "first_mismatch_examples": [
+    {
+      "fixed_correct": false,
+      "float_correct": true,
+      "label": 8,
+      "predicted_class_fixed": 6,
+      "predicted_class_float": 8,
+      "sample_index": 15
+    },
+    {
+      "fixed_correct": false,
+      "float_correct": false,
+      "label": 0,
+      "predicted_class_fixed": 2,
+      "predicted_class_float": 3,
+      "sample_index": 52
+    },
+    {
+      "fixed_correct": false,
+      "float_correct": false,
+      "label": 4,
+      "predicted_class_fixed": 5,
+      "predicted_class_float": 0,
+      "sample_index": 58
+    },
+    {
+      "fixed_correct": false,
+      "float_correct": true,
+      "label": 3,
+      "predicted_class_fixed": 6,
+      "predicted_class_float": 3,
+      "sample_index": 127
+    },
+    {
+      "fixed_correct": false,
+      "float_correct": true,
+      "label": 8,
+      "predicted_class_fixed": 0,
+      "predicted_class_float": 8,
+      "sample_index": 265
+    },
+    {
+      "fixed_correct": false,
+      "float_correct": true,
+      "label": 0,
+      "predicted_class_fixed": 3,
+      "predicted_class_float": 0,
+      "sample_index": 269
+    },
+    {
+      "fixed_correct": false,
+      "float_correct": false,
+      "label": 3,
+      "predicted_class_fixed": 5,
+      "predicted_class_float": 2,
+      "sample_index": 302
+    },
+    {
+      "fixed_correct": false,
+      "float_correct": true,
+      "label": 8,
+      "predicted_class_fixed": 0,
+      "predicted_class_float": 8,
+      "sample_index": 312
+    },
+    {
+      "fixed_correct": false,
+      "float_correct": false,
+      "label": 4,
+      "predicted_class_fixed": 9,
+      "predicted_class_float": 5,
+      "sample_index": 427
+    },
+    {
+      "fixed_correct": false,
+      "float_correct": true,
+      "label": 7,
+      "predicted_class_fixed": 4,
+      "predicted_class_float": 7,
+      "sample_index": 433
+    },
+    {
+      "fixed_correct": true,
+      "float_correct": false,
+      "label": 3,
+      "predicted_class_fixed": 3,
+      "predicted_class_float": 9,
+      "sample_index": 434
+    },
+    {
+      "fixed_correct": false,
+      "float_correct": true,
+      "label": 0,
+      "predicted_class_fixed": 2,
+      "predicted_class_float": 0,
+      "sample_index": 491
+    }
+  ],
+  "first_observed_failure_modes": [
+    {
+      "label": 8,
+      "predicted_class_fixed": 1,
+      "predicted_class_float": 1,
+      "sample_index": 2
+    },
+    {
+      "label": 8,
+      "predicted_class_fixed": 6,
+      "predicted_class_float": 8,
+      "sample_index": 15
+    },
+    {
+      "label": 5,
+      "predicted_class_fixed": 4,
+      "predicted_class_float": 4,
+      "sample_index": 24
+    },
+    {
+      "label": 4,
+      "predicted_class_fixed": 6,
+      "predicted_class_float": 6,
+      "sample_index": 32
+    },
+    {
+      "label": 1,
+      "predicted_class_fixed": 9,
+      "predicted_class_float": 9,
+      "sample_index": 37
+    },
+    {
+      "label": 4,
+      "predicted_class_fixed": 2,
+      "predicted_class_float": 2,
+      "sample_index": 40
+    },
+    {
+      "label": 5,
+      "predicted_class_fixed": 3,
+      "predicted_class_float": 3,
+      "sample_index": 42
+    },
+    {
+      "label": 9,
+      "predicted_class_fixed": 8,
+      "predicted_class_float": 8,
+      "sample_index": 47
+    }
+  ],
+  "fixed_float_prediction_match_count": 979,
+  "fixed_float_prediction_mismatch_count": 21,
+  "fixed_only_correct_count": 7,
+  "fixed_point_accuracy": 0.87,
+  "fixed_point_accuracy_gate": {
+    "required_accuracy": 0.8,
+    "status": "not_evaluated_staged_subset"
+  },
+  "fixed_point_correct": 870,
+  "fixed_point_status": "staged_eval_subset",
+  "float_only_correct_count": 8,
+  "float_reference_accuracy": 0.871,
+  "float_reference_correct": 871,
+  "full_cifar10_fixed_point_eval": false,
+  "one_mb_memory_reuse_map_generated": false,
+  "r0_5_unfinished": [
+    "full_cifar10_fixed_point_eval",
+    "accuracy_gate_80_percent",
+    "int8_weights_memh",
+    "int32_folded_bias_memh",
+    "final_task_sequence",
+    "one_mb_memory_reuse_map"
+  ],
+  "residual_add_planned_alignment_executed": true,
+  "rounding_status": "software_reference_round_half_away_from_zero_not_rtl_locked",
+  "rtl_memh_generated": false,
+  "rtl_task_sequence_generated": false,
+  "sample_count": 1000,
+  "samples_per_sec": 163.90086241920503,
+  "saturation_coverage": "conv1.relu, residual add ReLU outputs, GAP output, FC logits",
+  "saturation_max_risk_layer": {
+    "clamp_max_count": 3,
+    "clamp_max_ratio": 4.6875e-05,
+    "clamp_min_count": 0,
+    "clamp_min_ratio": 0.0,
+    "layer": "gap.output",
+    "total_clamp_ratio": 4.6875e-05,
+    "total_count": 64000
+  },
+  "saturation_status": "clamp_to_INT8_range_after_activation_requant",
+  "split": "test",
+  "staged_eval_status": "staged_subset",
+  "status": "actual_fixed_point_staged_eval",
+  "total_runtime_sec": 6.101249165134504
+}

@@ -1,0 +1,29 @@
+{
+  "address_contract": "package memory_map reserves address 0; input.image uses nonzero formal address",
+  "bias_bytes": 64,
+  "bias_load_addr": 528384,
+  "compare_bytes": 16384,
+  "conv_cfg": 26,
+  "expected_checksum": "0x482186f6",
+  "input_checksum": "0x23ed1400",
+  "input_tensor": {
+    "base_addr": 64,
+    "byte_size": 3072,
+    "layout": "dense_hwc_int8",
+    "name": "input.image"
+  },
+  "not_full_resnet20": true,
+  "output_tensor": {
+    "base_addr": 3136,
+    "byte_size": 16384,
+    "layout": "dense_hwc_int8_reference",
+    "name": "conv1.relu"
+  },
+  "package_dir": "datasets/cifar10/resnet20_export_package",
+  "requant_multiplier": 792567,
+  "requant_shift": 28,
+  "scope": "R1h package-faithful input.image_to_conv1 compare fixture",
+  "task": "conv1",
+  "weight_bytes": 432,
+  "weight_load_addr": 524288
+}

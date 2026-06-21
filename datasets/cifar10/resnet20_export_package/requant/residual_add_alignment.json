@@ -1,0 +1,296 @@
+{
+  "alignment_policy": "align_both_branches_to_target_add_scale",
+  "arch": "cifar10_resnet20_v1",
+  "items": [
+    {
+      "alignment_policy": "align_both_branches_to_target_add_scale",
+      "main_branch_scale": 0.09583564067450095,
+      "main_branch_tensor": "layer1.0.conv2.pre_add_main",
+      "main_to_target": {
+        "absolute_error": 0.0,
+        "approx_multiplier": 1.0,
+        "multiplier_int": 1,
+        "real_multiplier": 1.0,
+        "relative_error": 0.0,
+        "shift": 0,
+        "status": "searched"
+      },
+      "op": "layer1.0.add",
+      "post_relu_scale": 0.08007479089451587,
+      "post_relu_tensor": "layer1.0.add.relu",
+      "same_scale_status": "planned_alignment_not_end_to_end_verified",
+      "shortcut_branch_scale": 0.06867184976893147,
+      "shortcut_branch_tensor": "layer1.0.shortcut.pre_add",
+      "shortcut_to_target": {
+        "absolute_error": 6.002898178536498e-11,
+        "approx_multiplier": 0.7165585714392364,
+        "multiplier_int": 1538797815,
+        "real_multiplier": 0.7165585713792074,
+        "relative_error": 8.377400561941956e-11,
+        "shift": 31,
+        "status": "searched"
+      },
+      "source_same_scale_status": "pending_same_scale_alignment",
+      "target_add_scale": 0.09583564067450095,
+      "target_tensor": "layer1.0.add.pre_relu"
+    },
+    {
+      "alignment_policy": "align_both_branches_to_target_add_scale",
+      "main_branch_scale": 0.0607451866930864,
+      "main_branch_tensor": "layer1.1.conv2.pre_add_main",
+      "main_to_target": {
+        "absolute_error": 1.1803080735006688e-10,
+        "approx_multiplier": 0.5088558341376483,
+        "multiplier_int": 1092759583,
+        "real_multiplier": 0.5088558340196175,
+        "relative_error": 2.3195333424342055e-10,
+        "shift": 31,
+        "status": "searched"
+      },
+      "op": "layer1.1.add",
+      "post_relu_scale": 0.11937602486197404,
+      "post_relu_tensor": "layer1.1.add.relu",
+      "same_scale_status": "planned_alignment_not_end_to_end_verified",
+      "shortcut_branch_scale": 0.08007479089451587,
+      "shortcut_branch_tensor": "layer1.1.shortcut.pre_add",
+      "shortcut_to_target": {
+        "absolute_error": 3.280509197622905e-11,
+        "approx_multiplier": 0.6707778298296034,
+        "multiplier_int": 1440484421,
+        "real_multiplier": 0.6707778298624085,
+        "relative_error": 4.890604685452724e-11,
+        "shift": 31,
+        "status": "searched"
+      },
+      "source_same_scale_status": "pending_same_scale_alignment",
+      "target_add_scale": 0.11937602486197404,
+      "target_tensor": "layer1.1.add.pre_relu"
+    },
+    {
+      "alignment_policy": "align_both_branches_to_target_add_scale",
+      "main_branch_scale": 0.10167390718234806,
+      "main_branch_tensor": "layer1.2.conv2.pre_add_main",
+      "main_to_target": {
+        "absolute_error": 1.1897127727422685e-10,
+        "approx_multiplier": 1.0645534042268991,
+        "multiplier_int": 571527757,
+        "real_multiplier": 1.0645534043458704,
+        "relative_error": 1.117569835280649e-10,
+        "shift": 29,
+        "status": "searched"
+      },
+      "op": "layer1.2.add",
+      "post_relu_scale": 0.09193625412588044,
+      "post_relu_tensor": "layer1.2.add.relu",
+      "same_scale_status": "planned_alignment_not_end_to_end_verified",
+      "shortcut_branch_scale": 0.11937602486197404,
+      "shortcut_branch_tensor": "layer1.2.shortcut.pre_add",
+      "shortcut_to_target": {
+        "absolute_error": 2.877291738201393e-10,
+        "approx_multiplier": 1.2498993808403611,
+        "multiplier_int": 1342069241,
+        "real_multiplier": 1.2498993811280903,
+        "relative_error": 2.30201869178022e-10,
+        "shift": 30,
+        "status": "searched"
+      },
+      "source_same_scale_status": "pending_same_scale_alignment",
+      "target_add_scale": 0.09550850785623385,
+      "target_tensor": "layer1.2.add.pre_relu"
+    },
+    {
+      "alignment_policy": "align_both_branches_to_target_add_scale",
+      "main_branch_scale": 0.0524032547717958,
+      "main_branch_tensor": "layer2.0.conv2.pre_add_main",
+      "main_to_target": {
+        "absolute_error": 2.2622892448254106e-10,
+        "approx_multiplier": 0.6782562336884439,
+        "multiplier_int": 1456544171,
+        "real_multiplier": 0.6782562339146728,
+        "relative_error": 3.3354492472088583e-10,
+        "shift": 31,
+        "status": "searched"
+      },
+      "op": "layer2.0.add",
+      "post_relu_scale": 0.0772617370124877,
+      "post_relu_tensor": "layer2.0.add.relu",
+      "same_scale_status": "planned_alignment_not_end_to_end_verified",
+      "shortcut_branch_scale": 0.04137464207927073,
+      "shortcut_branch_tensor": "layer2.0.shortcut.pre_add",
+      "shortcut_to_target": {
+        "absolute_error": 1.92550086985932e-10,
+        "approx_multiplier": 0.5355127090588212,
+        "multiplier_int": 575002393,
+        "real_multiplier": 0.5355127088662711,
+        "relative_error": 3.595621239196694e-10,
+        "shift": 30,
+        "status": "searched"
+      },
+      "source_same_scale_status": "pending_same_scale_alignment",
+      "target_add_scale": 0.0772617370124877,
+      "target_tensor": "layer2.0.add.pre_relu"
+    },
+    {
+      "alignment_policy": "align_both_branches_to_target_add_scale",
+      "main_branch_scale": 0.04585379878367026,
+      "main_branch_tensor": "layer2.1.conv2.pre_add_main",
+      "main_to_target": {
+        "absolute_error": 1.4726775354745314e-10,
+        "approx_multiplier": 0.5168214864097536,
+        "multiplier_int": 1109865691,
+        "real_multiplier": 0.5168214865570213,
+        "relative_error": 2.849489763448621e-10,
+        "shift": 31,
+        "status": "searched"
+      },
+      "op": "layer2.1.add",
+      "post_relu_scale": 0.08872270208644116,
+      "post_relu_tensor": "layer2.1.add.relu",
+      "same_scale_status": "planned_alignment_not_end_to_end_verified",
+      "shortcut_branch_scale": 0.0772617370124877,
+      "shortcut_branch_tensor": "layer2.1.shortcut.pre_add",
+      "shortcut_to_target": {
+        "absolute_error": 2.952038613557306e-11,
+        "approx_multiplier": 0.8708226326853037,
+        "multiplier_int": 467519341,
+        "real_multiplier": 0.8708226327148241,
+        "relative_error": 3.389942455163583e-11,
+        "shift": 29,
+        "status": "searched"
+      },
+      "source_same_scale_status": "pending_same_scale_alignment",
+      "target_add_scale": 0.08872270208644116,
+      "target_tensor": "layer2.1.add.pre_relu"
+    },
+    {
+      "alignment_policy": "align_both_branches_to_target_add_scale",
+      "main_branch_scale": 0.048747137775571325,
+      "main_branch_tensor": "layer2.2.conv2.pre_add_main",
+      "main_to_target": {
+        "absolute_error": 2.8258617668086572e-11,
+        "approx_multiplier": 0.4784288532100618,
+        "multiplier_int": 1027418139,
+        "real_multiplier": 0.47842885318180317,
+        "relative_error": 5.906545451878983e-11,
+        "shift": 31,
+        "status": "searched"
+      },
+      "op": "layer2.2.add",
+      "post_relu_scale": 0.10189004582682933,
+      "post_relu_tensor": "layer2.2.add.relu",
+      "same_scale_status": "planned_alignment_not_end_to_end_verified",
+      "shortcut_branch_scale": 0.08872270208644116,
+      "shortcut_branch_tensor": "layer2.2.shortcut.pre_add",
+      "shortcut_to_target": {
+        "absolute_error": 2.0245527476703273e-10,
+        "approx_multiplier": 0.8707690862938762,
+        "multiplier_int": 934981187,
+        "real_multiplier": 0.8707690860914209,
+        "relative_error": 2.3250167926353924e-10,
+        "shift": 30,
+        "status": "searched"
+      },
+      "source_same_scale_status": "pending_same_scale_alignment",
+      "target_add_scale": 0.10189004582682933,
+      "target_tensor": "layer2.2.add.pre_relu"
+    },
+    {
+      "alignment_policy": "align_both_branches_to_target_add_scale",
+      "main_branch_scale": 0.052435848656601794,
+      "main_branch_tensor": "layer3.0.conv2.pre_add_main",
+      "main_to_target": {
+        "absolute_error": 1.5939916053753223e-10,
+        "approx_multiplier": 0.7455613617785275,
+        "multiplier_int": 1601080833,
+        "real_multiplier": 0.7455613616191283,
+        "relative_error": 2.137975071446388e-10,
+        "shift": 31,
+        "status": "searched"
+      },
+      "op": "layer3.0.add",
+      "post_relu_scale": 0.07033069490447758,
+      "post_relu_tensor": "layer3.0.add.relu",
+      "same_scale_status": "planned_alignment_not_end_to_end_verified",
+      "shortcut_branch_scale": 0.03457322083120271,
+      "shortcut_branch_tensor": "layer3.0.shortcut.pre_add",
+      "shortcut_to_target": {
+        "absolute_error": 2.1978591169258266e-10,
+        "approx_multiplier": 0.49158082203939557,
+        "multiplier_int": 1055661777,
+        "real_multiplier": 0.4915808222591815,
+        "relative_error": 4.471002564390166e-10,
+        "shift": 31,
+        "status": "searched"
+      },
+      "source_same_scale_status": "pending_same_scale_alignment",
+      "target_add_scale": 0.07033069490447758,
+      "target_tensor": "layer3.0.add.pre_relu"
+    },
+    {
+      "alignment_policy": "align_both_branches_to_target_add_scale",
+      "main_branch_scale": 0.07061388361172413,
+      "main_branch_tensor": "layer3.1.conv2.pre_add_main",
+      "main_to_target": {
+        "absolute_error": 2.1365365032721684e-10,
+        "approx_multiplier": 0.5403037969954312,
+        "multiplier_int": 1160293569,
+        "real_multiplier": 0.5403037967817775,
+        "relative_error": 3.954324430067055e-10,
+        "shift": 31,
+        "status": "searched"
+      },
+      "op": "layer3.1.add",
+      "post_relu_scale": 0.13069292504017746,
+      "post_relu_tensor": "layer3.1.add.relu",
+      "same_scale_status": "planned_alignment_not_end_to_end_verified",
+      "shortcut_branch_scale": 0.07033069490447758,
+      "shortcut_branch_tensor": "layer3.1.shortcut.pre_add",
+      "shortcut_to_target": {
+        "absolute_error": 5.6890159250144734e-11,
+        "approx_multiplier": 0.5381369716487825,
+        "multiplier_int": 1155640347,
+        "real_multiplier": 0.5381369717056727,
+        "relative_error": 1.057168755193057e-10,
+        "shift": 31,
+        "status": "searched"
+      },
+      "source_same_scale_status": "pending_same_scale_alignment",
+      "target_add_scale": 0.13069292504017746,
+      "target_tensor": "layer3.1.add.pre_relu"
+    },
+    {
+      "alignment_policy": "align_both_branches_to_target_add_scale",
+      "main_branch_scale": 0.0945590912826418,
+      "main_branch_tensor": "layer3.2.conv2.pre_add_main",
+      "main_to_target": {
+        "absolute_error": 2.156083089843719e-10,
+        "approx_multiplier": 0.48124688072130084,
+        "multiplier_int": 1033469807,
+        "real_multiplier": 0.48124688050569253,
+        "relative_error": 4.4802016951842145e-10,
+        "shift": 31,
+        "status": "searched"
+      },
+      "op": "layer3.2.add",
+      "post_relu_scale": 0.19648769709068958,
+      "post_relu_tensor": "layer3.2.add.relu",
+      "same_scale_status": "planned_alignment_not_end_to_end_verified",
+      "shortcut_branch_scale": 0.13069292504017746,
+      "shortcut_branch_tensor": "layer3.2.shortcut.pre_add",
+      "shortcut_to_target": {
+        "absolute_error": 1.0141731898727357e-10,
+        "approx_multiplier": 0.6651455890387297,
+        "multiplier_int": 357097319,
+        "real_multiplier": 0.665145589140147,
+        "relative_error": 1.5247386533582622e-10,
+        "shift": 29,
+        "status": "searched"
+      },
+      "source_same_scale_status": "pending_same_scale_alignment",
+      "target_add_scale": 0.19648769709068958,
+      "target_tensor": "layer3.2.add.pre_relu"
+    }
+  ],
+  "residual_add_alignment_count": 9,
+  "status": "exported_from_f3"
+}

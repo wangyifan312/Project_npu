@@ -1,0 +1,23 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "bias_file_count": 22,
+  "conv_fc_requant_count": 22,
+  "fixed_point_accuracy": 0.8639,
+  "gap_requant_status": "searched",
+  "gate_status": "passed",
+  "handoff_contract_status": "reviewed_contract_closed_for_export",
+  "manifest": "manifest.json",
+  "memory_max_end_address": 289984,
+  "memory_peak_live_bytes": 49152,
+  "memory_total_bytes": 1048576,
+  "one_mb_memory_reuse_map_generated": true,
+  "residual_add_alignment_count": 9,
+  "rtl_r1_started": false,
+  "source_checkpoint": "datasets/cifar10/models/resnet20_float_candidate_mps_continue_stage2.pt",
+  "status": "export_package_with_task_memory_map",
+  "task_count": 32,
+  "task_memory_validation": "task_memory_validation.json",
+  "task_sequence_generated": true,
+  "validation_report": "validation_report.json",
+  "weight_file_count": 22
+}

@@ -1,0 +1,40 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "bias_quantization": "INT32_round_folded_bias_div_accumulator_scale",
+  "checkpoint": "datasets/cifar10/models/resnet20_float_candidate_mps_continue_stage2.pt",
+  "conv_accumulation_backend": "torch_conv2d_float_kernel_with_integer_operands_then_integer_round",
+  "f3_multiplier_shift_used": true,
+  "fc_accumulation_backend": "torch_linear_float_kernel_with_integer_operands_then_integer_round",
+  "fixed_point_accuracy_gate": {
+    "required_accuracy": 0.8,
+    "status": "not_evaluated"
+  },
+  "fixed_point_status": "operator_smoke_only",
+  "full_cifar10_fixed_point_eval": false,
+  "gap_status": "computed_in_smoke_from_f2_scales_using_multiplier_shift",
+  "input_layout": "HWC",
+  "input_quantization": "uint8_minus_128_then_symmetric_scale_from_f2_input",
+  "one_mb_memory_reuse_map_generated": false,
+  "post_relu_requant_source": {
+    "layer1.0.add.relu": "computed_in_smoke_from_f3_target_and_post_relu_scales",
+    "layer1.1.add.relu": "computed_in_smoke_from_f3_target_and_post_relu_scales",
+    "layer1.2.add.relu": "computed_in_smoke_from_f3_target_and_post_relu_scales",
+    "layer2.0.add.relu": "computed_in_smoke_from_f3_target_and_post_relu_scales",
+    "layer2.1.add.relu": "computed_in_smoke_from_f3_target_and_post_relu_scales",
+    "layer2.2.add.relu": "computed_in_smoke_from_f3_target_and_post_relu_scales",
+    "layer3.0.add.relu": "computed_in_smoke_from_f3_target_and_post_relu_scales",
+    "layer3.1.add.relu": "computed_in_smoke_from_f3_target_and_post_relu_scales",
+    "layer3.2.add.relu": "computed_in_smoke_from_f3_target_and_post_relu_scales"
+  },
+  "requant_source": "F3_multiplier_shift_for_conv_fc_and_residual_branch_alignment",
+  "residual_add_alignment_executed": true,
+  "rounding_status": "software_reference_round_half_away_from_zero_not_rtl_locked",
+  "rtl_memh_generated": false,
+  "rtl_task_sequence_generated": false,
+  "saturation_status": "clamp_to_INT8_range_after_activation_requant",
+  "source_conv_fc_requant": "datasets/cifar10/resnet20_requant_plan/conv_fc_requant.json",
+  "source_folded_layers": "datasets/cifar10/resnet20_bn_folded/folded_layers.json",
+  "source_quant_params": "datasets/cifar10/resnet20_quant_calibration/quant_params.json",
+  "source_residual_add_alignment": "datasets/cifar10/resnet20_requant_plan/residual_add_alignment.json",
+  "weight_quantization": "per_tensor_symmetric_INT8_from_F2"
+}

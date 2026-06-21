@@ -1,0 +1,26 @@
+{
+  "scope": "R1g conv1 byte0 numeric trace",
+  "payload_source": "package_memh_for_weight_and_bias; deterministic compact seed for input",
+  "output_position": {"oh": 0, "ow": 0, "oc": 0},
+  "reference": {
+    "mac_before_bias": -15,
+    "bias_i32": 2334,
+    "acc_after_bias": 2319,
+    "requant_multiplier": 11913625,
+    "requant_shift": 31,
+    "output_i8": 13
+  },
+  "rtl": {
+    "window_seen": 1,
+    "requant_seen": 1,
+    "window_hex": ["0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x71", "0x6c"],
+    "weight_hex": ["0xff", "0x07", "0x03", "0x02", "0xf5", "0x01", "0xf7", "0xfd", "0x03"],
+    "mac_before_bias": -15,
+    "bias_i32": 2334,
+    "acc_after_bias": 2319,
+    "requant_i8": 13,
+    "stored_word_bytes": ["0x0d", "0x00", "0x00", "0x00"]
+  },
+  "first_divergence_stage": "none_after_compact_layout_alignment",
+  "root_cause": "previous mismatch was compact fixture/reference layout alignment, not RTL Conv arithmetic"
+}

@@ -1,0 +1,145 @@
+{
+  "compact_layout_contract": {
+    "add_input": "physical byte stream exactly as stored in memory",
+    "add_output": "dense INT8 byte stream packed four values per 32-bit word by ADD datapath",
+    "conv_input": "dense HWC INT8 byte stream at task input address",
+    "conv_output": "current RTL physical store: one INT8 output in byte lane 0 of each 32-bit word"
+  },
+  "conv1_first_output_reference_trace": {
+    "acc_after_bias": 2319,
+    "acc_after_relu": 2319,
+    "acc_before_relu": 2319,
+    "bias_i32": 2334,
+    "mac_before_bias": -15,
+    "output_position": {
+      "oh": 0,
+      "ow": 0
+    },
+    "product_before_shift": 27627696375,
+    "reference_output_byte": 13,
+    "reference_output_i8": 13,
+    "requant": {
+      "absolute_error": 8.744884417294374e-11,
+      "approx_multiplier": 0.005547713954001665,
+      "multiplier_int": 11913625,
+      "real_multiplier": 0.005547714041450509,
+      "relative_error": 1.5763041050702625e-08,
+      "shift": 31,
+      "status": "searched"
+    },
+    "taps": [
+      {
+        "input_i8": 0,
+        "kh": 0,
+        "kw": 0,
+        "product": 0,
+        "weight_i8": -1,
+        "weight_idx": 0,
+        "window_idx": 0
+      },
+      {
+        "input_i8": 0,
+        "kh": 0,
+        "kw": 1,
+        "product": 0,
+        "weight_i8": 7,
+        "weight_idx": 1,
+        "window_idx": 1
+      },
+      {
+        "input_i8": 0,
+        "kh": 0,
+        "kw": 2,
+        "product": 0,
+        "weight_i8": 3,
+        "weight_idx": 2,
+        "window_idx": 2
+      },
+      {
+        "input_i8": 0,
+        "kh": 1,
+        "kw": 0,
+        "product": 0,
+        "weight_i8": 2,
+        "weight_idx": 3,
+        "window_idx": 3
+      },
+      {
+        "input_i8": 0,
+        "kh": 1,
+        "kw": 1,
+        "product": 0,
+        "weight_i8": -11,
+        "weight_idx": 4,
+        "window_idx": 4
+      },
+      {
+        "input_i8": 0,
+        "kh": 1,
+        "kw": 2,
+        "product": 0,
+        "weight_i8": 1,
+        "weight_idx": 5,
+        "window_idx": 5
+      },
+      {
+        "input_i8": 0,
+        "kh": 2,
+        "kw": 0,
+        "product": 0,
+        "weight_i8": -9,
+        "weight_idx": 6,
+        "window_idx": 6
+      },
+      {
+        "input_i8": 113,
+        "kh": 2,
+        "kw": 1,
+        "product": -339,
+        "weight_i8": -3,
+        "weight_idx": 7,
+        "window_idx": 7
+      },
+      {
+        "input_i8": 108,
+        "kh": 2,
+        "kw": 2,
+        "product": 324,
+        "weight_i8": 3,
+        "weight_idx": 8,
+        "window_idx": 8
+      }
+    ]
+  },
+  "current_debug_boundary": "Reference uses dense HWC Conv input bytes and current RTL physical Conv output bytes. RTL conv1 byte0 first-divergence details are emitted by tb/generated/resnet20_r1g_conv1_trace.json after simulation.",
+  "expected_stage_checksums": [
+    {
+      "checksum": "0x000004fe",
+      "expected_byte0": "0x0d",
+      "name": "layer1.0.conv1",
+      "output_tensor": "layer1.0.conv1.relu"
+    },
+    {
+      "checksum": "0x000007c5",
+      "expected_byte0": "0x0d",
+      "name": "layer1.0.conv2",
+      "output_tensor": "layer1.0.conv2.pre_add_main"
+    },
+    {
+      "checksum": "0x00001bb0",
+      "expected_byte0": "0x5e",
+      "name": "layer1.0.add",
+      "output_tensor": "layer1.0.add.relu"
+    }
+  ],
+  "note": "RTL stage-wise mismatch/unknown counts are produced by tb/generated/resnet20_r1g_compare_rtl_result.json after simulation.",
+  "reference_source": "export_package_weights_bias_requant_and_residual_alignment",
+  "scope": "R1g compact fixed-point compare fixture, not full ResNet-20 closure",
+  "slice": [
+    "layer1.0.conv1",
+    "layer1.0.conv2",
+    "layer1.0.add"
+  ],
+  "status": "reference_trace_generated",
+  "uses_compact_alias": true
+}

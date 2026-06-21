@@ -1,0 +1,17 @@
+{
+  "scope": "R1h package-faithful conv1 debug summary",
+  "compared_bytes": 16384,
+  "mismatch_count": 0,
+  "unknown_bytes": 0,
+  "first_mismatch": -1,
+  "first_unknown_idx": -1,
+  "first_unknown_position_dense_hwc": {"oh": -1, "ow": -1, "oc": -1},
+  "first_divergence_stage_code": 0,
+  "first_divergence_stage": "none_for_output_0_0_0",
+  "unknown_origin_hypothesis": "no_unknown_output_byte_observed",
+  "trace_path": "tb/generated/resnet20_r1h_conv1_trace.json",
+  "acc_source_trace_path": "tb/generated/resnet20_r1h_conv1_acc_source_trace.json",
+  "window_truth_path": "tb/generated/resnet20_r1h_conv1_window_truth.json",
+  "acc_ownership_truth_path": "tb/generated/resnet20_r1h_conv1_acc_ownership_truth.json",
+  "not_full_resnet20": true
+}

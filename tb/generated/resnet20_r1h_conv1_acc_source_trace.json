@@ -1,0 +1,30 @@
+{
+  "scope": "R1h conv1 acc_buffer[0] source alignment trace",
+  "target": {"output_byte": 0, "logical_output": {"oh": 0, "ow": 0, "oc": 0}, "acc_buffer_addr": 0},
+  "reference": {"mac_before_bias": -963, "bias_i32": -1323, "output_byte": "0x00"},
+  "requant_read0": {"seen": 1, "fsm": 21, "acc_data": -963},
+  "feed_event_count": 12,
+  "feed_events": [
+    {"event": 0, "cin_idx": 0, "comp_win_idx": 0, "window_sum": -64, "product_sum_oc0": -837},
+    {"event": 1, "cin_idx": 0, "comp_win_idx": 1, "window_sum": 14, "product_sum_oc0": 60},
+    {"event": 2, "cin_idx": 0, "comp_win_idx": 2, "window_sum": -278, "product_sum_oc0": -1536},
+    {"event": 3, "cin_idx": 0, "comp_win_idx": 3, "window_sum": -58, "product_sum_oc0": -60},
+    {"event": 4, "cin_idx": 1, "comp_win_idx": 0, "window_sum": 84, "product_sum_oc0": -646},
+    {"event": 5, "cin_idx": 1, "comp_win_idx": 1, "window_sum": 236, "product_sum_oc0": -116},
+    {"event": 6, "cin_idx": 1, "comp_win_idx": 2, "window_sum": -56, "product_sum_oc0": -1054},
+    {"event": 7, "cin_idx": 1, "comp_win_idx": 3, "window_sum": 164, "product_sum_oc0": -200},
+    {"event": 8, "cin_idx": 2, "comp_win_idx": 0, "window_sum": -24, "product_sum_oc0": 520},
+    {"event": 9, "cin_idx": 2, "comp_win_idx": 1, "window_sum": -54, "product_sum_oc0": 494},
+    {"event": 10, "cin_idx": 2, "comp_win_idx": 2, "window_sum": -90, "product_sum_oc0": 154},
+    {"event": 11, "cin_idx": 2, "comp_win_idx": 3, "window_sum": -126, "product_sum_oc0": 326}
+  ],
+  "acc0_event_count": 4,
+  "acc0_write_events": [
+    {"event": 0, "fsm": 9, "sub": 3, "cin_idx": 0, "comp_win_idx": 0, "acc_col_idx": 0, "wr_addr": 0, "acc_partial_addr": 0, "acc_wr_ptr": 0, "col_result0": "-837", "col_result_selected": "-837", "acc_rd_data": "x", "acc_wr_data": "-837"},
+    {"event": 1, "fsm": 9, "sub": 3, "cin_idx": 1, "comp_win_idx": 0, "acc_col_idx": 0, "wr_addr": 0, "acc_partial_addr": 0, "acc_wr_ptr": 0, "col_result0": "-646", "col_result_selected": "-646", "acc_rd_data": "-837", "acc_wr_data": "-1483"},
+    {"event": 2, "fsm": 9, "sub": 3, "cin_idx": 2, "comp_win_idx": 0, "acc_col_idx": 0, "wr_addr": 0, "acc_partial_addr": 0, "acc_wr_ptr": 0, "col_result0": "520", "col_result_selected": "520", "acc_rd_data": "-1483", "acc_wr_data": "-963"},
+    {"event": 3, "fsm": 21, "sub": 4, "cin_idx": 2, "comp_win_idx": 1024, "acc_col_idx": 15, "wr_addr": 0, "acc_partial_addr": 16383, "acc_wr_ptr": 0, "col_result0": "-317", "col_result_selected": "1786", "acc_rd_data": "5434", "acc_wr_data": "402653184"}
+  ],
+  "rq_read_matches_last_acc0_write": false,
+  "not_full_resnet20": true
+}

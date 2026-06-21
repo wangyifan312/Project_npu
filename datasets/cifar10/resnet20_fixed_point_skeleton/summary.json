@@ -1,0 +1,48 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "explicitly_not_implemented_v1": [
+    "per_channel_quantization",
+    "dual_branch_add_rescale",
+    "asymmetric_zero_point",
+    "rtl_changes"
+  ],
+  "fixed_point_accuracy_gate": {
+    "reason": "actual fixed-point inference is not implemented",
+    "required_accuracy": 0.8,
+    "status": "not_evaluated"
+  },
+  "fixed_point_status": "skeleton_only",
+  "float_accuracy": 0.8648,
+  "float_correct": 8648,
+  "float_eval": "results/resnet20_float_candidate_mps_continue_stage2_eval.json",
+  "float_total": 10000,
+  "generated": {
+    "layers_json": "layers.json",
+    "memh_files": [],
+    "memory_reuse_map": null,
+    "task_sequence": null,
+    "weights_summary": "weights/summary.json"
+  },
+  "numerical_contract": {
+    "add": "INT32_same_scale",
+    "conv_fc_accumulate": "INT32",
+    "conv_fc_weight": "INT8",
+    "folded_bias": "INT32",
+    "gap": "fixed_point_reciprocal_shift_no_divider",
+    "input": "INT8 HWC",
+    "input_quantization": "uint8_minus_128_or_final_selected_input_quantization",
+    "relu_domain": "INT32_before_requant",
+    "requant": "round_half_away_from_zero"
+  },
+  "r0_5_unfinished": [
+    "actual_fixed_point_inference",
+    "accuracy_gate_80_percent",
+    "real_cifar10_full_fixed_point_eval",
+    "int8_weights_memh",
+    "int32_folded_bias_memh",
+    "final_task_sequence",
+    "one_mb_memory_reuse_map"
+  ],
+  "source_checkpoint": "datasets/cifar10/models/resnet20_float_candidate_mps_continue_stage2.pt",
+  "status": "fixed_point_golden_skeleton"
+}

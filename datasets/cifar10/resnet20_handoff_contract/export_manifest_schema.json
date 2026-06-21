@@ -1,0 +1,46 @@
+{
+  "required_files": {
+    "bias": {
+      "description": "INT32 folded bias in output channel/neuron order",
+      "generated_in_f6b": false,
+      "glob": "bias/*.memh"
+    },
+    "fixture": {
+      "description": "sample inputs, labels, expected predictions, and debug metadata",
+      "generated_in_f6b": false,
+      "path": "fixture/"
+    },
+    "manifest": {
+      "description": "top-level export manifest referencing all handoff assets",
+      "generated_in_f6b": false,
+      "path": "manifest.json"
+    },
+    "memory_map": {
+      "description": "1 MB shared-memory reuse map respecting 64B alignment",
+      "generated_in_f6b": false,
+      "path": "memory_map.json"
+    },
+    "requant": {
+      "description": "multiplier/shift parameters for Conv/FC, residual alignment, GAP, and post-ReLU requant",
+      "generated_in_f6b": false,
+      "glob": "requant/*.json or requant/*.memh"
+    },
+    "summary": {
+      "description": "export summary with source checkpoint, fixed-point eval evidence, and contract versions",
+      "generated_in_f6b": false,
+      "path": "summary.json"
+    },
+    "task_sequence": {
+      "description": "ordered ResNet-20 task list for the single-task register-triggered model",
+      "generated_in_f6b": false,
+      "path": "task_sequence.json"
+    },
+    "weights": {
+      "description": "INT8 weights in RTL handoff layout",
+      "generated_in_f6b": false,
+      "glob": "weights/*.memh"
+    }
+  },
+  "schema": "resnet20_r0_5_export_manifest_v1",
+  "status": "schema_only_no_assets_generated"
+}

@@ -1,0 +1,447 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "conv_fc_requant_count": 22,
+  "items": [
+    {
+      "accumulator_scale": 0.00020275651665805283,
+      "input_scale": 0.007874015748031496,
+      "input_tensor": "input",
+      "op": "conv1",
+      "op_type": "conv",
+      "output_scale": 0.06867184976893147,
+      "output_tensor": "conv1.relu",
+      "requant": {
+        "absolute_error": 2.1426415416220257e-10,
+        "approx_multiplier": 0.002952542155981064,
+        "multiplier_int": 792567,
+        "real_multiplier": 0.0029525419417169097,
+        "relative_error": 7.256938542847845e-08,
+        "shift": 28,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.02575007761557271
+    },
+    {
+      "accumulator_scale": 0.0003153362695378878,
+      "input_scale": 0.06867184976893147,
+      "input_tensor": "conv1.relu",
+      "op": "layer1.0.conv1",
+      "op_type": "conv",
+      "output_scale": 0.05684075768538347,
+      "output_tensor": "layer1.0.conv1.relu",
+      "requant": {
+        "absolute_error": 8.744884417294374e-11,
+        "approx_multiplier": 0.005547713954001665,
+        "multiplier_int": 11913625,
+        "real_multiplier": 0.005547714041450509,
+        "relative_error": 1.5763041050702625e-08,
+        "shift": 31,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.0045919291616424805
+    },
+    {
+      "accumulator_scale": 0.0001446937849241517,
+      "input_scale": 0.05684075768538347,
+      "input_tensor": "layer1.0.conv1.relu",
+      "op": "layer1.0.conv2",
+      "op_type": "conv",
+      "output_scale": 0.09583564067450095,
+      "output_tensor": "layer1.0.conv2.pre_add_main",
+      "requant": {
+        "absolute_error": 1.1017915529584754e-10,
+        "approx_multiplier": 0.0015098117291927338,
+        "multiplier_int": 405287,
+        "real_multiplier": 0.001509811839371889,
+        "relative_error": 7.297542145495706e-08,
+        "shift": 28,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.0025455991583546314
+    },
+    {
+      "accumulator_scale": 0.0001709152862729886,
+      "input_scale": 0.08007479089451587,
+      "input_tensor": "layer1.0.add.relu",
+      "op": "layer1.1.conv1",
+      "op_type": "conv",
+      "output_scale": 0.045391353096548966,
+      "output_tensor": "layer1.1.conv1.relu",
+      "requant": {
+        "absolute_error": 1.2559850425322705e-10,
+        "approx_multiplier": 0.003765371162444353,
+        "multiplier_int": 8086073,
+        "real_multiplier": 0.003765371036845849,
+        "relative_error": 3.335620926176709e-08,
+        "shift": 31,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.0021344456147021195
+    },
+    {
+      "accumulator_scale": 0.00019825563220182064,
+      "input_scale": 0.045391353096548966,
+      "input_tensor": "layer1.1.conv1.relu",
+      "op": "layer1.1.conv2",
+      "op_type": "conv",
+      "output_scale": 0.0607451866930864,
+      "output_tensor": "layer1.1.conv2.pre_add_main",
+      "requant": {
+        "absolute_error": 1.1289304777464815e-10,
+        "approx_multiplier": 0.0032637258991599083,
+        "multiplier_int": 3504399,
+        "real_multiplier": 0.0032637257862668605,
+        "relative_error": 3.4590236793078844e-08,
+        "shift": 30,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.004367696018669549
+    },
+    {
+      "accumulator_scale": 0.00017543202706989979,
+      "input_scale": 0.11937602486197404,
+      "input_tensor": "layer1.1.add.relu",
+      "op": "layer1.2.conv1",
+      "op_type": "conv",
+      "output_scale": 0.04894421044297106,
+      "output_tensor": "layer1.2.conv1.relu",
+      "requant": {
+        "absolute_error": 1.847758001292943e-10,
+        "approx_multiplier": 0.00358432624489069,
+        "multiplier_int": 3848641,
+        "real_multiplier": 0.00358432642966649,
+        "relative_error": 5.155105254921971e-08,
+        "shift": 30,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.0014695750446770135
+    },
+    {
+      "accumulator_scale": 0.0002142975367796978,
+      "input_scale": 0.04894421044297106,
+      "input_tensor": "layer1.2.conv1.relu",
+      "op": "layer1.2.conv2",
+      "op_type": "conv",
+      "output_scale": 0.10167390718234806,
+      "output_tensor": "layer1.2.conv2.pre_add_main",
+      "requant": {
+        "absolute_error": 2.2718355712283977e-10,
+        "approx_multiplier": 0.0021076947450637817,
+        "multiplier_int": 141445,
+        "real_multiplier": 0.0021076945178802246,
+        "relative_error": 1.0778770604353305e-07,
+        "shift": 26,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.004378404204301008
+    },
+    {
+      "accumulator_scale": 0.0001274017239560457,
+      "input_scale": 0.09193625412588044,
+      "input_tensor": "layer1.2.add.relu",
+      "op": "layer2.0.conv1",
+      "op_type": "conv",
+      "output_scale": 0.05846281126728208,
+      "output_tensor": "layer2.0.conv1.relu",
+      "requant": {
+        "absolute_error": 1.912434273443342e-10,
+        "approx_multiplier": 0.002179192379117012,
+        "multiplier_int": 1169945,
+        "real_multiplier": 0.0021791925703604394,
+        "relative_error": 8.775884699015033e-08,
+        "shift": 29,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.001385761527564582
+    },
+    {
+      "accumulator_scale": 0.00015880910895971258,
+      "input_scale": 0.05846281126728208,
+      "input_tensor": "layer2.0.conv1.relu",
+      "op": "layer2.0.conv2",
+      "op_type": "conv",
+      "output_scale": 0.0524032547717958,
+      "output_tensor": "layer2.0.conv2.pre_add_main",
+      "requant": {
+        "absolute_error": 1.6133843393217884e-11,
+        "approx_multiplier": 0.0030305199325084686,
+        "multiplier_int": 813499,
+        "real_multiplier": 0.003030519948642312,
+        "relative_error": 5.323787226824204e-09,
+        "shift": 28,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.002716412459771464
+    },
+    {
+      "accumulator_scale": 0.0004828641281597111,
+      "input_scale": 0.09193625412588044,
+      "input_tensor": "layer1.2.add.relu",
+      "op": "layer2.0.shortcut.projection",
+      "op_type": "conv_projection",
+      "output_scale": 0.04137464207927073,
+      "output_tensor": "layer2.0.shortcut.pre_add",
+      "requant": {
+        "absolute_error": 4.374797399342434e-11,
+        "approx_multiplier": 0.01167053310200572,
+        "multiplier_int": 25062279,
+        "real_multiplier": 0.011670533058257746,
+        "relative_error": 3.74858404282309e-09,
+        "shift": 31,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.005252162302572896
+    },
+    {
+      "accumulator_scale": 9.922583391502379e-05,
+      "input_scale": 0.0772617370124877,
+      "input_tensor": "layer2.0.add.relu",
+      "op": "layer2.1.conv1",
+      "op_type": "conv",
+      "output_scale": 0.03771101208183709,
+      "output_tensor": "layer2.1.conv1.relu",
+      "requant": {
+        "absolute_error": 1.0235789472956558e-10,
+        "approx_multiplier": 0.002631216309964657,
+        "multiplier_int": 2825247,
+        "real_multiplier": 0.0026312164123225516,
+        "relative_error": 3.8901359177527767e-08,
+        "shift": 30,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.0012842816865350317
+    },
+    {
+      "accumulator_scale": 0.00012715045170207622,
+      "input_scale": 0.03771101208183709,
+      "input_tensor": "layer2.1.conv1.relu",
+      "op": "layer2.1.conv2",
+      "op_type": "conv",
+      "output_scale": 0.04585379878367026,
+      "output_tensor": "layer2.1.conv2.pre_add_main",
+      "requant": {
+        "absolute_error": 1.3603606999548767e-10,
+        "approx_multiplier": 0.002772953361272812,
+        "multiplier_int": 744359,
+        "real_multiplier": 0.002772953497308882,
+        "relative_error": 4.905818656083091e-08,
+        "shift": 28,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.0033717061590960644
+    },
+    {
+      "accumulator_scale": 7.520534321111821e-05,
+      "input_scale": 0.08872270208644116,
+      "input_tensor": "layer2.1.add.relu",
+      "op": "layer2.2.conv1",
+      "op_type": "conv",
+      "output_scale": 0.04198377714382382,
+      "output_tensor": "layer2.2.conv1.relu",
+      "requant": {
+        "absolute_error": 1.8298816650309802e-10,
+        "approx_multiplier": 0.0017912951298058033,
+        "multiplier_int": 3846777,
+        "real_multiplier": 0.0017912953127939698,
+        "relative_error": 1.0215410334417865e-07,
+        "shift": 31,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.0008476448692674712
+    },
+    {
+      "accumulator_scale": 0.0001296893719421086,
+      "input_scale": 0.04198377714382382,
+      "input_tensor": "layer2.2.conv1.relu",
+      "op": "layer2.2.conv2",
+      "op_type": "conv",
+      "output_scale": 0.048747137775571325,
+      "output_tensor": "layer2.2.conv2.pre_add_main",
+      "requant": {
+        "absolute_error": 1.9012905399379276e-11,
+        "approx_multiplier": 0.002660450991243124,
+        "multiplier_int": 5713275,
+        "real_multiplier": 0.0026604510102560294,
+        "relative_error": 7.146497088683307e-09,
+        "shift": 31,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.003089035355199979
+    },
+    {
+      "accumulator_scale": 8.9077176589975e-05,
+      "input_scale": 0.10189004582682933,
+      "input_tensor": "layer2.2.add.relu",
+      "op": "layer3.0.conv1",
+      "op_type": "conv",
+      "output_scale": 0.04546896866926058,
+      "output_tensor": "layer3.0.conv1.relu",
+      "requant": {
+        "absolute_error": 9.78252145088232e-11,
+        "approx_multiplier": 0.001959076151251793,
+        "multiplier_int": 1051771,
+        "real_multiplier": 0.0019590762490770074,
+        "relative_error": 4.993435786632207e-08,
+        "shift": 29,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.0008742480766116165
+    },
+    {
+      "accumulator_scale": 0.00013628157071625657,
+      "input_scale": 0.04546896866926058,
+      "input_tensor": "layer3.0.conv1.relu",
+      "op": "layer3.0.conv2",
+      "op_type": "conv",
+      "output_scale": 0.052435848656601794,
+      "output_tensor": "layer3.0.conv2.pre_add_main",
+      "requant": {
+        "absolute_error": 1.0844681272784151e-10,
+        "approx_multiplier": 0.0025990153662860394,
+        "multiplier_int": 5581343,
+        "real_multiplier": 0.0025990152578392266,
+        "relative_error": 4.172611622834496e-08,
+        "shift": 31,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.0029972434982540102
+    },
+    {
+      "accumulator_scale": 0.0002523032030922352,
+      "input_scale": 0.10189004582682933,
+      "input_tensor": "layer2.2.add.relu",
+      "op": "layer3.0.shortcut.projection",
+      "op_type": "conv_projection",
+      "output_scale": 0.03457322083120271,
+      "output_tensor": "layer3.0.shortcut.pre_add",
+      "requant": {
+        "absolute_error": 9.246008299268471e-11,
+        "approx_multiplier": 0.00729764811694622,
+        "multiplier_int": 3917895,
+        "real_multiplier": 0.007297648209406303,
+        "relative_error": 1.2669846550496677e-08,
+        "shift": 29,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.002476230146378044
+    },
+    {
+      "accumulator_scale": 0.00012100997083217437,
+      "input_scale": 0.07033069490447758,
+      "input_tensor": "layer3.0.add.relu",
+      "op": "layer3.1.conv1",
+      "op_type": "conv",
+      "output_scale": 0.05366281449325441,
+      "output_tensor": "layer3.1.conv1.relu",
+      "requant": {
+        "absolute_error": 1.8714873184152991e-10,
+        "approx_multiplier": 0.0022550062276422977,
+        "multiplier_int": 4842589,
+        "real_multiplier": 0.002255006040493566,
+        "relative_error": 8.299256342593549e-08,
+        "shift": 31,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.001720585456983311
+    },
+    {
+      "accumulator_scale": 0.00017433912067179067,
+      "input_scale": 0.05366281449325441,
+      "input_tensor": "layer3.1.conv1.relu",
+      "op": "layer3.1.conv2",
+      "op_type": "conv",
+      "output_scale": 0.07061388361172413,
+      "output_tensor": "layer3.1.conv2.pre_add_main",
+      "requant": {
+        "absolute_error": 1.4507316528633574e-10,
+        "approx_multiplier": 0.0024689072743058205,
+        "multiplier_int": 2650969,
+        "real_multiplier": 0.002468907129232655,
+        "relative_error": 5.8760073867754184e-08,
+        "shift": 30,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.0032487882403876836
+    },
+    {
+      "accumulator_scale": 0.00013017126623705776,
+      "input_scale": 0.13069292504017746,
+      "input_tensor": "layer3.1.add.relu",
+      "op": "layer3.2.conv1",
+      "op_type": "conv",
+      "output_scale": 0.0505925651610367,
+      "output_tensor": "layer3.2.conv1.relu",
+      "requant": {
+        "absolute_error": 2.733870291607432e-11,
+        "approx_multiplier": 0.0025729327462613583,
+        "multiplier_int": 5525331,
+        "real_multiplier": 0.0025729327189226553,
+        "relative_error": 1.0625502452905822e-08,
+        "shift": 31,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.0009960085153579712
+    },
+    {
+      "accumulator_scale": 8.77356000425201e-05,
+      "input_scale": 0.0505925651610367,
+      "input_tensor": "layer3.2.conv1.relu",
+      "op": "layer3.2.conv2",
+      "op_type": "conv",
+      "output_scale": 0.0945590912826418,
+      "output_tensor": "layer3.2.conv2.pre_add_main",
+      "requant": {
+        "absolute_error": 9.634700513534017e-11,
+        "approx_multiplier": 0.0009278389625251293,
+        "multiplier_int": 1992519,
+        "real_multiplier": 0.0009278388661781242,
+        "relative_error": 1.0384023416932797e-07,
+        "shift": 31,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.0017341599455029946
+    },
+    {
+      "accumulator_scale": 0.0004893275068715541,
+      "input_scale": 0.04015638321403443,
+      "input_tensor": "gap.output",
+      "op": "fc",
+      "op_type": "fc",
+      "output_scale": 0.235318071260227,
+      "output_tensor": "fc.logits",
+      "requant": {
+        "absolute_error": 1.760229397136659e-10,
+        "approx_multiplier": 0.0020794300362467766,
+        "multiplier_int": 2232771,
+        "real_multiplier": 0.0020794302122697163,
+        "relative_error": 8.464960193183656e-08,
+        "shift": 30,
+        "status": "searched"
+      },
+      "status": "searched",
+      "weight_scale": 0.01218554729551781
+    }
+  ],
+  "status": "exported_from_f3"
+}

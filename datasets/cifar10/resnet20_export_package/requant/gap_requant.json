@@ -1,0 +1,24 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "hardware_divider": "not_allowed",
+  "input_scale": 0.19648769709068958,
+  "kernel_area": 64,
+  "op": "gap.output",
+  "operation": "sum_8x8_int8_spatial_per_channel_then_requant_to_gap_output_scale",
+  "output_scale": 0.04015638321403443,
+  "real_multiplier": 0.0764541032163732,
+  "requant": {
+    "absolute_error": 2.2336173188808317e-10,
+    "approx_multiplier": 0.07645410299301147,
+    "multiplier_int": 1282687,
+    "real_multiplier": 0.0764541032163732,
+    "relative_error": 2.9215139867110314e-09,
+    "shift": 24,
+    "status": "searched"
+  },
+  "source_scale_names": {
+    "input_scale": "gap.input",
+    "output_scale": "gap.output"
+  },
+  "status": "searched"
+}

@@ -1,0 +1,38 @@
+{
+  "scope": "R1h conv1 acc ownership truth for output(0,0,0)",
+  "expected_owner": {"logical_output": {"oh": 0, "ow": 0, "oc": 0}, "acc_buffer_addr": 0},
+  "reference_mac_before_bias": -963,
+  "rtl_requant_read0_acc_data": -963,
+  "ownership_match_for_output_0_0_0": 1,
+  "acc0_write_event_count": 4,
+  "acc0_write_events": [
+    {"event": 0, "fsm": 9, "cin_idx": 0, "comp_win_idx": 0, "acc_col_idx": 0, "wr_addr": 0, "acc_wr_data": "-837", "is_collect": 1, "is_internal_requant": 0},
+    {"event": 1, "fsm": 9, "cin_idx": 1, "comp_win_idx": 0, "acc_col_idx": 0, "wr_addr": 0, "acc_wr_data": "-1483", "is_collect": 1, "is_internal_requant": 0},
+    {"event": 2, "fsm": 9, "cin_idx": 2, "comp_win_idx": 0, "acc_col_idx": 0, "wr_addr": 0, "acc_wr_data": "-963", "is_collect": 1, "is_internal_requant": 0},
+    {"event": 3, "fsm": 21, "cin_idx": 2, "comp_win_idx": 1024, "acc_col_idx": 15, "wr_addr": 0, "acc_wr_data": "402653184", "is_collect": 0, "is_internal_requant": 1}
+  ],
+  "ownership_model": "logical_index=(oh*32+ow)*16+oc; collect owner acc_buffer[logical_index]; dense INT8 store owner byte[logical_index]",
+  "late_addr0_write_classification": "fsm21 is the legal internal requant overwrite for logical output byte0, not an unrelated collect write",
+  "forbidden_collect_write": "any CP_COLLECT write whose logical_index is outside 0..16383 or whose address differs from logical_index",
+  "collect_write_count": 49154,
+  "collect_bad_owner_count": 0,
+  "collect_first_bad_actual": -1,
+  "collect_first_bad_expected": -1,
+  "collect_duplicate_count": 2,
+  "collect_first_duplicate": {"cin_idx": 0, "comp_win_idx": 0, "acc_col_idx": 5},
+  "logical16_trace": {
+    "expected_owner": {"logical_index": 16, "oh": 0, "ow": 1, "oc": 0, "acc_buffer_addr": 16, "dense_store_byte_offset": 16},
+    "acc16_write_event_count": 4,
+    "acc16_write_events": [
+      {"event": 0, "fsm": 9, "cin_idx": 0, "comp_win_idx": 1, "acc_col_idx": 0, "wr_data": "60", "unknown": 0},
+      {"event": 1, "fsm": 9, "cin_idx": 1, "comp_win_idx": 1, "acc_col_idx": 0, "wr_data": "-56", "unknown": 0},
+      {"event": 2, "fsm": 9, "cin_idx": 2, "comp_win_idx": 1, "acc_col_idx": 0, "wr_data": "438", "unknown": 0},
+      {"event": 3, "fsm": 21, "cin_idx": 2, "comp_win_idx": 1024, "acc_col_idx": 15, "wr_data": "1312000", "unknown": 0}
+    ],
+    "requant_read_acc_data": "438",
+    "requant_read_acc_unknown": 0,
+    "requant_q": "0",
+    "requant_q_unknown": 0
+  },
+  "not_full_resnet20": true
+}

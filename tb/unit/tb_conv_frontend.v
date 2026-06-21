@@ -12,6 +12,13 @@ module tb_conv_frontend;
                 w40, w41, w42, w43, w44;
     wire        window_valid;
     reg  [15:0] input_w, input_h;
+    reg  [15:0] input_c;
+    reg  [31:0] conv_cfg;
+    reg  [15:0] block_out_rows;
+    reg  [15:0] block_in_rows;
+    reg  [5:0]  channel_sel;
+    reg         window_hold;
+    wire [15:0] cur_row, cur_col;
     reg         start;
     wire        done;
 
@@ -24,8 +31,12 @@ module tb_conv_frontend;
         .window_30(w30), .window_31(w31), .window_32(w32), .window_33(w33), .window_34(w34),
         .window_40(w40), .window_41(w41), .window_42(w42), .window_43(w43), .window_44(w44),
         .window_valid(window_valid),
-        .input_w(input_w), .input_h(input_h),
-        .start(start), .done(done)
+        .channel_sel(channel_sel),
+        .input_w(input_w), .input_h(input_h), .input_c(input_c),
+        .conv_cfg(conv_cfg),
+        .block_out_rows(block_out_rows), .block_in_rows(block_in_rows),
+        .start(start), .window_hold(window_hold),
+        .done(done), .cur_row(cur_row), .cur_col(cur_col)
     );
 
     always #2.5 clk = ~clk;
@@ -38,7 +49,13 @@ module tb_conv_frontend;
 
         clk = 0; rst_n = 0;
         act_valid = 0; act_data = 0; start = 0;
+        conv_cfg = 32'd0;
+        input_c = 16'd1;
+        channel_sel = 6'd0;
+        window_hold = 1'b0;
         input_w = 16'd5; input_h = 16'd5;
+        block_out_rows = 16'd1;
+        block_in_rows = 16'd5;
 
         #10 rst_n = 1;
         #10;
@@ -75,6 +92,8 @@ module tb_conv_frontend;
         rst_n = 0; #10; rst_n = 1; #10;
 
         input_w = 16'd5; input_h = 16'd6;
+        block_out_rows = 16'd2;
+        block_in_rows = 16'd6;
         @(posedge clk);
         start <= 1;
         @(posedge clk);

@@ -1,0 +1,48 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "op_classes": {
+    "CONV1x1_PROJECTION": {
+      "accumulate_dtype": "INT32",
+      "bias_dtype": "INT32",
+      "input_dtype": "INT8",
+      "postprocess": [
+        "requant_to_INT8"
+      ],
+      "rtl_requirement": "R1 projection conv datapath required for downsample shortcuts",
+      "stride": 2,
+      "weight_dtype": "INT8"
+    },
+    "CONV3x3": {
+      "accumulate_dtype": "INT32",
+      "bias_dtype": "INT32",
+      "input_dtype": "INT8",
+      "postprocess": [
+        "optional_ReLU",
+        "requant_to_INT8"
+      ],
+      "rtl_requirement": "R1 generalized conv datapath must support kernel3x3",
+      "weight_dtype": "INT8"
+    },
+    "FC10": {
+      "accumulate_dtype": "INT32",
+      "bias_dtype": "INT32",
+      "input_dtype": "INT8",
+      "output": "10 logits",
+      "rtl_requirement": "arrayized FC path with folded bias and fixed requant contract",
+      "weight_dtype": "INT8"
+    },
+    "GAP8x8": {
+      "accumulate_dtype": "INT32",
+      "input_dtype": "INT8",
+      "output_dtype": "INT8",
+      "rtl_requirement": "R1 GAP datapath or explicit task sequence macro required; no hardware divider"
+    },
+    "RESIDUAL_ADD": {
+      "aligned_dtype": "INT32",
+      "input_dtype": "INT8 branches with planned same-scale alignment",
+      "output_dtype": "INT8 after ReLU/requant/clamp",
+      "rtl_requirement": "R1 ADD datapath or explicit postprocess op required"
+    }
+  },
+  "status": "closed_for_export"
+}

@@ -1,0 +1,20 @@
+{
+  "int32_folded_bias": "not_generated",
+  "int8_weights": "not_generated",
+  "layout_target": {
+    "bias": "[out_channel_or_neuron]",
+    "conv_weight": "[in_c][k_h][k_w][out_c]",
+    "fc_weight": "[out_neuron][in_neuron]"
+  },
+  "memh_files": [],
+  "preload_maps": [],
+  "source_checkpoint": "datasets/cifar10/models/resnet20_float_candidate_mps_continue_stage2.pt",
+  "status": "skeleton_only",
+  "todo": [
+    "fold batch norm into conv weights and int32 bias",
+    "choose int8 quantization scales",
+    "generate int8 weight memh",
+    "generate int32 folded bias memh",
+    "generate preload maps after memory reuse map is fixed"
+  ]
+}

@@ -1,0 +1,362 @@
+{
+  "first_mismatch": {
+    "actual": "0x0b",
+    "byte_index": 0,
+    "expected": "0x00"
+  },
+  "not_full_resnet20": true,
+  "preferred_root_cause": "input_window_extraction_bug",
+  "recomputed_mac_variants": {
+    "reference_reported_mac_before_bias": -963,
+    "reference_window_reference_weight": -963,
+    "reference_window_rtl_weight": -963,
+    "rtl_reported_mac_before_bias": 4930,
+    "rtl_window_reference_weight": -344,
+    "rtl_window_rtl_weight": -344
+  },
+  "root_cause_note": "Observed weight taps match the reference order for this position, while window taps diverge at the top-boundary same-padding transition. The captured RTL tap sum does not equal the final RTL reported MAC, so a follow-up should also verify which exact fed window/accumulator address produces acc_buffer[0].",
+  "rtl_captured_tap_sum_matches_rtl_reported_mac": false,
+  "same_padding_boundary_check": {
+    "expected_left_col_taps_zero": true,
+    "expected_top_row_taps_zero": true,
+    "interpretation": "For output(0,0,0), reference same-padding maps input[0..5] to center/right taps 12..17 and input[96..101] to lower center/right taps 21..26. RTL observed taps 12..17 remain zero and input[0..5] appears at taps 21..26, indicating a one-row window placement shift at the top boundary.",
+    "position": {
+      "oc": 0,
+      "oh": 0,
+      "ow": 0
+    },
+    "reference_first_valid_pixel_taps": [
+      {
+        "input_i8": 19,
+        "input_idx": 0,
+        "product": 0,
+        "tap": 12,
+        "weight_i8": 0,
+        "weight_idx": 64
+      },
+      {
+        "input_i8": 56,
+        "input_idx": 1,
+        "product": 168,
+        "tap": 13,
+        "weight_i8": 3,
+        "weight_idx": 208
+      },
+      {
+        "input_i8": 93,
+        "input_idx": 2,
+        "product": 558,
+        "tap": 14,
+        "weight_i8": 6,
+        "weight_idx": 352
+      },
+      {
+        "input_i8": -115,
+        "input_idx": 3,
+        "product": -805,
+        "tap": 15,
+        "weight_i8": 7,
+        "weight_idx": 80
+      },
+      {
+        "input_i8": -78,
+        "input_idx": 4,
+        "product": -468,
+        "tap": 16,
+        "weight_i8": 6,
+        "weight_idx": 224
+      },
+      {
+        "input_i8": -41,
+        "input_idx": 5,
+        "product": -328,
+        "tap": 17,
+        "weight_i8": 8,
+        "weight_idx": 368
+      },
+      {
+        "input_i8": 83,
+        "input_idx": 96,
+        "product": -83,
+        "tap": 21,
+        "weight_i8": -1,
+        "weight_idx": 112
+      },
+      {
+        "input_i8": 120,
+        "input_idx": 97,
+        "product": -360,
+        "tap": 22,
+        "weight_i8": -3,
+        "weight_idx": 256
+      },
+      {
+        "input_i8": -99,
+        "input_idx": 98,
+        "product": 198,
+        "tap": 23,
+        "weight_i8": -2,
+        "weight_idx": 400
+      },
+      {
+        "input_i8": -51,
+        "input_idx": 99,
+        "product": 51,
+        "tap": 24,
+        "weight_i8": -1,
+        "weight_idx": 128
+      },
+      {
+        "input_i8": -14,
+        "input_idx": 100,
+        "product": 14,
+        "tap": 25,
+        "weight_i8": -1,
+        "weight_idx": 272
+      },
+      {
+        "input_i8": 23,
+        "input_idx": 101,
+        "product": 92,
+        "tap": 26,
+        "weight_i8": 4,
+        "weight_idx": 416
+      }
+    ],
+    "rtl_first_valid_pixel_observation": [
+      {
+        "product": 0,
+        "tap": 12,
+        "weight_byte": "0x00",
+        "weight_i8": 0,
+        "window_byte": "0x00",
+        "window_i8": 0
+      },
+      {
+        "product": 0,
+        "tap": 13,
+        "weight_byte": "0x03",
+        "weight_i8": 3,
+        "window_byte": "0x00",
+        "window_i8": 0
+      },
+      {
+        "product": 0,
+        "tap": 14,
+        "weight_byte": "0x06",
+        "weight_i8": 6,
+        "window_byte": "0x00",
+        "window_i8": 0
+      },
+      {
+        "product": 0,
+        "tap": 15,
+        "weight_byte": "0x07",
+        "weight_i8": 7,
+        "window_byte": "0x00",
+        "window_i8": 0
+      },
+      {
+        "product": 0,
+        "tap": 16,
+        "weight_byte": "0x06",
+        "weight_i8": 6,
+        "window_byte": "0x00",
+        "window_i8": 0
+      },
+      {
+        "product": 0,
+        "tap": 17,
+        "weight_byte": "0x08",
+        "weight_i8": 8,
+        "window_byte": "0x00",
+        "window_i8": 0
+      },
+      {
+        "product": -19,
+        "tap": 21,
+        "weight_byte": "0xff",
+        "weight_i8": -1,
+        "window_byte": "0x13",
+        "window_i8": 19
+      },
+      {
+        "product": -168,
+        "tap": 22,
+        "weight_byte": "0xfd",
+        "weight_i8": -3,
+        "window_byte": "0x38",
+        "window_i8": 56
+      },
+      {
+        "product": -186,
+        "tap": 23,
+        "weight_byte": "0xfe",
+        "weight_i8": -2,
+        "window_byte": "0x5d",
+        "window_i8": 93
+      },
+      {
+        "product": 115,
+        "tap": 24,
+        "weight_byte": "0xff",
+        "weight_i8": -1,
+        "window_byte": "0x8d",
+        "window_i8": -115
+      },
+      {
+        "product": 78,
+        "tap": 25,
+        "weight_byte": "0xff",
+        "weight_i8": -1,
+        "window_byte": "0xb2",
+        "window_i8": -78
+      },
+      {
+        "product": -164,
+        "tap": 26,
+        "weight_byte": "0x04",
+        "weight_i8": 4,
+        "window_byte": "0xd7",
+        "window_i8": -41
+      }
+    ]
+  },
+  "scope": "R1h full-shape conv1 output(0,0,0) window/weight isolation",
+  "source_debug_summary": "tb/generated/resnet20_r1h_package_compare_debug_summary.json",
+  "source_trace": "tb/generated/resnet20_r1h_conv1_trace.json",
+  "unknown_byte64_independent": {
+    "affects_byte0_conclusion": false,
+    "first_unknown_idx": 64,
+    "first_unknown_position_dense_hwc": {
+      "oc": 0,
+      "oh": 0,
+      "ow": 4
+    }
+  },
+  "weight_diff_count": 0,
+  "weight_diffs": [],
+  "window_diff_count": 12,
+  "window_diffs": [
+    {
+      "ic": null,
+      "kh": null,
+      "kw": null,
+      "reference_input_i8": 19,
+      "reference_input_idx": 0,
+      "rtl_window_byte": "0x00",
+      "rtl_window_i8": 0,
+      "tap": 12
+    },
+    {
+      "ic": null,
+      "kh": null,
+      "kw": null,
+      "reference_input_i8": 56,
+      "reference_input_idx": 1,
+      "rtl_window_byte": "0x00",
+      "rtl_window_i8": 0,
+      "tap": 13
+    },
+    {
+      "ic": null,
+      "kh": null,
+      "kw": null,
+      "reference_input_i8": 93,
+      "reference_input_idx": 2,
+      "rtl_window_byte": "0x00",
+      "rtl_window_i8": 0,
+      "tap": 14
+    },
+    {
+      "ic": null,
+      "kh": null,
+      "kw": null,
+      "reference_input_i8": -115,
+      "reference_input_idx": 3,
+      "rtl_window_byte": "0x00",
+      "rtl_window_i8": 0,
+      "tap": 15
+    },
+    {
+      "ic": null,
+      "kh": null,
+      "kw": null,
+      "reference_input_i8": -78,
+      "reference_input_idx": 4,
+      "rtl_window_byte": "0x00",
+      "rtl_window_i8": 0,
+      "tap": 16
+    },
+    {
+      "ic": null,
+      "kh": null,
+      "kw": null,
+      "reference_input_i8": -41,
+      "reference_input_idx": 5,
+      "rtl_window_byte": "0x00",
+      "rtl_window_i8": 0,
+      "tap": 17
+    },
+    {
+      "ic": null,
+      "kh": null,
+      "kw": null,
+      "reference_input_i8": 83,
+      "reference_input_idx": 96,
+      "rtl_window_byte": "0x13",
+      "rtl_window_i8": 19,
+      "tap": 21
+    },
+    {
+      "ic": null,
+      "kh": null,
+      "kw": null,
+      "reference_input_i8": 120,
+      "reference_input_idx": 97,
+      "rtl_window_byte": "0x38",
+      "rtl_window_i8": 56,
+      "tap": 22
+    },
+    {
+      "ic": null,
+      "kh": null,
+      "kw": null,
+      "reference_input_i8": -99,
+      "reference_input_idx": 98,
+      "rtl_window_byte": "0x5d",
+      "rtl_window_i8": 93,
+      "tap": 23
+    },
+    {
+      "ic": null,
+      "kh": null,
+      "kw": null,
+      "reference_input_i8": -51,
+      "reference_input_idx": 99,
+      "rtl_window_byte": "0x8d",
+      "rtl_window_i8": -115,
+      "tap": 24
+    },
+    {
+      "ic": null,
+      "kh": null,
+      "kw": null,
+      "reference_input_i8": -14,
+      "reference_input_idx": 100,
+      "rtl_window_byte": "0xb2",
+      "rtl_window_i8": -78,
+      "tap": 25
+    },
+    {
+      "ic": null,
+      "kh": null,
+      "kw": null,
+      "reference_input_i8": 23,
+      "reference_input_idx": 101,
+      "rtl_window_byte": "0xd7",
+      "rtl_window_i8": -41,
+      "tap": 26
+    }
+  ]
+}

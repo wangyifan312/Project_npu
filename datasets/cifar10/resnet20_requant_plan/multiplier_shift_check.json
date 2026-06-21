@@ -1,0 +1,16 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "checked_conversion_count": 40,
+  "invalid_scale_count": 0,
+  "max_relative_error": 1.0778770604353305e-07,
+  "mean_relative_error": 2.8291384236134632e-08,
+  "search": {
+    "formula": "multiplier_int = round(real_multiplier * 2^shift)",
+    "int32_max": 2147483647,
+    "shift_range": [
+      0,
+      31
+    ]
+  },
+  "warning": false
+}

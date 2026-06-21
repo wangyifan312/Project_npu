@@ -16,7 +16,7 @@ module block_scheduler #(
 
     // Task parameters (from npu_ctrl)
     input  wire        task_start,
-    input  wire [1:0]  task_type,     // 0=Conv, 1=FC, 2=Pool, 3=Requant
+    input  wire [2:0]  task_type,     // 0=Conv, 1=FC, 2=Pool, 3=Requant, 4=ADD, 5=GAP
     input  wire [31:0] input_addr,
     input  wire [31:0] weight_addr,
     input  wire [31:0] output_addr,
@@ -27,6 +27,7 @@ module block_scheduler #(
     input  wire [15:0] input_w,
     input  wire [15:0] input_c,
     input  wire [15:0] output_c,
+    input  wire [31:0] conv_cfg,
 
     // Block request/response
     input  wire        block_done,
@@ -58,6 +59,9 @@ module block_scheduler #(
     reg [15:0] rows_per_block;
     reg [15:0] total_out_rows;
     reg [15:0] total_out_cols;
+    reg [15:0] conv_kernel_size_r;
+    reg [15:0] conv_stride_r;
+    reg [15:0] conv_pad_r;
     reg [31:0] bytes_per_in_row;
     reg [31:0] bytes_per_out_row;
     reg [31:0] wgt_bytes_per_cin;
@@ -71,19 +75,53 @@ module block_scheduler #(
     reg [15:0] blk_input_rows_r;
     reg [15:0] blk_output_rows_r;
 
+    localparam [2:0] TASK_CONV    = 3'd0;
+    localparam [2:0] TASK_FC      = 3'd1;
+    localparam [2:0] TASK_POOL    = 3'd2;
+    localparam [2:0] TASK_REQUANT = 3'd3;
+    localparam [2:0] TASK_ADD     = 3'd4;
+    localparam [2:0] TASK_GAP     = 3'd5;
+
+    wire [1:0] conv_kernel_sel = conv_cfg[1:0];
+    wire       conv_stride2    = conv_cfg[2];
+    wire       conv_same_pad   = conv_cfg[3];
+    wire [15:0] conv_kernel_size =
+        (conv_kernel_sel == 2'd1) ? 16'd1 :
+        (conv_kernel_sel == 2'd2) ? 16'd3 :
+                                    16'd5;
+    wire [15:0] conv_stride = conv_stride2 ? 16'd2 : 16'd1;
+    wire [15:0] conv_pad = conv_same_pad ? (conv_kernel_size >> 1) : 16'd0;
+
+    function [15:0] conv_out_dim;
+        input [15:0] in_dim;
+        input [15:0] kernel;
+        input [15:0] stride;
+        input        same_pad;
+        begin
+            if (same_pad)
+                conv_out_dim = (stride == 16'd2) ? ((in_dim + 16'd1) >> 1) : in_dim;
+            else if (in_dim >= kernel)
+                conv_out_dim = ((in_dim - kernel) / stride) + 16'd1;
+            else
+                conv_out_dim = 16'd0;
+        end
+    endfunction
+
     wire [15:0] next_total_out_rows =
-        (task_type == 2'd2) ? (input_h >> 1) :
-        ((task_type == 2'd1) || (task_type == 2'd3)) ? 16'd1 :
-                              (input_h - 16'd5 + 16'd1);
+        (task_type == TASK_POOL) ? (input_h >> 1) :
+        ((task_type == TASK_FC) || (task_type == TASK_REQUANT) || (task_type == TASK_ADD) ||
+         (task_type == TASK_GAP)) ? 16'd1 :
+                              conv_out_dim(input_h, conv_kernel_size, conv_stride, conv_same_pad);
 
     wire [15:0] next_total_out_cols =
-        (task_type == 2'd2) ? (input_w >> 1) :
-        ((task_type == 2'd1) || (task_type == 2'd3)) ? 16'd1 :
-                              (input_w - 16'd5 + 16'd1);
+        (task_type == TASK_POOL) ? (input_w >> 1) :
+        ((task_type == TASK_FC) || (task_type == TASK_REQUANT) || (task_type == TASK_ADD) ||
+         (task_type == TASK_GAP)) ? 16'd1 :
+                              conv_out_dim(input_w, conv_kernel_size, conv_stride, conv_same_pad);
 
     wire [31:0] next_bytes_per_in_row =
-        (task_type == 2'd2) ? (input_w * input_c * 32'd4) :
-        (task_type == 2'd3) ? input_bytes :
+        (task_type == TASK_POOL) ? (input_w * input_c * 32'd4) :
+        ((task_type == TASK_REQUANT) || (task_type == TASK_ADD) || (task_type == TASK_GAP)) ? input_bytes :
                               (input_w * input_c);
 
     wire [15:0] conv_rows_per_block_raw =
@@ -96,8 +134,9 @@ module block_scheduler #(
         (pool_rows_per_block_out_raw < pool_rows_per_block_in_raw) ? pool_rows_per_block_out_raw : pool_rows_per_block_in_raw;
 
     wire [15:0] next_rows_per_block =
-        ((task_type == 2'd1) || (task_type == 2'd3)) ? 16'd1 :
-        (task_type == 2'd0) ?
+        ((task_type == TASK_FC) || (task_type == TASK_REQUANT) || (task_type == TASK_ADD) ||
+         (task_type == TASK_GAP)) ? 16'd1 :
+        (task_type == TASK_CONV) ?
             ((conv_rows_per_block_raw < 16'd1) ? 16'd1 :
              (conv_rows_per_block_raw > next_total_out_rows) ? next_total_out_rows :
                                                                conv_rows_per_block_raw) :
@@ -115,15 +154,21 @@ module block_scheduler #(
             bytes_per_in_row <= 32'd0;
             bytes_per_out_row<= 32'd0;
             wgt_bytes_per_cin<= 32'd0;
+            conv_kernel_size_r <= 16'd5;
+            conv_stride_r <= 16'd1;
+            conv_pad_r <= 16'd0;
         end else begin
             case (state)
                 S_IDLE: begin
                     if (task_start) begin
                         total_out_rows <= next_total_out_rows;
                         total_out_cols <= next_total_out_cols;
+                        conv_kernel_size_r <= conv_kernel_size;
+                        conv_stride_r <= conv_stride;
+                        conv_pad_r <= conv_pad;
                         bytes_per_in_row <= next_bytes_per_in_row;
                         bytes_per_out_row <= next_total_out_cols * output_c * 32'd4;
-                        wgt_bytes_per_cin <= ((32'd25 * output_c) + 32'd3) & 32'hFFFF_FFFC;
+                        wgt_bytes_per_cin <= (((conv_kernel_size * conv_kernel_size) * output_c) + 32'd3) & 32'hFFFF_FFFC;
                         rows_per_block <= next_rows_per_block;
                         curr_out_row <= 16'd0;
                         state <= S_ACTIVE;
@@ -151,18 +196,33 @@ module block_scheduler #(
 
     // Combinational block parameters
     wire [15:0] this_block_rows;
+    wire [15:0] conv_raw_start_row;
+    wire [15:0] conv_input_start_row;
+    wire [15:0] conv_raw_end_row;
+    wire [15:0] conv_input_end_row;
+    wire [15:0] conv_this_in_rows;
     wire [15:0] this_in_rows;
 
     assign this_block_rows = (curr_out_row + rows_per_block > total_out_rows)
                            ? (total_out_rows - curr_out_row)
                            : rows_per_block;
-    // Conv: input rows = output rows + 4. Pool: input rows = 2 * output rows. FC: 1
-    assign this_in_rows = (task_type == 2'd0) ? (this_block_rows + 16'd4) :
-                          (task_type == 2'd2) ? (this_block_rows << 1) :
+    assign conv_raw_start_row =
+        (curr_out_row * conv_stride_r > conv_pad_r) ? (curr_out_row * conv_stride_r - conv_pad_r) : 16'd0;
+    assign conv_input_start_row = conv_raw_start_row;
+    assign conv_raw_end_row =
+        ((curr_out_row + this_block_rows - 16'd1) * conv_stride_r) + conv_kernel_size_r - conv_pad_r;
+    assign conv_input_end_row =
+        (conv_raw_end_row > input_h) ? input_h : conv_raw_end_row;
+    assign conv_this_in_rows =
+        (conv_input_end_row > conv_input_start_row) ? (conv_input_end_row - conv_input_start_row) : 16'd0;
+
+    // Conv: generalized conservative input rows. Pool: input rows = 2 * output rows. FC: 1
+    assign this_in_rows = (task_type == TASK_CONV) ? conv_this_in_rows :
+                          (task_type == TASK_POOL) ? (this_block_rows << 1) :
                           this_block_rows;
 
     always @(*) begin
-        if (task_type == 2'd2) begin  // Pool: per-block slicing
+        if (task_type == TASK_POOL) begin  // Pool: per-block slicing
             // Input: INT32, HWC layout. Each output row needs 2 input rows
             blk_input_addr_r  = input_addr  + curr_out_row * 2 * input_w * input_c * 32'd4;
             blk_input_bytes_r = this_in_rows * input_w * input_c * 32'd4;
@@ -172,7 +232,7 @@ module block_scheduler #(
             blk_output_bytes_r = this_block_rows * total_out_cols * output_c * 32'd4;
             blk_input_rows_r   = this_in_rows;
             blk_output_rows_r  = this_block_rows;
-        end else if (task_type == 2'd1) begin  // FC: pass through
+        end else if (task_type == TASK_FC) begin  // FC: pass through
             blk_input_addr_r   = input_addr;
             blk_input_bytes_r  = input_bytes;
             blk_weight_addr_r  = weight_addr;
@@ -181,7 +241,8 @@ module block_scheduler #(
             blk_output_bytes_r = output_bytes;
             blk_input_rows_r   = input_h;
             blk_output_rows_r  = input_h;
-        end else if (task_type == 2'd3) begin  // Requant: pass through
+        end else if ((task_type == TASK_REQUANT) || (task_type == TASK_ADD) ||
+                     (task_type == TASK_GAP)) begin  // Requant/ADD/GAP: pass through
             blk_input_addr_r   = input_addr;
             blk_input_bytes_r  = input_bytes;
             blk_weight_addr_r  = 32'd0;
@@ -191,7 +252,7 @@ module block_scheduler #(
             blk_input_rows_r   = 16'd1;
             blk_output_rows_r  = 16'd1;
         end else begin  // Conv: per-block slicing with kernel overlap
-            blk_input_addr_r   = input_addr  + curr_out_row * input_w * input_c;
+            blk_input_addr_r   = input_addr  + conv_input_start_row * input_w * input_c;
             blk_input_bytes_r  = this_in_rows * input_w * input_c;
             blk_weight_addr_r  = weight_addr;
             blk_weight_bytes_r = weight_bytes;

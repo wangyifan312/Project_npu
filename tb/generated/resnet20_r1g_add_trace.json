@@ -1,0 +1,23 @@
+{
+  "scope": "R1g ADD byte32 numeric/store trace",
+  "output_position": {"byte_idx": 32},
+  "reference": {
+    "expected_byte": "0x00",
+    "expected_word_bytes": ["0x00", "0x00", "0x00", "0x00"]
+  },
+  "rtl": {
+    "trace_seen": 1,
+    "src_idx": 32,
+    "src0_i8": 13,
+    "src1_i8": -111,
+    "src0_aligned": 13,
+    "src1_aligned": -80,
+    "add_raw": -67,
+    "add_after_relu": 0,
+    "post_requant_output_i8": 0,
+    "expected_byte_seen_by_tb": "0x00",
+    "stored_word_bytes": ["0x00", "0x00", "0x00", "0x00"]
+  },
+  "first_divergence_stage": "none_after_add_writeback_drain",
+  "root_cause": "ADD final packed word writeback needed a drain cycle before STORE reads acc_buffer"
+}

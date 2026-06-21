@@ -1,0 +1,116 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "both_wrong_count": 122,
+  "checkpoint": "datasets/cifar10/models/resnet20_float_candidate_mps_continue_stage2.pt",
+  "dataset_source": "cifar10_tar:datasets/cifar10/cifar-10-python.tar.gz:test",
+  "first_mismatch_examples": [
+    {
+      "fixed_correct": false,
+      "float_correct": true,
+      "label": 8,
+      "predicted_class_fixed": 6,
+      "predicted_class_float": 8,
+      "sample_index": 15
+    },
+    {
+      "fixed_correct": false,
+      "float_correct": false,
+      "label": 0,
+      "predicted_class_fixed": 2,
+      "predicted_class_float": 3,
+      "sample_index": 52
+    },
+    {
+      "fixed_correct": false,
+      "float_correct": false,
+      "label": 4,
+      "predicted_class_fixed": 5,
+      "predicted_class_float": 0,
+      "sample_index": 58
+    },
+    {
+      "fixed_correct": false,
+      "float_correct": true,
+      "label": 3,
+      "predicted_class_fixed": 6,
+      "predicted_class_float": 3,
+      "sample_index": 127
+    },
+    {
+      "fixed_correct": false,
+      "float_correct": true,
+      "label": 8,
+      "predicted_class_fixed": 0,
+      "predicted_class_float": 8,
+      "sample_index": 265
+    },
+    {
+      "fixed_correct": false,
+      "float_correct": true,
+      "label": 0,
+      "predicted_class_fixed": 3,
+      "predicted_class_float": 0,
+      "sample_index": 269
+    },
+    {
+      "fixed_correct": false,
+      "float_correct": false,
+      "label": 3,
+      "predicted_class_fixed": 5,
+      "predicted_class_float": 2,
+      "sample_index": 302
+    },
+    {
+      "fixed_correct": false,
+      "float_correct": true,
+      "label": 8,
+      "predicted_class_fixed": 0,
+      "predicted_class_float": 8,
+      "sample_index": 312
+    },
+    {
+      "fixed_correct": false,
+      "float_correct": false,
+      "label": 4,
+      "predicted_class_fixed": 9,
+      "predicted_class_float": 5,
+      "sample_index": 427
+    },
+    {
+      "fixed_correct": false,
+      "float_correct": true,
+      "label": 7,
+      "predicted_class_fixed": 4,
+      "predicted_class_float": 7,
+      "sample_index": 433
+    },
+    {
+      "fixed_correct": true,
+      "float_correct": false,
+      "label": 3,
+      "predicted_class_fixed": 3,
+      "predicted_class_float": 9,
+      "sample_index": 434
+    },
+    {
+      "fixed_correct": false,
+      "float_correct": true,
+      "label": 0,
+      "predicted_class_fixed": 2,
+      "predicted_class_float": 0,
+      "sample_index": 491
+    }
+  ],
+  "fixed_float_prediction_match_count": 979,
+  "fixed_float_prediction_match_ratio": 0.979,
+  "fixed_float_prediction_mismatch_count": 21,
+  "fixed_float_prediction_mismatch_ratio": 0.021,
+  "fixed_only_correct_count": 7,
+  "fixed_point_accuracy": 0.87,
+  "fixed_point_correct": 870,
+  "float_only_correct_count": 8,
+  "float_reference_accuracy": 0.871,
+  "float_reference_correct": 871,
+  "split": "test",
+  "total": 1000
+}

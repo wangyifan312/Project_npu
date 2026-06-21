@@ -1,0 +1,71 @@
+// ResNet-20 R0.5 export package
+// layer: layer3.0.shortcut.projection
+// source_tensor: layer3.0.shortcut.bias
+// shape: [64]
+// accumulator_scale: 0.0002523032030922352
+// ordering: output_channel_or_neuron_order
+// dtype: INT32
+fffff882
+fffff8b3
+fffff533
+fffffe58
+fffff960
+ffffff8e
+fffffe39
+fffff845
+fffff19b
+000002e7
+000001c3
+fffff997
+fffffc45
+fffffd1c
+000002b2
+0000049c
+ffffff95
+fffffb8f
+fffff678
+fffffe61
+00000e07
+fffffbf9
+ffffef12
+fffffb63
+fffffd89
+fffff601
+fffff635
+fffffab6
+fffffcca
+fffff6ab
+fffff4b4
+fffff8bd
+fffff96b
+000007f9
+0000001f
+000001fb
+fffffbc6
+000008aa
+00000ec6
+00000381
+fffffcc9
+000004d0
+00000371
+fffffa33
+fffff29f
+fffff507
+00000e9e
+00000896
+fffff77a
+fffff06b
+fffff3c5
+fffff9a2
+fffffc28
+fffff3ca
+fffff767
+00000715
+0000050d
+00000918
+fffff4c9
+0000056f
+fffffac2
+fffff7d5
+fffff3ba
+00000698

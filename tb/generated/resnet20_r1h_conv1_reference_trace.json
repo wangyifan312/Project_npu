@@ -1,0 +1,288 @@
+{
+  "acc_after_bias": -2286,
+  "acc_after_relu": 0,
+  "bias_i32": -1323,
+  "layout": "dense_hwc",
+  "mac_before_bias": -963,
+  "output_byte": 0,
+  "output_i8": 0,
+  "position": {
+    "oc": 0,
+    "oh": 0,
+    "ow": 0
+  },
+  "requant_multiplier": 792567,
+  "requant_shift": 28,
+  "taps": [
+    {
+      "ic": 0,
+      "input_i8": 0,
+      "input_idx": -1,
+      "kh": 0,
+      "kw": 0,
+      "product": 0,
+      "weight_i8": 1,
+      "weight_idx": 0
+    },
+    {
+      "ic": 1,
+      "input_i8": 0,
+      "input_idx": -1,
+      "kh": 0,
+      "kw": 0,
+      "product": 0,
+      "weight_i8": -2,
+      "weight_idx": 144
+    },
+    {
+      "ic": 2,
+      "input_i8": 0,
+      "input_idx": -1,
+      "kh": 0,
+      "kw": 0,
+      "product": 0,
+      "weight_i8": 5,
+      "weight_idx": 288
+    },
+    {
+      "ic": 0,
+      "input_i8": 0,
+      "input_idx": -1,
+      "kh": 0,
+      "kw": 1,
+      "product": 0,
+      "weight_i8": 0,
+      "weight_idx": 16
+    },
+    {
+      "ic": 1,
+      "input_i8": 0,
+      "input_idx": -1,
+      "kh": 0,
+      "kw": 1,
+      "product": 0,
+      "weight_i8": 3,
+      "weight_idx": 160
+    },
+    {
+      "ic": 2,
+      "input_i8": 0,
+      "input_idx": -1,
+      "kh": 0,
+      "kw": 1,
+      "product": 0,
+      "weight_i8": 6,
+      "weight_idx": 304
+    },
+    {
+      "ic": 0,
+      "input_i8": 0,
+      "input_idx": -1,
+      "kh": 0,
+      "kw": 2,
+      "product": 0,
+      "weight_i8": -1,
+      "weight_idx": 32
+    },
+    {
+      "ic": 1,
+      "input_i8": 0,
+      "input_idx": -1,
+      "kh": 0,
+      "kw": 2,
+      "product": 0,
+      "weight_i8": 0,
+      "weight_idx": 176
+    },
+    {
+      "ic": 2,
+      "input_i8": 0,
+      "input_idx": -1,
+      "kh": 0,
+      "kw": 2,
+      "product": 0,
+      "weight_i8": 3,
+      "weight_idx": 320
+    },
+    {
+      "ic": 0,
+      "input_i8": 0,
+      "input_idx": -1,
+      "kh": 1,
+      "kw": 0,
+      "product": 0,
+      "weight_i8": 6,
+      "weight_idx": 48
+    },
+    {
+      "ic": 1,
+      "input_i8": 0,
+      "input_idx": -1,
+      "kh": 1,
+      "kw": 0,
+      "product": 0,
+      "weight_i8": 5,
+      "weight_idx": 192
+    },
+    {
+      "ic": 2,
+      "input_i8": 0,
+      "input_idx": -1,
+      "kh": 1,
+      "kw": 0,
+      "product": 0,
+      "weight_i8": 2,
+      "weight_idx": 336
+    },
+    {
+      "ic": 0,
+      "input_i8": 19,
+      "input_idx": 0,
+      "kh": 1,
+      "kw": 1,
+      "product": 0,
+      "weight_i8": 0,
+      "weight_idx": 64
+    },
+    {
+      "ic": 1,
+      "input_i8": 56,
+      "input_idx": 1,
+      "kh": 1,
+      "kw": 1,
+      "product": 168,
+      "weight_i8": 3,
+      "weight_idx": 208
+    },
+    {
+      "ic": 2,
+      "input_i8": 93,
+      "input_idx": 2,
+      "kh": 1,
+      "kw": 1,
+      "product": 558,
+      "weight_i8": 6,
+      "weight_idx": 352
+    },
+    {
+      "ic": 0,
+      "input_i8": -115,
+      "input_idx": 3,
+      "kh": 1,
+      "kw": 2,
+      "product": -805,
+      "weight_i8": 7,
+      "weight_idx": 80
+    },
+    {
+      "ic": 1,
+      "input_i8": -78,
+      "input_idx": 4,
+      "kh": 1,
+      "kw": 2,
+      "product": -468,
+      "weight_i8": 6,
+      "weight_idx": 224
+    },
+    {
+      "ic": 2,
+      "input_i8": -41,
+      "input_idx": 5,
+      "kh": 1,
+      "kw": 2,
+      "product": -328,
+      "weight_i8": 8,
+      "weight_idx": 368
+    },
+    {
+      "ic": 0,
+      "input_i8": 0,
+      "input_idx": -1,
+      "kh": 2,
+      "kw": 0,
+      "product": 0,
+      "weight_i8": -1,
+      "weight_idx": 96
+    },
+    {
+      "ic": 1,
+      "input_i8": 0,
+      "input_idx": -1,
+      "kh": 2,
+      "kw": 0,
+      "product": 0,
+      "weight_i8": -3,
+      "weight_idx": 240
+    },
+    {
+      "ic": 2,
+      "input_i8": 0,
+      "input_idx": -1,
+      "kh": 2,
+      "kw": 0,
+      "product": 0,
+      "weight_i8": -4,
+      "weight_idx": 384
+    },
+    {
+      "ic": 0,
+      "input_i8": 83,
+      "input_idx": 96,
+      "kh": 2,
+      "kw": 1,
+      "product": -83,
+      "weight_i8": -1,
+      "weight_idx": 112
+    },
+    {
+      "ic": 1,
+      "input_i8": 120,
+      "input_idx": 97,
+      "kh": 2,
+      "kw": 1,
+      "product": -360,
+      "weight_i8": -3,
+      "weight_idx": 256
+    },
+    {
+      "ic": 2,
+      "input_i8": -99,
+      "input_idx": 98,
+      "kh": 2,
+      "kw": 1,
+      "product": 198,
+      "weight_i8": -2,
+      "weight_idx": 400
+    },
+    {
+      "ic": 0,
+      "input_i8": -51,
+      "input_idx": 99,
+      "kh": 2,
+      "kw": 2,
+      "product": 51,
+      "weight_i8": -1,
+      "weight_idx": 128
+    },
+    {
+      "ic": 1,
+      "input_i8": -14,
+      "input_idx": 100,
+      "kh": 2,
+      "kw": 2,
+      "product": 14,
+      "weight_i8": -1,
+      "weight_idx": 272
+    },
+    {
+      "ic": 2,
+      "input_i8": 23,
+      "input_idx": 101,
+      "kh": 2,
+      "kw": 2,
+      "product": 92,
+      "weight_i8": 4,
+      "weight_idx": 416
+    }
+  ]
+}

@@ -1,0 +1,172 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "checkpoint": "datasets/cifar10/models/resnet20_float_candidate_mps_continue_stage2.pt",
+  "checksums": {
+    "conv1.relu": {
+      "count": 4194304,
+      "logical_dtype": "INT8",
+      "max": 125.0,
+      "min": 0.0,
+      "scale": 0.06867184976893147,
+      "shape": [
+        16,
+        32,
+        32
+      ],
+      "sum": 34649110.0
+    },
+    "fc.logits": {
+      "count": 2560,
+      "logical_dtype": "INT8",
+      "max": 110.0,
+      "min": -56.0,
+      "scale": 0.235318071260227,
+      "shape": [
+        10
+      ],
+      "sum": 292.0
+    },
+    "gap.input": {
+      "count": 1048576,
+      "logical_dtype": "INT8",
+      "max": 97.0,
+      "min": 0.0,
+      "scale": 0.19648769709068958,
+      "shape": [
+        64,
+        8,
+        8
+      ],
+      "sum": 2773187.0
+    },
+    "gap.output": {
+      "count": 16384,
+      "logical_dtype": "INT8",
+      "max": 126.0,
+      "min": 0.0,
+      "scale": 0.04015638321403443,
+      "shape": [
+        64
+      ],
+      "sum": 212003.0
+    },
+    "layer1.0.add.relu": {
+      "count": 4194304,
+      "logical_dtype": "INT8",
+      "max": 126.0,
+      "min": 0.0,
+      "scale": 0.08007479089451587,
+      "shape": [
+        16,
+        32,
+        32
+      ],
+      "sum": 40476112.0
+    },
+    "layer1.1.add.relu": {
+      "count": 4194304,
+      "logical_dtype": "INT8",
+      "max": 111.0,
+      "min": 0.0,
+      "scale": 0.11937602486197404,
+      "shape": [
+        16,
+        32,
+        32
+      ],
+      "sum": 34022814.0
+    },
+    "layer1.2.add.relu": {
+      "count": 4194304,
+      "logical_dtype": "INT8",
+      "max": 127.0,
+      "min": 0.0,
+      "scale": 0.09193625412588044,
+      "shape": [
+        16,
+        32,
+        32
+      ],
+      "sum": 53047738.0
+    },
+    "layer2.0.add.relu": {
+      "count": 2097152,
+      "logical_dtype": "INT8",
+      "max": 127.0,
+      "min": 0.0,
+      "scale": 0.0772617370124877,
+      "shape": [
+        32,
+        16,
+        16
+      ],
+      "sum": 16605225.0
+    },
+    "layer2.1.add.relu": {
+      "count": 2097152,
+      "logical_dtype": "INT8",
+      "max": 127.0,
+      "min": 0.0,
+      "scale": 0.08872270208644116,
+      "shape": [
+        32,
+        16,
+        16
+      ],
+      "sum": 17381931.0
+    },
+    "layer2.2.add.relu": {
+      "count": 2097152,
+      "logical_dtype": "INT8",
+      "max": 127.0,
+      "min": 0.0,
+      "scale": 0.10189004582682933,
+      "shape": [
+        32,
+        16,
+        16
+      ],
+      "sum": 16862445.0
+    },
+    "layer3.0.add.relu": {
+      "count": 1048576,
+      "logical_dtype": "INT8",
+      "max": 109.0,
+      "min": 0.0,
+      "scale": 0.07033069490447758,
+      "shape": [
+        64,
+        8,
+        8
+      ],
+      "sum": 3552498.0
+    },
+    "layer3.1.add.relu": {
+      "count": 1048576,
+      "logical_dtype": "INT8",
+      "max": 93.0,
+      "min": 0.0,
+      "scale": 0.13069292504017746,
+      "shape": [
+        64,
+        8,
+        8
+      ],
+      "sum": 2606342.0
+    },
+    "layer3.2.add.relu": {
+      "count": 1048576,
+      "logical_dtype": "INT8",
+      "max": 97.0,
+      "min": 0.0,
+      "scale": 0.19648769709068958,
+      "shape": [
+        64,
+        8,
+        8
+      ],
+      "sum": 2773187.0
+    }
+  },
+  "layer_checksum_scope": "conv1, residual add ReLU outputs, GAP, FC logits"
+}

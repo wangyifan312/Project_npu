@@ -1,0 +1,129 @@
+{
+  "arch": "cifar10_resnet20_v1",
+  "contract_comparison": {
+    "bias_int32_rounding": "unresolved_needs_rtl_owner_decision",
+    "gap_reciprocal_shift": "unresolved_needs_rtl_owner_decision",
+    "int8_clamp": "match",
+    "requantize_int64": "match_for_existing_primitive",
+    "residual_add_same_scale_alignment": "planned_with_matching_requant_primitive_but_add_rtl_not_started",
+    "round_half_away_from_zero": "match",
+    "round_shift_half_away": "match"
+  },
+  "fixed_point_accuracy": 0.8639,
+  "fixed_point_correct": 8639,
+  "fixed_point_total": 10000,
+  "gate_status": "passed",
+  "inspected_sources": [
+    {
+      "conclusion": "round-half-away-from-zero after acc*multiplier/2^shift, then clamp to signed INT8",
+      "path": "rtl/npu/requant_i32_to_i8.v",
+      "role": "RTL requant primitive"
+    },
+    {
+      "conclusion": "covers negative half-away and INT8 clamp boundary cases",
+      "path": "tb/unit/tb_requant_i32_to_i8.v",
+      "role": "RTL unit vector evidence"
+    },
+    {
+      "conclusion": "documents and implements the same round-half-away + clamp formula",
+      "path": "datasets/scripts/requant_utils.py",
+      "role": "LeNet software requant reference"
+    },
+    {
+      "conclusion": "uses integer product, half-away shift rounding, and signed INT8 clamp",
+      "path": "datasets/scripts/run_resnet20_fixed_point_smoke.py",
+      "role": "ResNet fixed-point software helper"
+    },
+    {
+      "conclusion": "searches positive int32 multipliers and shifts in 0..31",
+      "path": "datasets/scripts/search_resnet20_requant_plan.py",
+      "role": "ResNet multiplier/shift search"
+    },
+    {
+      "conclusion": "requires non-zero multiplier and shift <= 31 for requant tasks",
+      "path": "rtl/npu/task_checker.v",
+      "role": "runtime requant parameter legality"
+    },
+    {
+      "conclusion": "exposes layer-wise multiplier and 6-bit shift slots",
+      "path": "rtl/npu/npu_ctrl.v",
+      "role": "AXI-Lite requant register contract"
+    },
+    {
+      "conclusion": "instantiates requant_i32_to_i8 for INT32->INT8 requant output",
+      "path": "rtl/npu/npu_top.v",
+      "role": "NPU requant datapath integration"
+    },
+    {
+      "conclusion": "fixes multiplier + shift + round-half-away-from-zero + clamp",
+      "path": "docs/LENET_MNIST_SPEC.md",
+      "role": "current LeNet numerical contract"
+    },
+    {
+      "conclusion": "uses acc*multiplier, shift, half-away rounding, and signed INT8 clamp",
+      "path": "docs/REAL_WEIGHT_FLOW.md",
+      "role": "real-weight flow contract"
+    },
+    {
+      "conclusion": "requires INT8/INT32 operators and existing project requant semantics",
+      "path": "docs/RESNET20_SOFTWARE_GOLDEN_PLAN.md",
+      "role": "ResNet planned numerical contract"
+    },
+    {
+      "conclusion": "records F5 full fixed-point gate pass and pending RTL-lock review",
+      "path": "docs/RESNET20_FIXED_POINT_GOLDEN_PLAN.md",
+      "role": "ResNet fixed-point status"
+    }
+  ],
+  "next_allowed_stage": "resolve_open_items_or_waiver",
+  "one_mb_memory_reuse_map_generated": false,
+  "requant_contract": {
+    "conv_fc_requant_count": 22,
+    "formula": "clamp(round_half_away_from_zero(acc * multiplier / 2^shift), -128, 127)",
+    "max_relative_error": 1.0778770604353305e-07,
+    "mean_relative_error": 2.8291384236134632e-08,
+    "multiplier_domain": "positive_uint32_restricted_to_signed_int32_by_resnet_f3_search",
+    "residual_add_alignment_count": 9,
+    "shift_domain": "0..31",
+    "status": "match_for_existing_multiplier_shift_primitive"
+  },
+  "requant_vectors": "requant_vectors.json",
+  "rounding_contract": {
+    "rtl_source": "rtl/npu/requant_i32_to_i8.v",
+    "rule": "round_half_away_from_zero",
+    "software_source": "datasets/scripts/run_resnet20_fixed_point_smoke.py",
+    "status": "match_existing_requant_primitive"
+  },
+  "rounding_vectors": "rounding_vectors.json",
+  "rtl_lock_status": "reviewed_with_open_items",
+  "rtl_memh_generated": false,
+  "rtl_r1_started": false,
+  "rtl_task_sequence_generated": false,
+  "saturation_contract": {
+    "int8_max": 127,
+    "int8_min": -128,
+    "rtl_source": "rtl/npu/requant_i32_to_i8.v",
+    "status": "match_existing_requant_primitive"
+  },
+  "source_conv_fc_requant": "datasets/cifar10/resnet20_requant_plan/conv_fc_requant.json",
+  "source_full_eval": "datasets/cifar10/resnet20_fixed_point_eval_10000/summary.json",
+  "source_residual_add_alignment": "datasets/cifar10/resnet20_requant_plan/residual_add_alignment.json",
+  "unresolved_items": [
+    {
+      "detail": "ResNet software uses round-half-away-from-zero for folded_bias / accumulator_scale. The existing LeNet requant primitive matches the rounding rule, but there is no current ResNet bias export/RTL consumption path to lock yet.",
+      "item": "folded_bias_int32_rounding",
+      "status": "needs_rtl_owner_decision"
+    },
+    {
+      "detail": "ResNet software GAP uses fixed-point ratio requantization over the spatial sum. Existing RTL does not yet provide a ResNet GAP datapath to compare.",
+      "item": "gap_reciprocal_shift_contract",
+      "status": "needs_rtl_owner_decision"
+    },
+    {
+      "detail": "F3/F5 execute planned same-scale branch alignment with the same requant primitive. The future ADD RTL must explicitly adopt this contract before R1 handoff.",
+      "item": "residual_add_datapath_contract",
+      "status": "needs_rtl_owner_decision"
+    }
+  ],
+  "validation_errors": []
+}
