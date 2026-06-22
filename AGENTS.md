@@ -74,15 +74,30 @@ formal baseline.
 
 Current ResNet-20 state:
 
-- R0.5 software golden / fixture flow is in progress.
+- R0.5 software golden / fixture flow is complete.
 - Float candidate checkpoint is available.
 - Software fixed-point full-test eval is complete.
 - `>=80%` fixed-point accuracy gate is passed.
 - F6b RTL handoff contract is closed.
 - F6c/F6g INT8/INT32/requant export package is generated and validated.
 - F6d/F6e final task sequence and `1 MB` memory map are generated and validated.
-- ResNet handoff package is ready for RTL R1 review.
-- ResNet RTL implementation has not started.
+- R1a-R1e RTL foundations are implemented.
+- R1g compact residual-slice exact match is complete.
+- R1h package-faithful full-shape `input.image -> conv1` exact match is complete.
+- R1i package-faithful early residual multi-task exact match is complete.
+- Full 32-task / full ResNet-20 RTL closure is not complete.
+
+Current implemented ResNet RTL feature scope:
+
+- `task_type` control path is 3-bit end-to-end.
+- Generalized Conv control exists for `1x1 / 3x3 / 5x5`, `stride1/2`, `valid/same`.
+- Folded INT32 bias + requant is connected for Conv/FC.
+- Residual ADD task/datapath foundation is implemented.
+- GAP8x8 task/datapath foundation is implemented.
+- Package-faithful exact-match evidence currently covers:
+  - full-shape `input.image -> conv1`
+  - early residual multi-task slice
+- Full 32-task exact match is still open.
 
 Current float candidate:
 
@@ -99,9 +114,11 @@ Current fixed-point evidence:
 - Fixed-point full-test accuracy: `8639/10000 = 86.39%`
 - Export package: `datasets/cifar10/resnet20_export_package/`
 
-Do not describe RTL R1/R2 or any ResNet numerical RTL work as implemented until
-an explicit RTL R1 task starts and preserves the existing LeNet/HB/AXI baseline.
-The current ResNet package is handoff-ready for RTL R1 review only.
+Do not describe full 32-task / end-to-end ResNet RTL closure as implemented
+until explicit package-faithful multi-task evidence covers the whole sequence
+and preserves the existing LeNet/HB/AXI baseline.
+The current ResNet state is beyond handoff-only review: R1a-R1i partial RTL
+evidence exists, but full-sequence closure is still open.
 
 ## Work Rules
 

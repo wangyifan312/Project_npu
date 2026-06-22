@@ -50,6 +50,54 @@
 - NPU RTL `Workstream A/B/C` 已完成。
 - first-pass full-cluster 优化已达到 `top32 + subsystem64 stronger regression stable`。
 
+### ResNet-20 当前口径
+
+ResNet-20 不改变当前 LeNet/MNIST formal baseline，但它已经不再停留在
+`R0.5 in progress` 或 `RTL not started` 的阶段。当前统一口径：
+
+- `R0.5` software golden / export / handoff 已完成。
+- software fixed-point full-test accuracy gate 已通过：
+  - `8639/10000 = 86.39%`
+- F6b handoff contract 已关闭。
+- F6c/F6g export package 已生成并验证。
+- F6d/F6e final task sequence 和 `1 MB` memory map 已生成并验证。
+- R1a-R1e foundations 已实现。
+- R1g compact residual slice exact match 已完成。
+- R1h package-faithful full-shape `input.image -> conv1` exact match 已完成。
+- R1i package-faithful early residual multi-task exact match 已完成。
+- 当前仍未完成：
+  - full 32-task package-faithful exact match
+  - full ResNet-20 RTL end-to-end closure
+
+当前已实现的 ResNet RTL 能力边界：
+
+- `task_type` 全链路 `3 bit`
+- generalized Conv foundation：
+  - `1x1 / 3x3 / 5x5`
+  - `stride1 / stride2`
+  - `valid / same`
+- Conv/FC folded INT32 bias + requant
+- Residual ADD foundation
+- GAP8x8 foundation
+- package-faithful exact-match 证据：
+  - full-shape `input.image -> conv1`
+  - early residual multi-task slice
+
+当前仍不能写成：
+
+- full 32-task ResNet-20 exact match complete
+- full ResNet-20 RTL end-to-end closure complete
+
+因此，后续文档或报告不得再写：
+
+- `ResNet RTL implementation has not started`
+- `ResNet package is only handoff-ready for RTL R1 review`
+
+更准确的口径应是：
+
+- ResNet RTL staged implementation/evidence exists through R1i
+- full-sequence closure is still open
+
 ## 4. 不能乱动的 contract
 
 以下内容不允许在普通修复或优化中顺手改变：

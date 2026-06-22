@@ -30,12 +30,69 @@ README 只保留导航、关键边界和常用入口；不要把 README 当作�
 - NPU RTL `Workstream A/B/C` 已完成。
 - first-pass full-cluster 优化已达到 `top32 + subsystem64 stronger regression stable`。
 
+ResNet-20 当前也已经不再停留在“只做 software handoff”阶段。当前 ResNet 迁移线可准确表述为：
+
+- `R0.5` software golden / export / handoff 已完成。
+- software fixed-point full-test gate 已通过：`8639/10000 = 86.39%`。
+- export package / task sequence / `1 MB` memory map 已生成并验证。
+- R1a-R1e RTL foundations 已实现。
+- R1g compact residual slice exact match 已完成。
+- R1h package-faithful full-shape `input.image -> conv1` exact match 已完成。
+- R1i package-faithful early residual multi-task exact match 已完成。
+- full `32-task` / full ResNet-20 RTL end-to-end closure 仍未完成。
+
 关键证据边界：
 
 - software full-set 是当前全量 accuracy 主证据：`9885/10000 = 98.85%`。
 - RTL 侧是 representative chunk evidence，不能表述为 RTL `10000/10000` full-set 已完成。
 - multi-cluster correctness 已收口，runtime bottleneck evidence 已增强，但不能表述为 full LeNet-wide performance attribution complete。
 - 当前 AXI 实现是标准化 `AXI-Lite` / `AXI4 INCR burst` 项目子集，不是完整通用 AXI IP。
+- ResNet 当前 exact-match 证据只覆盖：
+  - compact residual directed slice
+  - package-faithful full-shape `conv1`
+  - package-faithful early residual multi-task slice
+  不能表述为 full ResNet-20 exact match 已完成。
+
+## ResNet RTL 已实现功能
+
+以下是当前已经落地到 RTL 的 ResNet 相关能力，口径以当前 `main` 为准：
+
+- `task_type` 全链路已扩到 `3 bit`
+  - `0=Conv`
+  - `1=FC`
+  - `2=Pool`
+  - `3=Requant`
+  - `4=ADD`
+  - `5=GAP`
+- append-only AXI-Lite 控制寄存器已加入：
+  - `VERSION / CAPABILITY`
+  - `CONV_CFG`
+  - `BIAS_ADDR / BIAS_BYTES`
+  - `SRC1_ADDR / SRC1_BYTES`
+  - `ADD_CFG / GAP_CFG / POSTPROC_CFG`
+  - `ADD_SRC0/SRC1/OUT MULT/SHIFT`
+- generalized Conv foundation 已实现：
+  - kernel: `1x1 / 3x3 / 5x5`
+  - stride: `1 / 2`
+  - padding: `valid / same`
+- folded INT32 bias + requant integration 已接入 Conv/FC 路径：
+  - `accumulator INT32 -> optional bias -> optional ReLU -> requant_i32_to_i8`
+- Residual ADD foundation 已实现：
+  - two-source read
+  - pre-alignment multiplier/shift
+  - INT32 add
+  - optional ReLU
+  - post-requant to INT8
+- GAP8x8 foundation 已实现：
+  - INT8 input
+  - per-channel INT32 sum
+  - divide-by-64
+  - optional requant to INT8
+- package-faithful compare 当前已证明：
+  - `input.image -> conv1` full-shape exact match
+  - `conv1 -> layer1.0.conv1 -> layer1.0.conv2 -> layer1.0.add` 连续 multi-task exact match
+
+这些能力已经实现，但仍不代表 full ResNet-20 32-task 连续 exact match 已完成。
 
 ## 不可随意改动的 contract
 
