@@ -1,9 +1,13 @@
+// tb_task_requant: requant (INT32→INT8) task test with 256-bit data-plane
+// Pre-loads requant source INT32 words into RAM, runs requant task, checks output.
+// Fixed: 256-bit AXI preload with awsize=5.
 `timescale 1ns / 1ps
 
 module tb_task_requant;
 
     reg clk, rst_n;
 
+    // === AXI-Lite (CPU → NPU registers) ===
     reg         s_axi_awvalid, s_axi_wvalid, s_axi_bready;
     wire        s_axi_awready, s_axi_wready, s_axi_bvalid;
     reg  [31:0] s_axi_awaddr, s_axi_wdata;
@@ -15,50 +19,55 @@ module tb_task_requant;
     wire [31:0] s_axi_rdata;
     wire [1:0]  s_axi_rresp;
 
+    // === NPU AXI4 DMA ports (256-bit) ===
     wire        npu_arvalid, npu_awvalid;
     wire [31:0] npu_araddr, npu_awaddr;
     wire [7:0]  npu_arlen, npu_awlen;
     wire [2:0]  npu_arsize, npu_awsize;
     wire [1:0]  npu_arburst, npu_awburst;
     wire        npu_wvalid, npu_wlast;
-    wire [31:0] npu_wdata;
-    wire [3:0]  npu_wstrb;
+    wire [255:0] npu_wdata;
+    wire [31:0] npu_wstrb;
     wire        npu_rready, npu_bready;
     wire        npu_busy, npu_done, npu_error;
     wire [7:0]  npu_error_code;
 
+    // === Preload control ===
     reg         preload;
     reg         tb_awvalid, tb_wvalid;
-    reg  [31:0] tb_awaddr, tb_wdata;
+    reg  [31:0] tb_awaddr;
+    reg  [255:0] tb_wdata;
+    reg  [31:0] tb_wstrb;
 
+    // === RAM interface (muxed) — all 256-bit ===
     wire        ram_awvalid = preload ? tb_awvalid : npu_awvalid;
     wire [31:0] ram_awaddr  = preload ? tb_awaddr  : npu_awaddr;
     wire [7:0]  ram_awlen   = preload ? 8'h0       : npu_awlen;
-    wire [2:0]  ram_awsize  = preload ? 3'd2       : npu_awsize;
-    wire [1:0]  ram_awburst = preload ? 2'd1       : npu_awburst;
+    wire [2:0]  ram_awsize  = preload ? 3'd5       : npu_awsize;
+    wire [1:0]  ram_awburst = preload ? 2'b01      : npu_awburst;
     wire        ram_wvalid  = preload ? tb_wvalid  : npu_wvalid;
-    wire [31:0] ram_wdata   = preload ? tb_wdata   : npu_wdata;
-    wire [3:0]  ram_wstrb   = preload ? 4'hF       : npu_wstrb;
+    wire [255:0] ram_wdata  = preload ? tb_wdata   : npu_wdata;
+    wire [31:0] ram_wstrb   = preload ? tb_wstrb   : npu_wstrb;
     wire        ram_wlast   = preload ? 1'b1       : npu_wlast;
     wire        ram_bready  = preload ? 1'b1       : npu_bready;
     wire        ram_arvalid = preload ? 1'b0       : npu_arvalid;
     wire [31:0] ram_araddr  = preload ? 32'h0      : npu_araddr;
     wire [7:0]  ram_arlen   = preload ? 8'h0       : npu_arlen;
-    wire [2:0]  ram_arsize  = preload ? 3'd2       : npu_arsize;
-    wire [1:0]  ram_arburst = preload ? 2'd1       : npu_arburst;
+    wire [2:0]  ram_arsize  = preload ? 3'd5       : npu_arsize;
+    wire [1:0]  ram_arburst = preload ? 2'b01      : npu_arburst;
     wire        ram_rready  = preload ? 1'b0       : npu_rready;
 
     wire        ram_awready, ram_wready, ram_bvalid, ram_arready;
     wire [1:0]  ram_bresp, ram_rresp;
     wire        ram_rvalid, ram_rlast;
-    wire [31:0] ram_rdata;
+    wire [255:0] ram_rdata;
 
     wire        npu_arready = preload ? 1'b0 : ram_arready;
     wire        npu_awready = preload ? 1'b0 : ram_awready;
     wire        npu_wready  = preload ? 1'b0 : ram_wready;
     wire        npu_rvalid  = preload ? 1'b0 : ram_rvalid;
     wire        npu_bvalid  = preload ? 1'b0 : ram_bvalid;
-    wire [31:0] npu_rdata   = ram_rdata;
+    wire [255:0] npu_rdata  = ram_rdata;
     wire        npu_rlast   = ram_rlast;
     wire [1:0]  npu_rresp   = preload ? 2'b0 : ram_rresp;
     wire [1:0]  npu_bresp   = preload ? 2'b0 : ram_bresp;
@@ -110,6 +119,7 @@ module tb_task_requant;
 
     always #2.5 clk = ~clk;
 
+    // AXI-Lite write helper
     task axi_write;
         input [31:0] addr;
         input [31:0] data;
@@ -126,17 +136,20 @@ module tb_task_requant;
         end
     endtask
 
-    task preload_word;
-        input [31:0] addr;
-        input [31:0] data;
+    // Pre-load one 256-bit beat (AW+W+B handshake)
+    task preload_beat;
+        input [31:0]  addr;
+        input [255:0] data;
+        input [31:0]  strb;
         begin
+            // AW phase
             @(posedge clk);
             tb_awvalid = 1; tb_awaddr = addr;
-            tb_wvalid  = 1; tb_wdata  = data;
-            @(posedge clk);
-            tb_awvalid = 0;
-            @(posedge clk);
-            tb_wvalid = 0;
+            @(posedge clk); tb_awvalid = 0;
+            // W phase (wready goes high after AW)
+            tb_wvalid  = 1; tb_wdata = data; tb_wstrb = strb;
+            @(posedge clk); tb_wvalid = 0;
+            // B phase
             @(posedge clk);
         end
     endtask
@@ -153,11 +166,14 @@ module tb_task_requant;
         #20 rst_n = 1;
         #20;
 
+        // Pre-load 4 INT32 words at 0x100 as one 256-bit beat
+        // Word layout (LE): word0=100 at bits[31:0], word1=101 at bits[63:32],
+        //                   word2=-101 at bits[95:64], word3=400 at bits[127:96]
         $display("=== Pre-load requant source INT32 words ===");
-        preload_word(32'h0000_0100, 32'd100);
-        preload_word(32'h0000_0104, 32'd101);
-        preload_word(32'h0000_0108, -32'sd101);
-        preload_word(32'h0000_010C, 32'd400);
+        // addr 0x100:100, 0x104:101, 0x108:-101, 0x10C:400
+        preload_beat(32'h0000_0100,
+            {128'h0, 32'sd400, -32'sd101, 32'sd101, 32'sd100},
+            32'h0000FFFF);  // 16 bytes valid
         preload = 0;
 
         $display("=== Configure requant task ===");
@@ -165,15 +181,15 @@ module tb_task_requant;
         axi_write(32'h1000_000C, 32'h0000_0100);  // input addr
         axi_write(32'h1000_0010, 32'h0000_0000);  // weight addr unused
         axi_write(32'h1000_0014, 32'h0000_0200);  // output addr
-        axi_write(32'h1000_0018, 32'd16);         // 4 x INT32
+        axi_write(32'h1000_0018, 32'd16);         // 4 x INT32 = 16 bytes
         axi_write(32'h1000_001C, 32'd0);          // no weights
-        axi_write(32'h1000_0020, 32'd4);          // 4 x INT8
+        axi_write(32'h1000_0020, 32'd4);          // 4 x INT8 output
         axi_write(32'h1000_0024, 32'h0001_0001);
         axi_write(32'h1000_0028, 32'h0001_0001);
         axi_write(32'h1000_002C, 32'h0000_0000);
         axi_write(32'h1000_0064, 32'h0000_0000);  // slot 0
-        axi_write(32'h1000_0068, 32'd1);          // multiplier
-        axi_write(32'h1000_006C, 32'd1);          // shift
+        axi_write(32'h1000_0068, 32'd1);          // multiplier=1
+        axi_write(32'h1000_006C, 32'd1);          // shift=1
 
         $display("=== Start requant task ===");
         axi_write(32'h1000_0000, 32'h0000_0001);
@@ -181,11 +197,13 @@ module tb_task_requant;
         repeat (400) @(posedge clk);
 
         $display("CTRL done=%b error=%b code=0x%02h", npu_done, npu_error, npu_error_code);
-        $display("Output word = 0x%08h (expect 0x7fcd3332)", tb_task_requant.u_ram.ram[32'h200 >> 2]);
+        // Output at beat addr 0x200>>5 = 0x10, lower 32 bits
+        $display("Output word = 0x%08h (expect 0x7fcd3332)",
+                 u_ram.ram[32'h200 >> 5][31:0]);
 
         if (!npu_done) $error("FAIL: requant task did not complete");
         if (npu_error) $error("FAIL: requant task error code=0x%02h", npu_error_code);
-        if (tb_task_requant.u_ram.ram[32'h200 >> 2] !== 32'h7FCD3332)
+        if (u_ram.ram[32'h200 >> 5][31:0] !== 32'h7FCD3332)
             $error("FAIL: requant output mismatch");
         else
             $display("PASS: requant task packed output matches expected");

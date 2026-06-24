@@ -17,15 +17,16 @@ module tb_task4_shared_mem;
     wire [31:0] cpu_rdata;
     wire [1:0]  cpu_rresp;
 
-    // NPU AXI4 (tied off for direct test; we test CPU write/read first)
+    // NPU AXI4 (256-bit DMA port — matches shared_ram NPU port width)
     reg         npu_awvalid, npu_wvalid, npu_bready;
     wire        npu_awready, npu_wready, npu_bvalid;
-    reg  [31:0] npu_awaddr, npu_wdata;
+    reg  [31:0] npu_awaddr;
+    reg  [255:0] npu_wdata;
     reg  [7:0]  npu_awlen;
     reg  [2:0]  npu_awsize;
     reg  [1:0]  npu_awburst;
     reg         npu_wlast;
-    reg  [3:0]  npu_wstrb;
+    reg  [31:0] npu_wstrb;
     wire [1:0]  npu_bresp;
     reg         npu_arvalid, npu_rready;
     wire        npu_arready, npu_rvalid;
@@ -33,7 +34,7 @@ module tb_task4_shared_mem;
     reg  [7:0]  npu_arlen;
     reg  [2:0]  npu_arsize;
     reg  [1:0]  npu_arburst;
-    wire [31:0] npu_rdata;
+    wire [255:0] npu_rdata;
     wire        npu_rlast;
     wire [1:0]  npu_rresp;
 
@@ -100,11 +101,18 @@ module tb_task4_shared_mem;
     task npu_write_single;
         input [31:0] addr, data;
         begin
+            // AW phase
             @(posedge clk);
-            npu_awvalid = 1; npu_awaddr = addr; npu_awlen = 0; npu_awsize = 2; npu_awburst = 1;
-            npu_wvalid  = 1; npu_wdata  = data; npu_wlast  = 1; npu_wstrb = 4'hF;
-            @(posedge clk);
-            npu_awvalid = 0; npu_wvalid = 0;
+            npu_awvalid = 1; npu_awaddr = addr; npu_awlen = 0;
+            npu_awsize = 5; npu_awburst = 2'b01;
+            @(posedge clk);  // AW handshake
+            npu_awvalid = 0;
+            // W phase (next cycle — WREADY becomes 1 after AW)
+            npu_wvalid  = 1; npu_wdata  = {224'h0, data};
+            npu_wlast  = 1; npu_wstrb = {28'h0, 4'hF};
+            @(posedge clk);  // W handshake
+            npu_wvalid = 0;
+            // B phase
             @(posedge clk); npu_bready = 1;
             @(posedge clk); npu_bready = 0;
         end
@@ -131,13 +139,14 @@ module tb_task4_shared_mem;
         $display("=== Test A: CPU write, NPU read back ===");
         cpu_write(32'h0000_0100, 32'hDEAD_BEEF);
 
-        // NPU reads same address
+        // NPU reads same address (256-bit burst, extract lower 32 bits)
         @(posedge clk);
-        npu_arvalid = 1; npu_araddr = 32'h0000_0100; npu_arlen = 0; npu_arsize = 2; npu_arburst = 1;
+        npu_arvalid = 1; npu_araddr = 32'h0000_0100; npu_arlen = 0;
+        npu_arsize = 5; npu_arburst = 2'b01;
         @(posedge clk); npu_arvalid = 0;
         @(posedge clk);  // data appears
-        if (npu_rdata === 32'hDEAD_BEEF) $display("  PASS: NPU read 0x%08h from CPU-written addr", npu_rdata);
-        else begin $display("  FAIL: NPU read 0x%08h, expected 0xDEAD_BEEF", npu_rdata); errors = errors + 1; end
+        if (npu_rdata[31:0] === 32'hDEAD_BEEF) $display("  PASS: NPU read 0x%08h from CPU-written addr", npu_rdata[31:0]);
+        else begin $display("  FAIL: NPU read 0x%08h, expected 0xDEAD_BEEF", npu_rdata[31:0]); errors = errors + 1; end
         npu_rready = 1;
         @(posedge clk); npu_rready = 0;
 
