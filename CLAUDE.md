@@ -1,5 +1,5 @@
 # CLAUDE.md — Project_npu Working Baseline
-
+每次回答问题前都要加上“王天才”，这样我才能确保你读了CLAUDE.md
 本文件是后续 coding agent 的工程约束和接手基线。当前项目状态总表见：
 
 - `docs/CURRENT_PROJECT_STATUS.md`
@@ -110,8 +110,27 @@ ResNet-20 不改变当前 LeNet/MNIST formal baseline，但它已经不再停留
 - last-beat `WSTRB` 根据实际 byte count 生成的语义。
 - output layout / layer memory map。
 - 单任务寄存器触发模型。
+- dma_axi_writer.v W-channel skid buffer logic (Phase B2)
+- write_beat_fifo.v
+- store_pack lane ordering
+- acc_buffer structure (32-bit, single-port)
+- requant_i32_to_i8.v formula (round-half-away-from-zero, clamp [-128,127])
+- Golden/reference/scoreboard
+- Timeout values
 
 runtime `CLUSTER_MODE / CLUSTER_MASK` 已支持 AXI-Lite 配置，但这不等同于 task queue、descriptor FIFO 或 shadow config 架构。
+
+### AXI Preload Rule for 256-bit Data Plane
+
+Formal integration/NPU data-plane testbenches that preload 256-bit AXI RAM MUST use:
+  - 256-bit WDATA
+  - AWSIZE = 3'd5 (32-byte beat encoding for 256-bit AXI4)
+  - AW/W in separate cycles (WREADY depends on AW handshake)
+
+Already fixed: tb_npu_top.v, tb_task_requant.v, tb_task4_shared_mem.v
+
+Legacy tb_task1/2/3/6 series are micro/debug entries, NOT formal baseline.
+Do not batch-modify them.
 
 ## 5. 证据边界
 
@@ -165,3 +184,46 @@ runtime `CLUSTER_MODE / CLUSTER_MASK` 已支持 AXI-Lite 配置，但这不等�
 - 运行结果
 - 是否满足验收标准
 - 残留风险
+
+## 8. DMA Write Optimization Closure
+
+Phase A, B, B2 completed. 13/13 clean regression PASS.
+
+Phase A: Added write transaction-level counters.
+  - write_data_cycles (WVALID && WREADY)
+  - write_txn_cycles (AW→B transaction window)
+  - Readable at NPU registers 0x88 (PERF_WRITE_DATA_CYC), 0x8C (PERF_WRITE_TXN_CYC).
+
+Phase B: Store-pack first-word optimization (IDLE→CAPTURE direct, saves 1 cycle).
+
+Phase B2: dma_axi_writer W-channel next-beat preload (skid buffer).
+  Eliminated 1-cycle bubble between W beats in burst.
+  Long burst 16-beat:
+    Before: write_transaction_util = 45.71%  (35 txn_cycles, 16 data_cycles)
+    After:  write_transaction_util = 80.00%  (20 txn_cycles, 16 data_cycles)
+    W channel: ~2 cycles/beat → ~1 beat/cycle.
+
+IMPORTANT: 80.00% is AXI write TRANSACTION-level utilization (AW→B window).
+System-level write throughput is still limited by 32-bit acc_buffer/store_pack path.
+Do NOT write "system-level utilization is 80%".
+
+REQ-1 requant testbench failure resolved:
+  Root cause: testbench 32-bit AXI preload (awsize=2) rejected by 256-bit axi4_ram.
+  NOT a requant_i32_to_i8 RTL bug. Formula confirmed correct.
+  Fix: tb_task_requant.v rewritten for 256-bit AXI preload.
+
+Regression: Verilog directed 10/10 PASS, UVM smoke 3/3 PASS, total 13/13.
+
+## 9. Future Work
+
+Phase C (acc_buffer 256-bit widening / 8-bank parallel read): DEFERRED.
+  Reason: write_transaction_util = 80% already achieved.
+  Phase C requires changing acc_buffer organization and all write paths.
+  Evaluate after FPGA synthesis, UVM full regression, and delivery hardening.
+
+Priority order:
+  1. FPGA synthesis / timing check
+  2. UVM full regression
+  3. Coverage flow
+  4. Delivery hardening
+  5. THEN re-evaluate Phase C

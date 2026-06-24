@@ -94,6 +94,43 @@ ResNet-20 当前也已经不再停留在“只做 software handoff”阶段。�
 
 这些能力已经实现，但仍不代表 full ResNet-20 32-task 连续 exact match 已完成。
 
+## DMA Write Optimization
+
+DMA 写通道已完成 Phase A/B/B2 优化：
+
+- Phase A：新增 write transaction-level performance counters。
+  - NPU 可读寄存器：0x88 (PERF_WRITE_DATA_CYC)、0x8C (PERF_WRITE_TXN_CYC)。
+- Phase B：store-pack first-word optimization（首拍等待优化）。
+- Phase B2：dma_axi_writer W-channel next-beat preload / skid buffer。
+  - 消除 W channel burst 内固定 bubble。
+  - 16-beat long burst：write_transaction_util 45.71% → 80.00%。
+  - write_txn_cycles：35 → 20（write_data_cycles = 16 不变）。
+  - W channel 从约 2 cycles/beat 改善为约 1 beat/cycle。
+
+重要说明：
+- 80.00% 是 AXI write TRANSACTION-level utilization（AW→B 窗口内 W beat 占比）。
+- system-level write throughput 仍受 32-bit acc_buffer/store_pack 路径限制。
+- 不要把 80.00% 说成 system-level utilization。
+
+REQ-1 requant testbench 失败已结案：
+- 不是 requant_i32_to_i8 RTL bug。RTL 公式（round-half-away-from-zero + clamp [-128,127]）正确。
+- 根因：testbench 32-bit AXI preload（awsize=2）被 256-bit axi4_ram 拒绝，RAM 读出 X。
+- 修复：tb_task_requant.v 改为 256-bit AXI preload。
+- 修复后 Verilog tb_task_requant PASS，UVM npu_requant_smoke_test PASS。
+
+## 验证状态
+
+Clean regression：13/13 PASS
+
+Verilog directed tests (10/10 PASS)：
+  tb_shared, tb_requant, tb_task_requant, tb_fc, tb_npu_top,
+  tb_dma_writer_backpressure, tb_dma_writer_tail_burst,
+  tb_dma_writer_awlen_wlast, tb_dma_writer_zero_byte,
+  tb_dma_writer_long_burst
+
+UVM smoke tests (3/3 PASS)：
+  npu_conv_smoke_test, npu_fc_smoke_test, npu_requant_smoke_test
+
 ## 不可随意改动的 contract
 
 - LeNet 地址图不变。
@@ -103,6 +140,11 @@ ResNet-20 当前也已经不再停留在“只做 software handoff”阶段。�
 - `acc_buffer -> DMA writer` packing 固定为 `32-bit word -> 256-bit AXI beat`。
 - last-beat `WSTRB` 由实际 byte count 决定。
 - runtime `CLUSTER_MODE / CLUSTER_MASK` 已支持 AXI-Lite 配置，但当前仍是单任务寄存器触发模型，不是 queue / descriptor / shadow config 架构。
+
+AXI Preload 规则：
+  正式 256-bit data-plane testbench 写 axi4_ram 必须使用 256-bit WDATA + AWSIZE=3'd5。
+  已修复：tb_npu_top.v、tb_task_requant.v、tb_task4_shared_mem.v。
+  Legacy tb_task1/2/3/6 系列为 micro 入口，不属 formal baseline，不批量修改。
 
 ## 关键文档入口
 
@@ -192,6 +234,19 @@ make fullset-subsystem-status
 - `Makefile` 是对现有 `sim/*.sh` 的薄封装。
 - `tb_top`、`tb_top_lenet`、`tb_top_cluster_modes` 是正式 SoC 入口。
 - 历史 `tb_task*`、`tb_npu_top`、`tb_fc*` 等只作为 legacy/debug/micro 入口，不能作为正式功能或性能基线。
+
+性能计数器读取（通过 AXI-Lite，基址 0x1000_0000）：
+  - 0x88: PERF_WRITE_DATA_CYC（WVALID && WREADY 周期数）
+  - 0x8C: PERF_WRITE_TXN_CYC（AW→B 事务窗口周期数）
+  - write_transaction_util = PERF_WRITE_DATA_CYC / PERF_WRITE_TXN_CYC
+
+## 已知限制与后续工作
+
+- Phase C (acc_buffer 256-bit widening)：暂缓。当前 write_transaction_util = 80% 已达成。
+  system-level write throughput 仍受 32-bit acc_buffer/store path 限制。
+- FPGA synthesis / timing check：待完成。
+- UVM full regression：待扩展。
+- ResNet/CIFAR end-to-end RTL：不宣称完成。仅 foundation / directed smoke 已实现。
 
 ## 完成标准
 
