@@ -225,6 +225,7 @@ module npu_top #(
     wire [31:0] perf_mac_lo, perf_mac_hi;
     wire [31:0] perf_array_active, perf_array_stall;
     wire [31:0] perf_cluster_active, perf_cluster_stall;
+    wire [31:0] perf_write_data_cycles, perf_write_txn_cycles;
     wire [31:0] perf_cluster_cfg;
 
     wire [31:0] blk_in_addr, blk_wgt_addr, blk_out_addr;
@@ -276,7 +277,9 @@ module npu_top #(
         .perf_mac_lo_i(perf_mac_lo), .perf_mac_hi_i(perf_mac_hi),
         .perf_array_active_i(perf_array_active), .perf_array_stall_i(perf_array_stall),
         .perf_cluster_active_i(perf_cluster_active), .perf_cluster_stall_i(perf_cluster_stall),
-        .perf_cluster_cfg_i(perf_cluster_cfg)
+        .perf_cluster_cfg_i(perf_cluster_cfg),
+        .perf_write_data_cycles_i(perf_write_data_cycles),
+        .perf_write_txn_cycles_i(perf_write_txn_cycles)
     );
 
     assign npu_busy = ctrl_busy;
@@ -377,10 +380,17 @@ module npu_top #(
     reg         dma_wr_start, dma_wr_started;
     reg         block_bank;
     reg  [31:0] dma_wr_addr, dma_wr_bytes;
-    wire        dma_wr_done, dma_wr_error, dma_wr_busy;
+    wire        dma_wr_done, dma_wr_error, dma_wr_busy, dma_wr_txn_active;
     wire [7:0]  dma_wr_error_code;
     wire [AXI_DMA_DATA_W-1:0] dma_wr_data;
     wire        dma_wr_valid, dma_wr_ready;
+
+    // Write-beat FIFO wires (declared before use in dma_axi_writer)
+    wire [255:0] wf_rd_data;
+    wire [31:0]  wf_rd_strb;
+    wire         wf_rd_last;
+    wire         wf_rd_valid, wf_rd_en, wf_rd_empty, wf_wr_full;
+    wire [4:0]   wf_rd_level;
 
     dma_axi_writer #(
         .AXI_DATA_WIDTH(AXI_DMA_DATA_W),
@@ -389,6 +399,8 @@ module npu_top #(
         .clk(clk), .rst_n(rst_n), .start(dma_wr_start),
         .base_addr(dma_wr_addr), .byte_count(dma_wr_bytes),
         .done(dma_wr_done), .error(dma_wr_error), .error_code(dma_wr_error_code), .busy(dma_wr_busy),
+        .write_txn_active(dma_wr_txn_active),
+        .fifo_level(wf_rd_level),
         .data_in(dma_wr_data), .data_valid(dma_wr_valid), .data_ready(dma_wr_ready),
         .m_axi_awaddr(m_axi_awaddr), .m_axi_awvalid(m_axi_awvalid), .m_axi_awready(m_axi_awready),
         .m_axi_awlen(m_axi_awlen), .m_axi_awsize(m_axi_awsize), .m_axi_awburst(m_axi_awburst),
@@ -826,11 +838,14 @@ module npu_top #(
         .array_active(perf_array_active_evt), .array_stall(perf_array_stall_evt),
         .cluster_active_inc(perf_array_active_evt ? perf_cluster_count : 3'd0),
         .cluster_stall_inc(perf_array_stall_evt ? perf_cluster_count : 3'd0),
+        .write_data_cycle(m_axi_wvalid && m_axi_wready),
+        .write_txn_active(dma_wr_txn_active),
         .total_cycle_lo(perf_cycle_lo), .total_cycle_hi(perf_cycle_hi),
         .read_beat_count(perf_read_beats), .write_beat_count(perf_write_beats),
         .read_active_cycles(perf_read_active), .write_active_cycles(perf_write_active),
         .array_active_cycles(perf_array_active), .array_stall_cycles(perf_array_stall),
-        .cluster_active_cycles(perf_cluster_active), .cluster_stall_cycles(perf_cluster_stall)
+        .cluster_active_cycles(perf_cluster_active), .cluster_stall_cycles(perf_cluster_stall),
+        .write_data_cycles(perf_write_data_cycles), .write_txn_cycles(perf_write_txn_cycles)
     );
 
     wire [15:0] fc_tile_capacity_raw = ((BUF_ENTRIES * HB_BEAT_BYTES) / input_c);
@@ -1189,7 +1204,16 @@ module npu_top #(
                          ? acc_partial_addr
                          : dma_rd_ptr;
     assign acc_rd_bank = acc_load_bank;
-    assign dma_wr_data = dma_wr_data_r;
+    assign dma_wr_data  = wf_rd_data;
+    assign dma_wr_valid = wf_rd_valid;
+    assign wf_rd_en     = dma_wr_ready && wf_rd_valid;
+    write_beat_fifo #(16) u_wfifo (
+        .clk,.rst_n,.wr_data(dma_wr_data_r),.wr_strb({32{1'b1}}),.wr_last(1'b0),
+        .wr_en(dma_wr_valid_r),.wr_full(wf_wr_full),
+        .rd_data(wf_rd_data),.rd_strb(wf_rd_strb),.rd_last(wf_rd_last),
+        .rd_valid(wf_rd_valid),.rd_en(wf_rd_en),.rd_empty(wf_rd_empty),
+        .rd_level(wf_rd_level)
+    );
     wire [31:0] store_bytes_active = rq_mode_internal ? rq_store_bytes :
                                      is_add_mode ? output_bytes :
                                      is_gap_mode ? output_bytes :
@@ -1200,7 +1224,6 @@ module npu_top #(
     wire [AXI_DMA_DATA_W-1:0] store_lane_word =
         {{(AXI_DMA_DATA_W-ACC_DATA_W){1'b0}}, acc_rd_data} << (store_pack_lane * ACC_DATA_W);
     wire [AXI_DMA_DATA_W-1:0] store_pack_data_next = store_pack_data | store_lane_word;
-    assign dma_wr_valid = dma_wr_valid_r;
 
     // perf control
     reg task_active_r;
@@ -2093,16 +2116,21 @@ module npu_top #(
                     case (store_pack_state)
                         STORE_PACK_IDLE: begin
                             dma_wr_valid_r <= 1'b0;
-                            dma_rd_ptr <= 0;
-                            store_pack_lane <= 3'd0;
-                            store_word_idx <= 32'd0;
-                            store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
-                            if (dma_wr_started)
-                                store_pack_state <= STORE_PACK_WAIT;
+                            // Reset only on NEW store phase entry
+                            if (!dma_wr_started) begin
+                                dma_rd_ptr <= 0; store_pack_lane <= 3'd0;
+                                store_word_idx <= 32'd0;
+                                store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
+                            end else if (store_word_idx < store_words_active) begin
+                                // Phase B: skip WAIT, go directly to CAPTURE.
+                                // dma_rd_ptr=0 set in FSM_STORE; 1-cycle IDLE pre-fetches first word.
+                                store_pack_state <= STORE_PACK_CAPTURE;
+                            end
                         end
 
                         STORE_PACK_WAIT: begin
-                            store_pack_state <= STORE_PACK_CAPTURE;
+                            if (store_word_idx < store_words_active)
+                                store_pack_state <= STORE_PACK_CAPTURE;
                         end
 
                         STORE_PACK_CAPTURE: begin
@@ -2122,15 +2150,21 @@ module npu_top #(
                                     dma_rd_ptr <= dma_rd_ptr + 1;
                                     store_pack_state <= STORE_PACK_WAIT;
                                 end
+                            end else begin
+                                store_pack_state <= STORE_PACK_IDLE;
                             end
                         end
 
                         STORE_PACK_SEND: begin
-                            if (dma_wr_valid_r && dma_wr_ready) begin
+                            if (!dma_wr_started) begin
+                                store_pack_state <= STORE_PACK_IDLE;
+                            end else if (!wf_wr_full) begin
                                 dma_wr_valid_r <= 1'b0;
                                 if (store_word_idx < store_words_active) begin
                                     dma_rd_ptr <= dma_rd_ptr + 1;
                                     store_pack_state <= STORE_PACK_WAIT;
+                                end else begin
+                                    store_pack_state <= STORE_PACK_IDLE;
                                 end
                             end
                         end

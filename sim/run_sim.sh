@@ -66,6 +66,36 @@ case "$1" in
             tb/unit/tb_cluster_perf_modes.v
         $VVP "$SIMDIR/tb_cluster_perf.vvp"
         ;;
+    tb_dma_writer_zero_byte)
+        $IVERILOG -o "$SIMDIR/tb_dma_writer_zero_byte.vvp" \
+            rtl/npu/dma_axi_writer.v rtl/npu/write_beat_fifo.v \
+            tb/unit/tb_dma_writer_zero_byte.v
+        $VVP "$SIMDIR/tb_dma_writer_zero_byte.vvp"
+        ;;
+    tb_dma_writer_backpressure)
+        $IVERILOG -o "$SIMDIR/tb_dma_writer_backpressure.vvp" \
+            rtl/npu/dma_axi_writer.v rtl/npu/write_beat_fifo.v \
+            tb/unit/tb_dma_writer_wready_backpressure.v
+        $VVP "$SIMDIR/tb_dma_writer_backpressure.vvp"
+        ;;
+    tb_dma_writer_tail_burst)
+        $IVERILOG -o "$SIMDIR/tb_dma_writer_tail_burst.vvp" \
+            rtl/npu/dma_axi_writer.v rtl/npu/write_beat_fifo.v \
+            tb/unit/tb_dma_writer_tail_burst.v
+        $VVP "$SIMDIR/tb_dma_writer_tail_burst.vvp"
+        ;;
+    tb_dma_writer_awlen_wlast)
+        $IVERILOG -o "$SIMDIR/tb_dma_writer_awlen_wlast.vvp" \
+            rtl/npu/dma_axi_writer.v rtl/npu/write_beat_fifo.v \
+            tb/unit/tb_dma_writer_awlen_wlast.v
+        $VVP "$SIMDIR/tb_dma_writer_awlen_wlast.vvp"
+        ;;
+    tb_dma_writer_long_burst)
+        $IVERILOG -o "$SIMDIR/tb_dma_writer_long_burst.vvp" \
+            rtl/npu/dma_axi_writer.v rtl/npu/write_beat_fifo.v rtl/npu/perf_counter.v \
+            tb/unit/tb_dma_writer_long_burst.v
+        $VVP "$SIMDIR/tb_dma_writer_long_burst.vvp"
+        ;;
     tb_top)
         $IVERILOG -o "$SIMDIR/tb_top.vvp" $SOC_RTL $BUS_RTL $NPU_RTL rtl/cpu/picorv32/picorv32.v rtl/soc/top.v tb/integration/tb_top.v
         $VVP "$SIMDIR/tb_top.vvp"

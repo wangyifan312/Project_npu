@@ -19,8 +19,12 @@ module dma_axi_writer #(
     output wire                        error,
     output wire [7:0]                  error_code,
     output wire                        busy,
+    output wire                        write_txn_active,  // high during S_AW|S_WDATA|S_WAIT_B
 
-    // === Data input (from buffer) ===
+    // === FIFO level (delayed AW) ===
+    input  wire [4:0]                  fifo_level,
+
+    // === Data input ===
     input  wire [AXI_DATA_WIDTH-1:0]   data_in,
     input  wire                        data_valid,
     output wire                        data_ready,
@@ -58,12 +62,13 @@ module dma_axi_writer #(
     // ============================================================
     // State machine
     // ============================================================
-    localparam S_IDLE    = 3'd0;
-    localparam S_AW      = 3'd1;  // issuing write address
-    localparam S_WDATA   = 3'd2;  // sending data beats
-    localparam S_WAIT_B  = 3'd3;  // waiting for write response
-    localparam S_DONE    = 3'd4;
-    localparam S_ERROR   = 3'd5;
+    localparam S_IDLE      = 3'd0;
+    localparam S_WAIT_DATA = 3'd6;  // wait for FIFO to fill
+    localparam S_AW        = 3'd1;
+    localparam S_WDATA     = 3'd2;
+    localparam S_WAIT_B    = 3'd3;
+    localparam S_DONE      = 3'd4;
+    localparam S_ERROR     = 3'd5;
 
     reg [2:0] state, next_state;
 
@@ -143,14 +148,38 @@ module dma_axi_writer #(
     reg                      wlast_r;
     reg                      wvalid_r;
 
+    // Phase B2: next-beat preload buffer — eliminates 1-cycle bubble
+    //   next_valid=1 means next_{data,strb,last} holds the beat after current.
+    //   On w_hs: if next_valid, transfer next→wdata_r (wvalid stays 1).
+    //   data_ready = !next_valid || w_hs (accept new beat when buffer free or freeing).
+    reg                      next_valid;
+    reg [AXI_DATA_WIDTH-1:0] next_data;
+    reg [STRB_W-1:0]         next_strb;
+    reg                      next_last;
+
     wire w_hs = m_axi_wvalid && m_axi_wready;
-    wire load_w_beat = (state == S_WDATA) && !wvalid_r && data_valid && !w_done;
+
+    // data_ready: accept upstream data when next buffer is free, OR when w_hs
+    // will consume the current beat and free up the pipeline this cycle.
+    assign data_ready = (state == S_WDATA) && !w_done && (!next_valid || w_hs);
+
+    // next_ready: combinational — true if next beat is/will-be available.
+    // Used by w_hs to decide whether to keep WVALID high after handshake.
+    wire next_ready = next_valid || (data_valid && data_ready);
+
+    // Valid bytes for the beat AFTER the current one (used for next wstrb/wlast)
+    wire [31:0] bytes_sent_next = {24'h0, beat_counter + 8'h1} * BEAT_BYTES;
+    wire [31:0] bytes_left_next = (bytes_remaining <= bytes_sent_next)
+                                  ? 32'h0
+                                  : (bytes_remaining - bytes_sent_next);
+    wire [31:0] valid_bytes_next = (bytes_left_next >= BEAT_BYTES)
+                                   ? BEAT_BYTES
+                                   : bytes_left_next;
 
     assign m_axi_wdata  = wdata_r;
     assign m_axi_wvalid = wvalid_r;
     assign m_axi_wlast  = wlast_r;
     assign m_axi_wstrb  = wstrb_r;
-    assign data_ready   = (state == S_WDATA) && !wvalid_r && !w_done;
 
     // ============================================================
     // AXI4 B channel
@@ -174,12 +203,17 @@ module dma_axi_writer #(
             wstrb_r         <= {STRB_W{1'b0}};
             wlast_r         <= 1'b0;
             wvalid_r        <= 1'b0;
+            next_valid      <= 1'b0;
+            next_data       <= {AXI_DATA_WIDTH{1'b0}};
+            next_strb       <= {STRB_W{1'b0}};
+            next_last       <= 1'b0;
         end else begin
             case (state)
 
                 S_IDLE: begin
-                    wvalid_r <= 1'b0;
-                    wlast_r  <= 1'b0;
+                    wvalid_r   <= 1'b0;
+                    wlast_r    <= 1'b0;
+                    next_valid <= 1'b0;
                     if (start) begin
                         if (byte_count == 32'h0) begin
                             state <= S_DONE;
@@ -193,12 +227,18 @@ module dma_axi_writer #(
                             beat_counter    <= 8'h0;
                             beats_in_burst  <= calc_burst_beats(byte_count);
                             burst_len       <= calc_burst_beats(byte_count) - 8'h1;
-                            state <= S_AW;
+                            state <= S_WAIT_DATA;
                         end
                     end
                 end
 
+                S_WAIT_DATA: begin
+                    if (fifo_level >= {3'd0, beats_in_burst})
+                        state <= S_AW;
+                end
+
                 S_AW: begin
+                    next_valid <= 1'b0;  // discard stale skid from previous burst
                     if (aw_hs) begin
                         aw_done <= 1'b1;
                         state <= S_WDATA;
@@ -206,24 +246,71 @@ module dma_axi_writer #(
                 end
 
                 S_WDATA: begin
-                    if (load_w_beat) begin
-                        wdata_r  <= data_in;
-                        wstrb_r  <= calc_wstrb(valid_bytes_this_beat);
-                        wlast_r  <= (beat_counter == burst_len);
-                        wvalid_r <= 1'b1;
+                    // Phase B2: next-beat preload pipeline -- 1 beat/cycle when FIFO has data.
+                    //   next_valid=1 ⇒ next_{data,strb,last} holds beat after current.
+                    //   On w_hs: transfer next→wdata_r, keep wvalid continuously high.
+                    //   data_ready = !next_valid || w_hs: accept when room or when
+                    //   w_hs frees up next this cycle.
+
+                    // Load from FIFO: two-stage check allows loading main+next in 1 cycle.
+                    if (data_valid) begin
+                        if (!wvalid_r) begin
+                            // Main empty: load directly
+                            wdata_r  <= data_in;
+                            wstrb_r  <= calc_wstrb(valid_bytes_this_beat);
+                            wlast_r  <= (beat_counter == burst_len);
+                            wvalid_r <= 1'b1;
+                        end
+                        // Re-check: after first pop, next entry may be available
+                        if (data_valid) begin
+                            if (wvalid_r && (!next_valid || w_hs)) begin
+                                next_data  <= data_in;
+                                next_strb  <= calc_wstrb(valid_bytes_next);
+                                next_last  <= ((beat_counter + 8'h1) == burst_len);
+                                next_valid <= 1'b1;
+                            end
+                        end
                     end
 
+                    // W channel handshake
+                    // next_ready = next_valid || (data_valid && data_ready)
+                    //   True when next beat IS or WILL-BE available after this cycle.
                     if (w_hs) begin
-                        wvalid_r <= 1'b0;
                         if (wlast_r) begin
-                            // Burst W phase complete
-                            w_done  <= 1'b1;
+                            // Last beat: end W phase, discard stale next buffer
+                            w_done      <= 1'b1;
+                            wvalid_r    <= 1'b0;
+                            next_valid  <= 1'b0;
                             current_addr    <= current_addr + ({24'h0, beats_in_burst} * BEAT_BYTES);
                             bytes_remaining <= remaining_after_burst;
                             state <= S_WAIT_B;
+                        end else if (next_ready) begin
+                            // Transfer next→main: use existing next buffer or in-flight load
+                            if (next_valid) begin
+                                wdata_r <= next_data;
+                                wstrb_r <= next_strb;
+                                wlast_r <= next_last;
+                            end else begin
+                                // In-flight: data_in has the next beat
+                                wdata_r <= data_in;
+                                wstrb_r <= calc_wstrb(valid_bytes_next);
+                                wlast_r <= ((beat_counter + 8'h1) == burst_len);
+                            end
+                            next_valid  <= 1'b0;
+                            beat_counter <= beat_counter + 8'h1;
+                            // wvalid_r stays 1 (continuous!)
                         end else begin
+                            // No preloaded beat: bubble unavoidable
+                            wvalid_r <= 1'b0;
                             beat_counter <= beat_counter + 8'h1;
                         end
+                    end else if (!wvalid_r && next_valid) begin
+                        // Main empty but next has data: promote without handshake
+                        wdata_r     <= next_data;
+                        wstrb_r     <= next_strb;
+                        wlast_r     <= next_last;
+                        wvalid_r    <= 1'b1;
+                        next_valid  <= 1'b0;
                     end
                 end
 
@@ -241,7 +328,7 @@ module dma_axi_writer #(
                             burst_len       <= calc_burst_beats(bytes_remaining) - 8'h1;
                             aw_done         <= 1'b0;
                             w_done          <= 1'b0;
-                            state <= S_AW;
+                            state <= S_WAIT_DATA;
                         end
                     end
                 end
@@ -298,6 +385,7 @@ module dma_axi_writer #(
     end
 
     assign busy       = (state != S_IDLE);
+    assign write_txn_active = (state == S_AW) || (state == S_WDATA) || (state == S_WAIT_B);
     assign done       = done_r;
     assign error      = error_r;
     assign error_code = error_code_r;

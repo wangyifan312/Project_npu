@@ -95,7 +95,9 @@ module npu_ctrl #(
     input  wire [31:0]                 perf_array_stall_i,
     input  wire [31:0]                 perf_cluster_active_i,
     input  wire [31:0]                 perf_cluster_stall_i,
-    input  wire [31:0]                 perf_cluster_cfg_i
+    input  wire [31:0]                 perf_cluster_cfg_i,
+    input  wire [31:0]                 perf_write_data_cycles_i,
+    input  wire [31:0]                 perf_write_txn_cycles_i
 );
 
     // ============================================================
@@ -126,6 +128,8 @@ module npu_ctrl #(
     localparam ADDR_PERF_CLUSTER_ACTIVE = 6'd22;  // 0x58
     localparam ADDR_PERF_CLUSTER_STALL  = 6'd23;  // 0x5C
     localparam ADDR_PERF_CLUSTER_CFG    = 6'd24;  // 0x60
+    localparam ADDR_PERF_WRITE_DATA_CYC = 6'd34;  // 0x88
+    localparam ADDR_PERF_WRITE_TXN_CYC  = 6'd35;  // 0x8C
     localparam ADDR_REQUANT_SEL         = 6'd25;  // 0x64: [1:0]=slot select
     localparam ADDR_REQUANT0_MULT       = 6'd26;  // 0x68
     localparam ADDR_REQUANT0_SHIFT      = 6'd27;  // 0x6C: [5:0]=shift
@@ -224,6 +228,7 @@ module npu_ctrl #(
                 ADDR_PERF_ARRAY_ACTIVE, ADDR_PERF_ARRAY_STALL,
                 ADDR_PERF_MAC_LO, ADDR_PERF_MAC_HI,
                 ADDR_PERF_CLUSTER_ACTIVE, ADDR_PERF_CLUSTER_STALL, ADDR_PERF_CLUSTER_CFG,
+                ADDR_PERF_WRITE_DATA_CYC, ADDR_PERF_WRITE_TXN_CYC,
                 ADDR_REQUANT_SEL,
                 ADDR_REQUANT0_MULT, ADDR_REQUANT0_SHIFT,
                 ADDR_REQUANT1_MULT, ADDR_REQUANT1_SHIFT,
@@ -723,6 +728,8 @@ module npu_ctrl #(
         (rd_addr == ADDR_PERF_CLUSTER_ACTIVE) ? perf_cluster_active_i :
         (rd_addr == ADDR_PERF_CLUSTER_STALL)  ? perf_cluster_stall_i  :
         (rd_addr == ADDR_PERF_CLUSTER_CFG)    ? perf_cluster_cfg_i    :
+        (rd_addr == ADDR_PERF_WRITE_DATA_CYC) ? perf_write_data_cycles_i :
+        (rd_addr == ADDR_PERF_WRITE_TXN_CYC)  ? perf_write_txn_cycles_i  :
         (rd_addr == ADDR_REQUANT0_MULT)      ? cfg_requant_mult[0]   :
         (rd_addr == ADDR_REQUANT0_SHIFT)     ? cfg_requant_shift[0]  :
         (rd_addr == ADDR_REQUANT1_MULT)      ? cfg_requant_mult[1]   :

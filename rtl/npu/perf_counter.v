@@ -22,6 +22,10 @@ module perf_counter (
     input  wire [2:0]  cluster_active_inc,
     input  wire [2:0]  cluster_stall_inc,
 
+    // Write transaction-level counter inputs
+    input  wire        write_data_cycle,     // WVALID && WREADY (per AXI W beat)
+    input  wire        write_txn_active,     // AW handshake -> B handshake window
+
     // Counter outputs (frozen on done/error)
     output wire [31:0] total_cycle_lo,
     output wire [31:0] total_cycle_hi,
@@ -32,7 +36,9 @@ module perf_counter (
     output wire [31:0] array_active_cycles,
     output wire [31:0] array_stall_cycles,
     output wire [31:0] cluster_active_cycles,
-    output wire [31:0] cluster_stall_cycles
+    output wire [31:0] cluster_stall_cycles,
+    output wire [31:0] write_data_cycles,
+    output wire [31:0] write_txn_cycles
 );
 
     // 64-bit cycle counter
@@ -45,6 +51,7 @@ module perf_counter (
     reg [31:0] rd_active_cyc, wr_active_cyc;
     reg [31:0] arr_active_cyc, arr_stall_cyc;
     reg [31:0] cl_active_cyc, cl_stall_cyc;
+    reg [31:0] wr_data_cyc, wr_txn_cyc;
     reg        task_active_d;
 
     wire counting = task_active && !freeze;
@@ -119,6 +126,30 @@ module perf_counter (
         end
     end
 
+    // Write data cycles (WVALID && WREADY)
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            wr_data_cyc <= 32'h0;
+        end else if (task_start_pulse) begin
+            wr_data_cyc <= (!freeze && write_data_cycle) ? 32'd1 : 32'd0;
+        end else if (task_active) begin
+            if (!freeze && write_data_cycle)
+                wr_data_cyc <= wr_data_cyc + 32'd1;
+        end
+    end
+
+    // Write transaction cycles (AW handshake to B handshake window)
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            wr_txn_cyc <= 32'h0;
+        end else if (task_start_pulse) begin
+            wr_txn_cyc <= (!freeze && write_txn_active) ? 32'd1 : 32'd0;
+        end else if (task_active) begin
+            if (!freeze && write_txn_active)
+                wr_txn_cyc <= wr_txn_cyc + 32'd1;
+        end
+    end
+
     // Array active cycles
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -177,5 +208,7 @@ module perf_counter (
     assign array_stall_cycles  = arr_stall_cyc;
     assign cluster_active_cycles = cl_active_cyc;
     assign cluster_stall_cycles  = cl_stall_cyc;
+    assign write_data_cycles     = wr_data_cyc;
+    assign write_txn_cycles      = wr_txn_cyc;
 
 endmodule
