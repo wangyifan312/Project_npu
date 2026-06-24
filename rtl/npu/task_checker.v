@@ -263,10 +263,16 @@ module task_checker #(
         (conv_kernel_sel == 2'd2) && conv_same_pad;
     wire conv_mode_1x1_valid =
         (conv_kernel_sel == 2'd1) && !conv_same_pad;
+    wire conv_mode_3x3_valid =
+        (conv_kernel_sel == 2'd2) && !conv_same_pad && !conv_stride2;
+    wire conv_mode_3x3_stride2 =
+        (conv_kernel_sel == 2'd2) && conv_stride2 && !conv_same_pad;
     wire conv_cfg_supported =
         conv_mode_legacy_5x5_valid_s1 ||
         conv_mode_3x3_same ||
-        conv_mode_1x1_valid;
+        conv_mode_1x1_valid ||
+        conv_mode_3x3_valid ||
+        conv_mode_3x3_stride2;
 
     wire conv_dim_ok =
         conv_cfg_supported &&
