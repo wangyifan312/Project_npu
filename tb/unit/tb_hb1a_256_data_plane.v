@@ -279,6 +279,7 @@ module tb_hb1a_256_data_plane;
     dma_axi_writer #(.AXI_DATA_WIDTH(256), .MAX_BURST_LEN(2)) u_dma_writer (
         .clk(clk), .rst_n(rst_n), .start(wr_start), .base_addr(wr_addr), .byte_count(wr_bytes),
         .done(wr_done), .error(), .error_code(), .busy(wr_busy),
+        .producer_done(1'b0),
         .data_in(wr_data), .data_valid(wr_valid), .data_ready(wr_ready),
         .m_axi_awaddr(wr_awaddr), .m_axi_awvalid(wr_awvalid), .m_axi_awready(ax_awready),
         .m_axi_awlen(wr_awlen), .m_axi_awsize(wr_awsize), .m_axi_awburst(wr_awburst),

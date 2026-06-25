@@ -52,6 +52,7 @@ module tb_dma_writer_tail_burst;
         .done(done), .error(error), .error_code(error_code), .busy(busy),
         .write_txn_active(write_txn_active),
         .fifo_level(fifo_rd_level),
+        .producer_done(1'b0),
         .data_in(fifo_rd_data), .data_valid(fifo_rd_valid), .data_ready(data_ready),
         .m_axi_awaddr(m_axi_awaddr), .m_axi_awvalid(m_axi_awvalid), .m_axi_awready(m_axi_awready),
         .m_axi_awlen(m_axi_awlen), .m_axi_awsize(m_axi_awsize), .m_axi_awburst(m_axi_awburst),

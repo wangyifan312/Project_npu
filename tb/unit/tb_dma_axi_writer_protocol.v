@@ -45,6 +45,7 @@ module tb_dma_axi_writer_protocol;
         .clk(clk), .rst_n(rst_n),
         .start(start), .base_addr(base_addr), .byte_count(byte_count),
         .done(done), .error(error), .error_code(error_code), .busy(busy),
+        .producer_done(1'b0),
         .data_in(data_in), .data_valid(data_valid), .data_ready(data_ready),
         .m_axi_awaddr(awaddr), .m_axi_awvalid(awvalid), .m_axi_awready(awready),
         .m_axi_awlen(awlen), .m_axi_awsize(awsize), .m_axi_awburst(awburst),

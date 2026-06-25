@@ -128,8 +128,8 @@ module npu_ctrl #(
     localparam ADDR_PERF_CLUSTER_ACTIVE = 6'd22;  // 0x58
     localparam ADDR_PERF_CLUSTER_STALL  = 6'd23;  // 0x5C
     localparam ADDR_PERF_CLUSTER_CFG    = 6'd24;  // 0x60
-    localparam ADDR_PERF_WRITE_DATA_CYC = 6'd34;  // 0x88
-    localparam ADDR_PERF_WRITE_TXN_CYC  = 6'd35;  // 0x8C
+    localparam ADDR_PERF_WRITE_DATA_CYC = 6'd52;  // 0xD0
+    localparam ADDR_PERF_WRITE_TXN_CYC  = 6'd53;  // 0xD4
     localparam ADDR_REQUANT_SEL         = 6'd25;  // 0x64: [1:0]=slot select
     localparam ADDR_REQUANT0_MULT       = 6'd26;  // 0x68
     localparam ADDR_REQUANT0_SHIFT      = 6'd27;  // 0x6C: [5:0]=shift
@@ -520,7 +520,7 @@ module npu_ctrl #(
     wire busy_write_violation = write_hs && busy && !error;
     wire busy_start_violation = write_hs && busy && !error && (wr_addr == ADDR_CTRL) && ctrl_write_data[0];
     wire clear_error_write = write_hs && (wr_addr == ADDR_CTRL) && ctrl_write_data[4] && !busy;
-    wire write_new_start = write_hs && (wr_addr == ADDR_CTRL) && ctrl_write_data[0] && !done && !busy && !error;
+    wire write_new_start = write_hs && (wr_addr == ADDR_CTRL) && ctrl_write_data[0] && !busy && !error;
 
     reg checking;
 
@@ -639,6 +639,8 @@ module npu_ctrl #(
                     end
                 endcase
                 task_start_r <= 1'b1;
+                done         <= 1'b0;
+                error        <= 1'b0;
                 busy         <= 1'b1;
                 checking     <= 1'b1;
             end else if (busy_start_violation) begin

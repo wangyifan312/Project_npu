@@ -37,7 +37,7 @@ module tb_dma_writer_zero_byte;
 
     dma_axi_writer #(.AXI_DATA_WIDTH(256), .AXI_ADDR_WIDTH(32), .MAX_BURST_LEN(16)) u_dut (
         .clk,.rst_n,.start,.base_addr,.byte_count,.done,.error,.error_code,.busy,
-        .write_txn_active,.fifo_level(fifo_rd_level),
+        .write_txn_active,.fifo_level(fifo_rd_level),.producer_done(1'b0),
         .data_in(fifo_rd_data),.data_valid(fifo_rd_valid),.data_ready(data_ready),
         .m_axi_awaddr,.m_axi_awvalid,.m_axi_awready,.m_axi_awlen,.m_axi_awsize,.m_axi_awburst,
         .m_axi_wdata,.m_axi_wvalid,.m_axi_wready,.m_axi_wlast,.m_axi_wstrb,

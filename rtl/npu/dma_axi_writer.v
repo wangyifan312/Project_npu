@@ -24,6 +24,9 @@ module dma_axi_writer #(
     // === FIFO level (delayed AW) ===
     input  wire [4:0]                  fifo_level,
 
+    // === Producer done (no more data will arrive) ===
+    input  wire                        producer_done,
+
     // === Data input ===
     input  wire [AXI_DATA_WIDTH-1:0]   data_in,
     input  wire                        data_valid,
@@ -235,6 +238,11 @@ module dma_axi_writer #(
                 S_WAIT_DATA: begin
                     if (fifo_level >= {3'd0, beats_in_burst})
                         state <= S_AW;
+                    else if (producer_done && (fifo_level > 5'd0)) begin
+                        beats_in_burst <= {3'd0, fifo_level};
+                        burst_len      <= {3'd0, fifo_level} - 8'h1;
+                        state <= S_AW;
+                    end
                 end
 
                 S_AW: begin

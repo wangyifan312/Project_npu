@@ -392,6 +392,9 @@ module npu_top #(
     wire         wf_rd_valid, wf_rd_en, wf_rd_empty, wf_wr_full;
     wire [4:0]   wf_rd_level;
 
+    // producer_done: declared here, assigned after store_words_active definition
+    wire dma_producer_done;
+
     dma_axi_writer #(
         .AXI_DATA_WIDTH(AXI_DMA_DATA_W),
         .AXI_ADDR_WIDTH(AXI_ADDR_W)
@@ -401,6 +404,7 @@ module npu_top #(
         .done(dma_wr_done), .error(dma_wr_error), .error_code(dma_wr_error_code), .busy(dma_wr_busy),
         .write_txn_active(dma_wr_txn_active),
         .fifo_level(wf_rd_level),
+        .producer_done(dma_producer_done),
         .data_in(dma_wr_data), .data_valid(dma_wr_valid), .data_ready(dma_wr_ready),
         .m_axi_awaddr(m_axi_awaddr), .m_axi_awvalid(m_axi_awvalid), .m_axi_awready(m_axi_awready),
         .m_axi_awlen(m_axi_awlen), .m_axi_awsize(m_axi_awsize), .m_axi_awburst(m_axi_awburst),
@@ -1221,6 +1225,15 @@ module npu_top #(
                                      is_requant_mode ? rq_store_bytes :
                                                        blk_out_bytes;
     wire [31:0] store_words_active = (store_bytes_active + 32'd3) >> 2;
+
+    // producer_done: asserted when store_pack finishes producing all words for the
+    // current store phase. The DMA writer uses this to avoid hanging in S_WAIT_DATA
+    // when the remaining FIFO data is less than the calculated burst size.
+    assign dma_producer_done = (fsm_state == FSM_STORE) &&
+                                (store_pack_state == STORE_PACK_IDLE) &&
+                                dma_wr_started &&
+                                (store_word_idx >= store_words_active);
+
     wire [AXI_DMA_DATA_W-1:0] store_lane_word =
         {{(AXI_DMA_DATA_W-ACC_DATA_W){1'b0}}, acc_rd_data} << (store_pack_lane * ACC_DATA_W);
     wire [AXI_DMA_DATA_W-1:0] store_pack_data_next = store_pack_data | store_lane_word;

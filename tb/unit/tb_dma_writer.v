@@ -55,6 +55,7 @@ module tb_dma_writer;
         .error         (dma_error),
         .error_code    (dma_error_code),
         .busy          (dma_busy),
+        .producer_done (1'b0),
         .data_in       (tx_data),
         .data_valid    (tx_valid),
         .data_ready    (tx_ready),

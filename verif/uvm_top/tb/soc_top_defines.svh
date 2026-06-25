@@ -147,6 +147,18 @@
 `define NPU_REG_CAPABILITY        (`SOC_NPU_REG_BASE + 32'h94)
 
 //-----------------------------------------------------------------------------
+// Write DMA performance counters (RO)
+// Moved from 0x88/0x8C to 0xD0/0xD4 to resolve address conflict with
+// NPU_REG_CLUSTER_MODE (0x88) and NPU_REG_CLUSTER_MASK (0x8C).
+//-----------------------------------------------------------------------------
+
+// Offset 52: Write data cycles (RO)
+`define NPU_REG_PERF_WRITE_DATA_CYC (`SOC_NPU_REG_BASE + 32'hD0)
+
+// Offset 53: Write txn cycles (RO)
+`define NPU_REG_PERF_WRITE_TXN_CYC  (`SOC_NPU_REG_BASE + 32'hD4)
+
+//-----------------------------------------------------------------------------
 // Extended task parameters (RW)
 //-----------------------------------------------------------------------------
 
