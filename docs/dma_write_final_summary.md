@@ -9,7 +9,7 @@
 
 ### Phase A: Write Transaction Utilization Statistics
 - `rtl/npu/perf_counter.v`: +2 counters (`write_data_cycles`, `write_txn_cycles`)
-- `rtl/npu/npu_ctrl.v`: +2 readable registers at 0x88/0x8C
+- `rtl/npu/npu_ctrl.v`: +2 readable registers at 0xD0/0xD4 (originally 0x88/0x8C, moved in subsequent control-plane fix)
 - `rtl/npu/dma_axi_writer.v`: +1 `write_txn_active` output port
 - `rtl/npu/npu_top.v`: signal wiring
 
@@ -44,7 +44,7 @@
 
 ---
 
-## 3. 回归结果 (13/13 PASS)
+## 3. 回归结果 (DMA regression: 10 directed + 3 smoke PASS)
 
 ### Verilog Directed Tests
 
@@ -90,7 +90,7 @@ Legacy `tb_task*` 系列按 CLAUDE.md 归类为 "legacy/debug/micro 入口，不
 dma_axi_writer: Phase B2 W-channel skid buffer (80% transaction utilization)
 npu_top: Phase B store-pack first-word optimization
 perf_counter: add write_data_cycles/write_txn_cycles counters
-npu_ctrl: add perf registers at 0x88/0x8C
+npu_ctrl: add perf registers (now 0xD0/0xD4, originally 0x88/0x8C)
 sim/run_sim.sh: add DMA writer directed test entries
 
 New tests:

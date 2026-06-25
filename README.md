@@ -99,7 +99,8 @@ ResNet-20 当前也已经不再停留在“只做 software handoff”阶段。�
 DMA 写通道已完成 Phase A/B/B2 优化：
 
 - Phase A：新增 write transaction-level performance counters。
-  - NPU 可读寄存器：0x88 (PERF_WRITE_DATA_CYC)、0x8C (PERF_WRITE_TXN_CYC)。
+  - NPU 可读寄存器：0xD0 (PERF_WRITE_DATA_CYC)、0xD4 (PERF_WRITE_TXN_CYC)。
+  - 0x88 = CLUSTER_MODE (RW)、0x8C = CLUSTER_MASK (RW)。
 - Phase B：store-pack first-word optimization（首拍等待优化）。
 - Phase B2：dma_axi_writer W-channel next-beat preload / skid buffer。
   - 消除 W channel burst 内固定 bubble。
@@ -120,7 +121,7 @@ REQ-1 requant testbench 失败已结案：
 
 ## 验证状态
 
-Clean regression：13/13 PASS
+DMA regression：10/10 Verilog directed + 3/3 UVM smoke PASS
 
 Verilog directed tests (10/10 PASS)：
   tb_shared, tb_requant, tb_task_requant, tb_fc, tb_npu_top,
@@ -130,6 +131,27 @@ Verilog directed tests (10/10 PASS)：
 
 UVM smoke tests (3/3 PASS)：
   npu_conv_smoke_test, npu_fc_smoke_test, npu_requant_smoke_test
+
+Structural UVM tests (5/5 PASS，全部 FC 基底，output-compare 验证）：
+  npu_fc_16x16_full_array_test, npu_fc_full_cluster_96out_test,
+  npu_cluster_mask_sweep_test, npu_perf_counter_scaling_test,
+  npu_back_to_back_task_test
+
+Structural closure total：8/8 PASS（3 smoke + 5 structural）
+npu_cluster_mode_test：1/4 PASS（pre-existing Conv multi-cluster mismatch，
+  详见 docs/known_issues/conv_multicluster_mismatch.md）
+
+### Back-to-Back Task Execution
+
+npu_ctrl.v 已修复 back-to-back：写入 CTRL bit[0]=1 时若 NPU idle，RTL 自动
+清除 done/error 标志并启动新任务。不再需要先写 CTRL=0x10 再写 CTRL=0x01。
+UVM npu_start_poll_seq 已简化为单次 CTRL=1 写入。
+
+### Sticky Probe 机制
+
+soc_probe_if 在 NPU busy 窗口内对 cluster busy/enable/tile 信号做 OR-累积
+（sticky probe）。每次任务前清零。用于证明集群/PE tile 在任务期间的活跃性，
+不等同于实时逐拍采样。
 
 ## 不可随意改动的 contract
 
@@ -236,8 +258,10 @@ make fullset-subsystem-status
 - 历史 `tb_task*`、`tb_npu_top`、`tb_fc*` 等只作为 legacy/debug/micro 入口，不能作为正式功能或性能基线。
 
 性能计数器读取（通过 AXI-Lite，基址 0x1000_0000）：
-  - 0x88: PERF_WRITE_DATA_CYC（WVALID && WREADY 周期数）
-  - 0x8C: PERF_WRITE_TXN_CYC（AW→B 事务窗口周期数）
+  - 0xD0: PERF_WRITE_DATA_CYC（WVALID && WREADY 周期数）
+  - 0xD4: PERF_WRITE_TXN_CYC（AW→B 事务窗口周期数）
+  - 0x88: CLUSTER_MODE（RW）
+  - 0x8C: CLUSTER_MASK（RW）
   - write_transaction_util = PERF_WRITE_DATA_CYC / PERF_WRITE_TXN_CYC
 
 ## 已知限制与后续工作

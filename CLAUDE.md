@@ -187,12 +187,17 @@ Do not batch-modify them.
 
 ## 8. DMA Write Optimization Closure
 
-Phase A, B, B2 completed. 13/13 clean regression PASS.
+Phase A, B, B2 completed. DMA regression 13/13 PASS (10 Verilog directed + 3 UVM smoke).
+Structural UVM regression: 5/5 new structural tests PASS, structural+smoke closure 8/8 PASS.
+Conv diagnostic tests: 2/2 PASS (single/dual-cluster Conv verified).
+npu_cluster_mode_test: 4/4 PASS (RESOLVED — root cause was back-to-back start bug in npu_ctrl.v, not Conv multi-cluster mapping. See docs/known_issues/conv_multicluster_mismatch.md).
+Conv multi-window spatial output drain hang: RESOLVED — root cause DMA writer S_WAIT_DATA tail-burst deadlock (dma_axi_writer.v + npu_top.v, 2026-06-25). Hang A (conv_frontend lb_base_row) confirmed harmless.
 
 Phase A: Added write transaction-level counters.
   - write_data_cycles (WVALID && WREADY)
   - write_txn_cycles (AW→B transaction window)
-  - Readable at NPU registers 0x88 (PERF_WRITE_DATA_CYC), 0x8C (PERF_WRITE_TXN_CYC).
+  - Readable at NPU registers 0xD0 (PERF_WRITE_DATA_CYC), 0xD4 (PERF_WRITE_TXN_CYC).
+  - 0x88 = CLUSTER_MODE (RW), 0x8C = CLUSTER_MASK (RW).
 
 Phase B: Store-pack first-word optimization (IDLE→CAPTURE direct, saves 1 cycle).
 
@@ -212,7 +217,45 @@ REQ-1 requant testbench failure resolved:
   NOT a requant_i32_to_i8 RTL bug. Formula confirmed correct.
   Fix: tb_task_requant.v rewritten for 256-bit AXI preload.
 
-Regression: Verilog directed 10/10 PASS, UVM smoke 3/3 PASS, total 13/13.
+### Back-to-Back Task Execution
+
+npu_ctrl.v back-to-back fix: Writing CTRL bit[0]=1 while idle now auto-clears
+done/error flags. Back-to-back task execution no longer requires an explicit
+CTRL=0x10 (clear done/error) write before CTRL=0x01 (start). A single CTRL=1
+write is sufficient; the RTL auto-clears done/error and starts the new task.
+UVM npu_start_poll_seq simplified accordingly (workaround removed).
+
+### Structural UVM Regression
+
+5 new structural UVM tests added (all FC-based, output-compare verified):
+
+- npu_fc_16x16_full_array_test: Single-cluster 16x16 FC. Sticky probe verifies
+  cluster0 busy=1, enable=1, tile clock enable active during NPU busy window.
+  Output 64 bytes matched vs DPI-C golden.
+
+- npu_fc_full_cluster_96out_test: 6-cluster 96-output FC. Sticky probe verifies
+  all 6 clusters simultaneously active (enable=111111, all_active=1).
+  Output 384 bytes (96 INT32) matched.
+
+- npu_cluster_mask_sweep_test: 4 modes (single/dual/full/mask).
+  Sticky mask matches expected per mode. All 4 output compares PASS.
+
+- npu_perf_counter_scaling_test: 3 configs (1/2/6 clusters, identical workload).
+  Counters non-zero across all configs. Reads use new 0xD0/0xD4 addresses.
+
+- npu_back_to_back_task_test: Two sequential tasks without explicit clear.
+  Both outputs independently verified, no stale contamination.
+
+Sticky probe mechanism: soc_probe_if OR-accumulates cluster busy/enable/tile
+signals during NPU busy window. Cleared before each task. Provides evidence
+that clusters/tiles were active at some point during the task, even if not
+simultaneously sampled.
+
+Structural UVM tests: 5/5 PASS.
+Existing UVM smoke regression: 3/3 PASS.
+Structural closure total: 8/8 PASS.
+npu_cluster_mode_test: 1/4 PASS (pre-existing Conv multi-cluster mismatch,
+  tracked in docs/known_issues/conv_multicluster_mismatch.md).
 
 ## 9. Future Work
 
