@@ -180,9 +180,33 @@ package soc_top_uvm_pkg;
   `include "npu_bandwidth_test.sv"
 
   //---------------------------------------------------------------------------
+  // Structural UVM tests — cluster array, mask, perf scaling, back-to-back
+  //---------------------------------------------------------------------------
+  `include "npu_fc_16x16_full_array_test.sv"
+  `include "npu_fc_full_cluster_96out_test.sv"
+  `include "npu_cluster_mask_sweep_test.sv"
+  `include "npu_perf_counter_scaling_test.sv"
+  `include "npu_back_to_back_task_test.sv"
+
+  //---------------------------------------------------------------------------
   // Network pipeline tests
   //---------------------------------------------------------------------------
   `include "npu_lenet_1_test.sv"
+
+  //---------------------------------------------------------------------------
+  // Diagnostic tests — Conv multi-cluster mismatch fingerprinting
+  //---------------------------------------------------------------------------
+  `include "npu_conv_1x1_single_16oc_diag_test.sv"
+  `include "npu_conv_1x1_dual_32oc_diag_test.sv"
+  `include "npu_conv_1x1_full_96oc_diag_test.sv"
+
+  //---------------------------------------------------------------------------
+  // Agent B: Conv frontend hang diagnostic tests
+  //---------------------------------------------------------------------------
+  `include "npu_conv_1x1_multiwindow_diag_test.sv"
+  `include "npu_conv_3x3_multiwindow_diag_test.sv"
+  `include "npu_conv_5x5_singlewindow_diag_test.sv"
+  `include "npu_conv_1x1_fullcluster_multiwindow_diag_test.sv"
 
 endpackage
 

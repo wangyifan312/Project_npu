@@ -12,6 +12,7 @@ class soc_base_test extends uvm_test;
   `uvm_component_utils(soc_base_test)
 
   soc_top_env env;
+  virtual soc_probe_if probe_vif;
 
   function new(string name = "soc_base_test", uvm_component parent = null);
     super.new(name, parent);
@@ -20,6 +21,10 @@ class soc_base_test extends uvm_test;
   function void build_phase(uvm_phase phase);
     soc_top_env_cfg env_cfg;
     super.build_phase(phase);
+
+    // Retrieve probe virtual interface for hierarchical observation
+    if (!uvm_config_db#(virtual soc_probe_if)::get(this, "", "probe_vif", probe_vif))
+      `uvm_fatal("BASE_TEST", "Virtual soc_probe_if not found in config_db")
 
     // Create environment configuration with all monitors enabled for debuggability
     env_cfg = soc_top_env_cfg::type_id::create("env_cfg");
@@ -37,5 +42,11 @@ class soc_base_test extends uvm_test;
     `uvm_info("TEST", "UVM testbench topology:", UVM_NONE)
     uvm_top.print_topology();
   endfunction
+
+  // Clear sticky probe observation fields before starting a new task.
+  // Delegates to the interface's built-in clear function for simulator portability.
+  task clear_probe_sticky();
+    probe_vif.clear_sticky();
+  endtask
 
 endclass

@@ -109,6 +109,41 @@ module tb_soc_top_uvm;
   assign probe_vif.npu_dma_wr_txn_active = u_top.u_npu.dma_wr_txn_active;
 
   //-----------------------------------------------------------------------------
+  // Cluster / tile activity probes (passive hierarchical observation)
+  //-----------------------------------------------------------------------------
+  assign probe_vif.npu_cluster_busy   = u_top.u_npu.cluster_busy;
+  assign probe_vif.npu_cluster_valid  = u_top.u_npu.cluster_valid;
+  assign probe_vif.npu_cluster_done   = u_top.u_npu.cluster_done;
+  assign probe_vif.npu_cluster_enable = u_top.u_npu.perf_cluster_enable;
+  assign probe_vif.npu_cluster_count  = u_top.u_npu.perf_cluster_count;
+  assign probe_vif.npu_fsm_state      = u_top.u_npu.fsm_state;
+  assign probe_vif.npu_task_type      = u_top.u_npu.task_type;
+
+  // Tile clock enables: CLUSTER_COUNT * N_TILES = 6 * 256 = 1536
+  assign probe_vif.npu_cluster_tile_clk_en_flat =
+    u_top.u_npu.cluster_tile_clk_en_all_flat;
+
+  //-----------------------------------------------------------------------------
+  // Sticky cluster activity sampling during NPU busy window
+  // Read-only: OR-accumulates probe signals into sticky observation fields.
+  // Cleared by test via probe_vif.clear_sticky() before each new task.
+  //-----------------------------------------------------------------------------
+  always @(posedge clk) begin
+    if (u_top.u_npu.dma_wr_busy || (|u_top.u_npu.cluster_busy)) begin
+      probe_vif.observed_cluster_busy_mask   <= probe_vif.observed_cluster_busy_mask   | probe_vif.npu_cluster_busy;
+      probe_vif.observed_cluster_valid_mask  <= probe_vif.observed_cluster_valid_mask  | probe_vif.npu_cluster_valid;
+      probe_vif.observed_cluster_done_mask   <= probe_vif.observed_cluster_done_mask   | probe_vif.npu_cluster_done;
+      probe_vif.observed_cluster_enable_mask <= probe_vif.observed_cluster_enable_mask | probe_vif.npu_cluster_enable;
+      // Check if any tiles in cluster0 are clock-enabled (OR of 256 bits)
+      if (|u_top.u_npu.cluster_tile_clk_en_all_flat[255:0])
+        probe_vif.observed_tile_all_on <= 1'b1;
+      // Check if all 6 clusters busy simultaneously
+      if (&u_top.u_npu.cluster_busy[5:0])
+        probe_vif.observed_all_clusters_active <= 1'b1;
+    end
+  end
+
+  //-----------------------------------------------------------------------------
   // Clock generation: 200 MHz => 2.5 ns half-period
   //-----------------------------------------------------------------------------
   always #2.5 clk = ~clk;

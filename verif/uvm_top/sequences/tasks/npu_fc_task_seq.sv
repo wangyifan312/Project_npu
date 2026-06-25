@@ -26,6 +26,7 @@ class npu_fc_task_seq extends soc_base_seq;
   bit [15:0] input_c;
   bit [15:0] output_c;
   bit [1:0]  cluster_mode;
+  bit [5:0]  cluster_mask;
   byte unsigned input_data[];
   byte unsigned weight_data[];
 
@@ -43,6 +44,7 @@ class npu_fc_task_seq extends soc_base_seq;
     input_c      = 16'd4;
     output_c     = 16'd2;
     cluster_mode = 2'd2;
+    cluster_mask = 6'h3F;
     expected_output_bytes = 8;
     done  = 1'b0;
     error = 1'b0;
@@ -85,6 +87,7 @@ class npu_fc_task_seq extends soc_base_seq;
     cfg_seq.relu_en      = 1'b0;
     cfg_seq.pool_en      = 1'b0;
     cfg_seq.cluster_mode = cluster_mode;
+    cfg_seq.cluster_mask = cluster_mask;
     cfg_seq.start(m_sequencer);
 
     `uvm_info("FC_TASK", "=== FC Task: Starting/Polling ===", UVM_NONE)

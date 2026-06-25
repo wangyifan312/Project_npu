@@ -22,7 +22,9 @@ class npu_start_poll_seq extends soc_base_seq;
     int i;
 
     `uvm_info("NPU_START", "Starting NPU task...", UVM_MEDIUM)
-    axil_write32(`NPU_REG_CTRL, 32'h1);
+
+    // Start task. npu_ctrl now auto-clears done/error when CTRL bit[0]=1.
+    axil_write32(`NPU_REG_CTRL, 32'h1);    // start task (auto-clears done/error)
 
     for (i = 0; i < timeout_cycles; i++) begin
       axil_read32(`NPU_REG_CTRL, rd);
