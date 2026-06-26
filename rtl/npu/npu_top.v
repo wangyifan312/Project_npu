@@ -172,6 +172,15 @@ module npu_top #(
     reg [31:0] wgt_load_phase;
     reg        wgt_load_wait;
 
+    // Phase 2: FC shadow weight register — loaded during compute,
+    // then swapped into wgt_load_reg after chunk completes
+    reg [WGT_REG_BITS-1:0] wgt_load_reg_shadow;
+    reg        fc_shadow_active;
+    reg [31:0] fc_shadow_phase;
+    reg [15:0] fc_shadow_in_base;
+    reg [15:0] fc_shadow_chunk_inputs;
+    reg        fc_shadow_wait;
+
     // ============================================================
     // npu_ctrl signals
     // ============================================================
@@ -467,6 +476,12 @@ module npu_top #(
     reg  [15:0] wgt_preload_cin;
     reg  [4:0]  wgt_preload_byte_offset;
     reg wgt_buf_flush;
+    // FC ping-pong weight DMA preload (Phase 1)
+    reg        fc_preload_active;
+    reg        fc_preload_done;
+    reg        fc_preload_bank;
+    reg [15:0] fc_preload_out_start;
+    reg [15:0] fc_preload_tile_outputs;
     npu_buffer #(.DATA_WIDTH(BUF_DATA_W), .ENTRIES(BUF_ENTRIES), .ADDR_WIDTH(BUF_ADDR_W))
     u_wgt_buffer (
         .clk(clk), .rst_n(rst_n),
@@ -1037,9 +1052,20 @@ module npu_top #(
     wire [31:0] bias_word = hb_beat_word(wgt_rd_data, bias_word_sel);
     wire [BUF_ADDR_W-1:0] rq_acc_rd_addr = rq_src_idx[BUF_ADDR_W-1:0];
 
+    // Phase 2: shadow-load buffer address (during FC compute)
+    wire [31:0] fc_shadow_out_idx_w = (fc_shadow_chunk_inputs == 16'd0) ? 32'd0 :
+                                       (fc_shadow_phase / {16'd0, fc_shadow_chunk_inputs});
+    wire [31:0] fc_shadow_row_idx_w = (fc_shadow_chunk_inputs == 16'd0) ? 32'd0 :
+                                       (fc_shadow_phase % {16'd0, fc_shadow_chunk_inputs});
+    wire [31:0] fc_shadow_buf_byte_idx = fc_shadow_out_idx_w * {16'd0, input_c} +
+                                          {16'd0, fc_shadow_in_base} + fc_shadow_row_idx_w;
+    wire [31:0] fc_shadow_dma_byte_idx = fc_shadow_buf_byte_idx + {27'd0, wgt_dma_byte_offset};
+    wire [BUF_ADDR_W-1:0] fc_shadow_beat_addr = fc_shadow_dma_byte_idx[BUF_ADDR_W+4:5];
+
     assign wgt_rd_addr  = (fsm_state == FSM_BIAS_EXTRACT) ? bias_beat_addr :
                           (fsm_state == FSM_ADD_COMPUTE) ? add_src_beat_addr :
                           (is_fc_mode && (fsm_state == FSM_LOAD_ARRAY)) ? fc_weight_beat_addr :
+                          (fc_shadow_active) ? fc_shadow_beat_addr :
                           wgt_mac_addr;
     assign wgt_rd_bank  = wgt_consume_bank;
 
@@ -1344,6 +1370,10 @@ module npu_top #(
             dma_wr_valid_r <= 1'b0;
             wgt_load_phase <= 32'd0; wgt_load_wait <= 1'b0; wgt_load_done_r <= 1'b0;
             wgt_load_reg <= 0;
+            wgt_load_reg_shadow <= 0;
+            fc_shadow_active <= 1'b0; fc_shadow_phase <= 32'd0;
+            fc_shadow_in_base <= 16'd0; fc_shadow_chunk_inputs <= 16'd0;
+            fc_shadow_wait <= 1'b0;
             wgt_buf_flush <= 1'b0;
             act_load_start <= 1'b0; act_load_done <= 1'b0;
             act_comp_start <= 1'b0; act_comp_done <= 1'b0;
@@ -1352,6 +1382,8 @@ module npu_top #(
             wgt_consume_bank <= 1'b0;
             wgt_preload_active <= 1'b0; wgt_preload_done <= 1'b0; wgt_preload_bank <= 1'b0;
             wgt_preload_cin <= 16'd0; wgt_preload_byte_offset <= 5'd0;
+            fc_preload_active <= 1'b0; fc_preload_done <= 1'b0; fc_preload_bank <= 1'b0;
+            fc_preload_out_start <= 16'd0; fc_preload_tile_outputs <= 16'd0;
             acc_load_start <= 1'b0; acc_load_done <= 1'b0;
             acc_comp_start <= 1'b0; acc_comp_done <= 1'b0;
             acc_load_bank <= 1'b0; acc_comp_bank <= 1'b0;
@@ -1440,6 +1472,7 @@ module npu_top #(
                         wgt_load_phase <= 32'd0; wgt_load_done_r <= 1'b0;
                         wgt_preload_active <= 1'b0; wgt_preload_done <= 1'b0;
                         wgt_load_reg <= 0; blk_done <= 1'b0;
+                        fc_preload_active <= 1'b0; fc_preload_done <= 1'b0;
                         fsm_state <= FSM_TASK_SETUP;
                     end
                 end
@@ -1821,13 +1854,36 @@ module npu_top #(
                     fc_in_base <= 16'd0;
                     fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
                     dma_rd_ptr <= 0;
-                    wgt_buf_flush <= 1'b1;
-                    if (bias_enabled) begin
-                        bias_load_words <= {16'd0, fc_tile_outputs_next};
-                        bias_return_state <= FSM_FC_LOAD_WGT;
-                        fsm_state <= FSM_LOAD_BIAS;
+                    // Phase 1: check if next tile's weight DMA is in progress
+                    if (fc_preload_active) begin
+                        // Still loading — stay here until DMA completes
+                        ; // do nothing, wait for fc_preload_done in FSM_COMPUTE
+                    end else if (fc_preload_done && (fc_preload_out_start == fc_out_start) &&
+                        (fc_preload_tile_outputs >= fc_tile_outputs_next)) begin
+                        // Use preloaded weight bank — skip weight DMA entirely
+                        wgt_load_bank <= fc_preload_bank;
+                        wgt_consume_bank <= fc_preload_bank;
+                        fc_preload_done <= 1'b0;
+                        wgt_load_phase <= 32'd0;
+                        wgt_load_wait <= 1'b1;
+                        wgt_load_reg <= 0;
+                        if (bias_enabled) begin
+                            bias_load_words <= {16'd0, fc_tile_outputs_next};
+                            bias_return_state <= FSM_LOAD_ARRAY;
+                            fsm_state <= FSM_LOAD_BIAS;
+                        end else begin
+                            fsm_state <= FSM_LOAD_ARRAY;
+                        end
                     end else begin
-                        fsm_state <= FSM_FC_LOAD_WGT;
+                        // No preload — do fresh weight DMA (first tile or last)
+                        wgt_buf_flush <= 1'b1;
+                        if (bias_enabled) begin
+                            bias_load_words <= {16'd0, fc_tile_outputs_next};
+                            bias_return_state <= FSM_FC_LOAD_WGT;
+                            fsm_state <= FSM_LOAD_BIAS;
+                        end else begin
+                            fsm_state <= FSM_FC_LOAD_WGT;
+                        end
                     end
                 end
 
@@ -2072,6 +2128,16 @@ module npu_top #(
                     comp_feed_cnt <= 7'd0;
                     comp_drain_cnt <= 16'd0;
                     comp_sub_state <= is_fc_mode ? CP_FEED_ACT : CP_WAIT_WIN;
+                    // Phase 2: trigger shadow load for next FC chunk
+                    if (is_fc_mode && (fc_in_base + fc_chunk_inputs < input_c)) begin
+                        fc_shadow_active  <= 1'b1;
+                        fc_shadow_phase   <= 32'd0;
+                        fc_shadow_in_base <= fc_in_base + fc_chunk_inputs;
+                        fc_shadow_chunk_inputs <= ((input_c - (fc_in_base + fc_chunk_inputs)) > PE_ROWS_16) ?
+                                                   PE_ROWS_16 :
+                                                   (input_c - (fc_in_base + fc_chunk_inputs));
+                        fc_shadow_wait <= 1'b1;
+                    end
                     fsm_state <= FSM_COMPUTE;
                 end
 
@@ -2079,6 +2145,7 @@ module npu_top #(
                 // FSM_COMPUTE: process all spatial windows for current c_in
                 // ============================================================
                 FSM_COMPUTE: begin
+                    // Conv preload: next channel weight DMA during current compute
                     if (wgt_preload_active && wgt_dma_done) begin
                         wgt_load_done <= 1'b1;
                         wgt_preload_active <= 1'b0;
@@ -2086,6 +2153,15 @@ module npu_top #(
                     end else if (wgt_preload_active && wgt_dma_error) begin
                         task_error_r <= 1'b1; task_error_code_r <= wgt_dma_error_code;
                         wgt_preload_active <= 1'b0;
+                        fsm_state <= FSM_ERROR;
+                    // FC Phase 1: check FC preload DMA completion
+                    end else if (fc_preload_active && wgt_dma_done) begin
+                        wgt_load_done <= 1'b1;
+                        fc_preload_active <= 1'b0;
+                        fc_preload_done  <= 1'b1;
+                    end else if (fc_preload_active && wgt_dma_error) begin
+                        task_error_r <= 1'b1; task_error_code_r <= wgt_dma_error_code;
+                        fc_preload_active <= 1'b0;
                         fsm_state <= FSM_ERROR;
                     end else begin
                     if (is_conv_mode && (comp_sub_state == CP_COLLECT) && !acc_collect_wait &&
@@ -2100,6 +2176,22 @@ module npu_top #(
                         wgt_dma_addr <= {conv_next_wgt_dma_base[31:5], 5'b0};
                         wgt_dma_byte_offset <= conv_next_wgt_dma_base[4:0];
                         wgt_dma_bytes <= conv_wgt_valid_bytes + {27'd0, conv_next_wgt_dma_base[4:0]};
+                        wgt_load_start <= 1'b1;
+                    // Phase 1: FC tile preload trigger — start DMA for next tile
+                    // during early compute of current tile
+                    end else if (is_fc_mode &&
+                                 !fc_preload_active && !fc_preload_done &&
+                                 (fc_out_start + fc_tile_outputs < output_c)) begin
+                        fc_preload_active  <= 1'b1;
+                        fc_preload_bank    <= ~wgt_consume_bank;
+                        fc_preload_out_start <= fc_out_start + fc_tile_outputs;
+                        fc_preload_tile_outputs <= ((output_c - (fc_out_start + fc_tile_outputs)) > fc_tile_capacity) ?
+                                                    fc_tile_capacity : (output_c - (fc_out_start + fc_tile_outputs));
+                        wgt_load_bank <= ~wgt_consume_bank;
+                        wgt_dma_start <= 1'b1;
+                        wgt_dma_addr <= {((blk_wgt_addr + (fc_out_start + fc_tile_outputs) * input_c) >> 5), 5'b0};
+                        wgt_dma_byte_offset <= 5'd0;
+                        wgt_dma_bytes <= fc_preload_tile_outputs * input_c;
                         wgt_load_start <= 1'b1;
                     end
                     case (comp_sub_state)
@@ -2235,14 +2327,24 @@ module npu_top #(
                                 acc_collect_skip_write <= 1'b0;
                                 if (is_fc_mode) begin
                                     if (fc_in_base + fc_chunk_inputs < input_c) begin
+                                        // Phase 2: swap shadow register into wgt_load_reg
+                                        // (bypasses the 128-cycle FSM_LOAD_ARRAY)
                                         fc_in_base <= fc_in_base + fc_chunk_inputs;
                                         fc_chunk_inputs <= ((input_c - (fc_in_base + fc_chunk_inputs)) > PE_ROWS_16) ?
                                                            PE_ROWS_16 :
                                                            (input_c - (fc_in_base + fc_chunk_inputs));
                                         wgt_load_phase <= 32'd0;
-                                        wgt_load_wait <= 1'b1;
-                                        wgt_load_reg <= 0;
-                                        fsm_state <= FSM_LOAD_ARRAY;
+                                        wgt_load_wait <= 1'b0;
+                                        if (fc_shadow_active) begin
+                                            // Shadow load completed during compute — swap
+                                            wgt_load_reg <= wgt_load_reg_shadow;
+                                        end else begin
+                                            // Shadow didn't finish (shouldn't happen with
+                                            // 165-cycle compute vs 128-cycle load) — fallback
+                                            wgt_load_reg <= 0;
+                                        end
+                                        fc_shadow_active <= 1'b0;
+                                        fsm_state <= FSM_WGT_LD;
                                     end else begin
                                         if (bias_enabled) begin
                                             rq_mode_internal <= 1'b1;
@@ -2519,5 +2621,52 @@ module npu_top #(
 
     // weight_mac_addr
     assign wgt_mac_addr = conv_weight_dma_byte_idx[BUF_ADDR_W+4:5];
+
+    // ============================================================
+    // Phase 2: FC Shadow Weight Load — loads next chunk's weights
+    // into wgt_load_reg_shadow during FEED_ACT+DRAIN+COLLECT.
+    // After compute finishes, the main FSM swaps shadow→wgt_load_reg
+    // in one cycle, bypassing the 128-cycle FSM_LOAD_ARRAY.
+    // ============================================================
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // reset handled in main block
+        end else if (fc_shadow_active) begin
+            if (fc_shadow_wait) begin
+                fc_shadow_wait <= 1'b0;
+            end else if (fc_shadow_phase < (fc_shadow_chunk_inputs * fc_tile_outputs)) begin
+                // Same byte-extraction pattern as FSM_LOAD_ARRAY for FC
+                reg [31:0] sh_remaining;
+                reg [31:0] sh_bytes_in_beat;
+                reg [31:0] sh_load_count;
+                integer sh_lane;
+                sh_remaining  = (fc_shadow_chunk_inputs * fc_tile_outputs) - fc_shadow_phase;
+                sh_bytes_in_beat = 32'd32 - fc_shadow_dma_byte_idx[4:0];
+                sh_load_count = (sh_remaining > 32'd32) ? 32'd32 : sh_remaining;
+                if (sh_bytes_in_beat < sh_load_count)
+                    sh_load_count = sh_bytes_in_beat;
+                for (sh_lane = 0; sh_lane < 32; sh_lane = sh_lane + 1) begin
+                    if (sh_lane < sh_load_count) begin
+                        reg [31:0] sh_lane_idx;
+                        reg [31:0] sh_lane_out_idx;
+                        reg [31:0] sh_lane_row_idx;
+                        reg [4:0]  sh_lane_byte_sel;
+                        sh_lane_idx      = fc_shadow_phase + sh_lane;
+                        sh_lane_out_idx  = sh_lane_idx / {16'd0, fc_shadow_chunk_inputs};
+                        sh_lane_row_idx  = sh_lane_idx % {16'd0, fc_shadow_chunk_inputs};
+                        sh_lane_byte_sel = fc_shadow_dma_byte_idx[4:0] + sh_lane[4:0];
+                        wgt_load_reg_shadow[(sh_lane_row_idx * PE_COLS + sh_lane_out_idx)*8 +: 8] <=
+                            hb_beat_byte(wgt_rd_data, sh_lane_byte_sel);
+                    end
+                end
+                if ((fc_shadow_phase + sh_load_count <
+                     (fc_shadow_chunk_inputs * fc_tile_outputs)))
+                    fc_shadow_wait <= 1'b1;
+                fc_shadow_phase <= fc_shadow_phase + sh_load_count;
+            end else begin
+                fc_shadow_active <= 1'b0;
+            end
+        end
+    end
 
 endmodule
