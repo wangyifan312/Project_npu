@@ -12,7 +12,7 @@ module tb_dma_writer_long_burst;
     reg  [31:0] byte_count;
     wire        done, error, busy, write_txn_active;
     wire [7:0]  error_code;
-    wire [4:0]  fifo_level;
+    wire [5:0]  fifo_level;
 
     wire [255:0] data_in;
     wire         data_valid;

@@ -17,9 +17,9 @@ module write_beat_fifo #(parameter DEPTH = 16) (
     output wire         rd_valid,
     input  wire         rd_en,
     output wire         rd_empty,
-    output wire [4:0]   rd_level
+    output wire [5:0]   rd_level
 );
-    localparam AW = 5;
+    localparam AW = 6;
     reg [255:0] mem_d [0:DEPTH-1];
     reg [31:0]  mem_s [0:DEPTH-1];
     reg         mem_l [0:DEPTH-1];
@@ -51,7 +51,7 @@ module write_beat_fifo #(parameter DEPTH = 16) (
     assign wr_full  = (cnt == DEPTH);
     assign rd_empty = (cnt == 0);
     assign rd_valid = !rd_empty;
-    assign rd_level = cnt[4:0];
+    assign rd_level = cnt[5:0];
     assign rd_data  = mem_d[rp[AW-2:0]];
     assign rd_strb  = mem_s[rp[AW-2:0]];
     assign rd_last  = mem_l[rp[AW-2:0]];

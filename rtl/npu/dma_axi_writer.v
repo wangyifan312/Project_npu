@@ -22,7 +22,7 @@ module dma_axi_writer #(
     output wire                        write_txn_active,  // high during S_AW|S_WDATA|S_WAIT_B
 
     // === FIFO level (delayed AW) ===
-    input  wire [4:0]                  fifo_level,
+    input  wire [5:0]                  fifo_level,
 
     // === Producer done (no more data will arrive) ===
     input  wire                        producer_done,
@@ -193,7 +193,7 @@ module dma_axi_writer #(
     // P0-1 FIX: effective level includes pre-fetched beat in next_valid.
     // Without this, S_WAIT_DATA deadlocks when next_valid has a carried-over
     // beat but fifo_level alone doesn't meet the threshold.
-    wire [5:0] eff_level = {1'b0, fifo_level} + {5'd0, next_valid};
+    wire [6:0] eff_level = {1'b0, fifo_level} + {6'd0, next_valid};
 
     wire promote_now = !wvalid_r && next_valid;
 

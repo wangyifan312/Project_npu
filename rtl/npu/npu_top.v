@@ -400,7 +400,7 @@ module npu_top #(
     wire [31:0]  wf_rd_strb;
     wire         wf_rd_last;
     wire         wf_rd_valid, wf_rd_en, wf_rd_empty, wf_wr_full;
-    wire [4:0]   wf_rd_level;
+    wire [5:0]   wf_rd_level;
 
     // ============================================================
     // Vector INT8 ReLU 256b — streaming datapath signals
@@ -1266,7 +1266,7 @@ module npu_top #(
     assign dma_wr_data  = wf_rd_data;
     assign dma_wr_valid = wf_rd_valid;
     assign wf_rd_en     = dma_wr_ready && wf_rd_valid;
-    write_beat_fifo #(16) u_wfifo (
+    write_beat_fifo #(64) u_wfifo (
         .clk,.rst_n,.wr_data(dma_wr_data_r),.wr_strb({32{1'b1}}),.wr_last(1'b0),
         .wr_en(dma_wr_valid_r),.wr_full(wf_wr_full),
         .rd_data(wf_rd_data),.rd_strb(wf_rd_strb),.rd_last(wf_rd_last),
