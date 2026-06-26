@@ -244,17 +244,16 @@ module dma_axi_writer #(
                 end
 
                 S_WAIT_DATA: begin
-                    // P1-1: producer_done && no data && bytes remain = UNDERFLOW.
-                    // Producer stopped producing before expected byte count reached.
-                    if (producer_done && (eff_level == 6'd0) && (bytes_remaining > 32'h0)) begin
-                        state <= S_ERROR;
-                    end else if (eff_level >= {2'd0, beats_in_burst})
+                    // P1-1: full-burst priority first, then tail, then underflow error.
+                    if (eff_level >= {2'd0, beats_in_burst})
                         state <= S_AW;
                     else if (producer_done && (eff_level > 6'd0)) begin
                         beats_in_burst <= eff_level[7:0];
                         burst_len      <= eff_level[7:0] - 8'h1;
                         state <= S_AW;
                     end
+                    else if (producer_done && (bytes_remaining > 32'h0))
+                        state <= S_ERROR;
                 end
 
                 S_AW: begin
