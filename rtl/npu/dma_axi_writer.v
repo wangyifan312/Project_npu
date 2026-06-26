@@ -58,9 +58,10 @@ module dma_axi_writer #(
                                  (AXI_DATA_WIDTH == 128) ? 4 :
                                  (AXI_DATA_WIDTH == 256) ? 5 : 5;
 
-    localparam ERR_NONE    = 8'h00;
-    localparam ERR_BRESP   = 8'h30;
-    localparam ERR_ALIGN   = 8'h31;
+    localparam ERR_NONE      = 8'h00;
+    localparam ERR_BRESP     = 8'h30;
+    localparam ERR_ALIGN     = 8'h31;
+    localparam ERR_UNDERFLOW = 8'h32;  // producer stopped early, not enough data
 
     // ============================================================
     // State machine
@@ -243,8 +244,11 @@ module dma_axi_writer #(
                 end
 
                 S_WAIT_DATA: begin
-                    // P0-1 FIX: eff_level includes next_valid (carried-over beat)
-                    if (eff_level >= {2'd0, beats_in_burst})
+                    // P1-1: producer_done && no data && bytes remain = UNDERFLOW.
+                    // Producer stopped producing before expected byte count reached.
+                    if (producer_done && (eff_level == 6'd0) && (bytes_remaining > 32'h0)) begin
+                        state <= S_ERROR;
+                    end else if (eff_level >= {2'd0, beats_in_burst})
                         state <= S_AW;
                     else if (producer_done && (eff_level > 6'd0)) begin
                         beats_in_burst <= eff_level[7:0];
@@ -386,6 +390,9 @@ module dma_axi_writer #(
     // ============================================================
     reg         error_r;
     reg  [7:0]  error_code_r;
+    // P1-1: underflow detection combinatorially
+    wire underflow_condition = (state == S_WAIT_DATA) && producer_done &&
+                               (eff_level == 6'd0) && (bytes_remaining > 32'h0);
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -397,6 +404,9 @@ module dma_axi_writer #(
         end else if (state == S_IDLE) begin
             error_r      <= 1'b0;
             error_code_r <= 8'h00;
+        end else if (underflow_condition) begin
+            error_r      <= 1'b1;
+            error_code_r <= ERR_UNDERFLOW;
         end else if (state == S_WAIT_B && m_axi_bvalid && m_axi_bready && m_axi_bresp != 2'b00) begin
             error_r      <= 1'b1;
             error_code_r <= ERR_BRESP;
