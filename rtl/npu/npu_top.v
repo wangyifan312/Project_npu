@@ -1131,11 +1131,15 @@ module npu_top #(
             for (ri = 0; ri < PE_ROWS; ri = ri + 1)
                 act_held[ri] <= 8'd0;
         end else if (act_feed_en) begin
-            if ({9'd0, comp_feed_cnt} < array_active_rows) begin
-                if (is_fc_mode)
-                    act_held[comp_feed_cnt] <= cf_act_data;
-                else
-                    act_held[comp_feed_cnt] <= cf_window[comp_feed_cnt];
+            if (is_fc_mode) begin
+                // P4: broadcast 32 bytes from 256-bit act_buffer
+                integer bj;
+                for (bj = 0; bj < 32; bj = bj + 1) begin
+                    if (comp_feed_cnt + bj < array_active_rows)
+                        act_held[comp_feed_cnt + bj] <= act_rd_data[bj*8 +: 8];
+                end
+            end else if ({9'd0, comp_feed_cnt} < array_active_rows) begin
+                act_held[comp_feed_cnt] <= cf_window[comp_feed_cnt];
             end
         end
     end
@@ -2198,6 +2202,7 @@ module npu_top #(
                         CP_WAIT_WIN: begin
                             if (is_fc_mode) begin
                                 comp_feed_cnt <= 7'd0;
+                                act_feed_wait <= 1'b1;  // P4: buffer read latency
                                 comp_sub_state <= CP_FEED_ACT;
                             end else if (is_pool_mode) begin
                                 // Pool: feed INT32 words, wait for postproc to finish
@@ -2236,17 +2241,30 @@ module npu_top #(
                         end
 
                         CP_FEED_ACT: begin
-                            if ({9'd0, comp_feed_cnt} < array_active_rows) begin
+                            if (is_fc_mode) begin
+                                // P4: 32-byte broadcast — 2 batches for 64 rows
+                                if (act_feed_wait) begin
+                                    act_feed_wait <= 1'b0;
+                                end else begin
+                                    if (comp_feed_cnt + 7'd32 < {7'd0, array_active_rows[6:0]}) begin
+                                        comp_feed_cnt <= comp_feed_cnt + 7'd32;
+                                        act_feed_wait <= 1'b1;
+                                    end else begin
+                                        // All rows fed → advance to DRAIN
+                                        comp_drain_cnt <= 16'd0;
+                                        acc_partial_addr <= {BUF_ADDR_W{1'b0}};
+                                        comp_sub_state <= CP_DRAIN;
+                                    end
+                                end
+                            end else if ({9'd0, comp_feed_cnt} < array_active_rows) begin
                                 comp_feed_cnt <= comp_feed_cnt + 7'd1;
                             end else begin
                                 comp_drain_cnt <= 16'd0;
-                                // Set up partial sum address for this window
                                 if (is_conv_mode) begin
                                     conv_collect_base_next =
                                         ({16'd0, comp_win_idx} * {16'd0, array_active_cols});
                                     acc_partial_addr <= conv_collect_base_next[BUF_ADDR_W-1:0];
-                                end else if (is_fc_mode)
-                                    acc_partial_addr <= {BUF_ADDR_W{1'b0}};
+                                end
                                 comp_sub_state <= CP_DRAIN;
                             end
                         end
