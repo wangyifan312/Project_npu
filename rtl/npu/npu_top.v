@@ -2495,12 +2495,19 @@ module npu_top #(
                                     store_pack_lane <= 3'd0;
                                     store_word_idx <= store_word_idx + 32'd1;
                                     store_pack_state <= STORE_PACK_SEND;
+                                end else if (store_pack_lane == 3'd0) begin
+                                    // P3: lane 0 done — 1 WAIT for buffer read
+                                    store_pack_data <= store_pack_data_next;
+                                    store_pack_lane <= 3'd1;
+                                    store_word_idx <= store_word_idx + 32'd1;
+                                    dma_rd_ptr <= dma_rd_ptr + 1;
+                                    store_pack_state <= STORE_PACK_WAIT;
                                 end else begin
+                                    // P3: lanes 1-6 — consecutive (buffer ready)
                                     store_pack_data <= store_pack_data_next;
                                     store_pack_lane <= store_pack_lane + 3'd1;
                                     store_word_idx <= store_word_idx + 32'd1;
                                     dma_rd_ptr <= dma_rd_ptr + 1;
-                                    store_pack_state <= STORE_PACK_WAIT;
                                 end
                             end else begin
                                 store_pack_state <= STORE_PACK_IDLE;
@@ -2513,6 +2520,7 @@ module npu_top #(
                             end else if (!wf_wr_full) begin
                                 dma_wr_valid_r <= 1'b0;
                                 if (store_word_idx < store_words_active) begin
+                                    // P3: WAIT for buffer to read next beat's addr
                                     dma_rd_ptr <= dma_rd_ptr + 1;
                                     store_pack_state <= STORE_PACK_WAIT;
                                 end else begin
