@@ -120,6 +120,7 @@ module npu_top #(
     localparam FSM_ADD_COMPUTE   = 5'd28;
     localparam FSM_GAP_COMPUTE   = 5'd29;
     localparam FSM_ADD_DRAIN     = 5'd31;
+    localparam FSM_VEC_RELU_PROC = 5'd20;
     localparam FSM_DONE        = 5'd15;
 
     function [7:0] hb_beat_byte;
@@ -392,6 +393,32 @@ module npu_top #(
     wire         wf_rd_valid, wf_rd_en, wf_rd_empty, wf_wr_full;
     wire [4:0]   wf_rd_level;
 
+    // ============================================================
+    // Vector INT8 ReLU 256b — streaming datapath signals
+    // ============================================================
+    reg  [31:0] vec_relu_beat_idx;     // beats received/processed
+    reg  [31:0] vec_relu_total_beats;  // total expected beats = (num_bytes + 31) >> 5
+    reg         vec_relu_out_wr_valid; // write_beat_fifo push valid
+    reg         vec_relu_read_done;    // act_dma_done latched (phase A complete)
+    reg         vec_relu_proc_active;  // phase B: processing beats from act_buffer
+    reg  [BUF_ADDR_W-1:0] vec_relu_rd_addr; // phase B: act_buffer read address
+    reg         vec_relu_rd_wait;      // 1-cycle buffer read latency wait
+    reg         vec_wr_done_latch;     // latch for dma_wr_done 1-cycle pulse
+    reg         vec_relu_proc_done;    // Phase B completed; waiting for writer
+    wire [255:0] vec_relu_result;      // 32-lane INT8 ReLU result (combinational)
+
+    // === DEBUG counters for vec_relu multi-burst correctness ===
+    reg [31:0] dbg_vec_push_count;     // successful FIFO pushes from Phase B
+    reg [31:0] dbg_vec_push_skip;      // skipped pushes (FIFO full)
+    reg [31:0] dbg_fifo_pop_count;     // FIFO pops (wf_rd_en)
+    reg [31:0] dbg_w_hs_count;         // m_axi_wvalid && m_axi_wready
+    reg [31:0] dbg_vec_total_beats;    // snapshot of total_beats
+    reg        dbg_done_printed;       // only print once
+    reg [31:0] dbg_rd_issue_count;     // AR handshakes during vec read (phase A)
+    reg [31:0] dbg_rd_data_count;      // R handshakes during vec read (phase A)
+    reg [31:0] dbg_fifo_full_stall;    // times Phase B blocked by wf_wr_full
+    reg [31:0] dbg_cycle_cnt;          // cycle counter snapshot
+
     // producer_done: declared here, assigned after store_words_active definition
     wire dma_producer_done;
 
@@ -551,6 +578,7 @@ module npu_top #(
     wire is_requant_mode = (task_type == 3'd3);
     wire is_add_mode     = (task_type == 3'd4);
     wire is_gap_mode     = (task_type == 3'd5);
+    wire is_vec_relu_mode = (task_type == 3'd6);
     wire [15:0] array_active_rows;
     wire [15:0] array_active_cols;
     wire [15:0] array_drain_offset;
@@ -987,6 +1015,7 @@ module npu_top #(
                           is_add_mode     ? add_src_beat_addr :
                           is_gap_mode     ? gap_src_beat_addr :
                           is_requant_mode ? rq_src_beat_addr :
+                          is_vec_relu_mode? vec_relu_rd_addr :
                                             act_feed_beat_addr;
 
     // Feed activations during WAIT_WIN (conv_frontend consumes them)
@@ -1226,13 +1255,31 @@ module npu_top #(
                                                        blk_out_bytes;
     wire [31:0] store_words_active = (store_bytes_active + 32'd3) >> 2;
 
-    // producer_done: asserted when store_pack finishes producing all words for the
-    // current store phase. The DMA writer uses this to avoid hanging in S_WAIT_DATA
+    // producer_done: asserted when producer finishes producing all data for the
+    // current phase. The DMA writer uses this to avoid hanging in S_WAIT_DATA
     // when the remaining FIFO data is less than the calculated burst size.
-    assign dma_producer_done = (fsm_state == FSM_STORE) &&
-                                (store_pack_state == STORE_PACK_IDLE) &&
-                                dma_wr_started &&
-                                (store_word_idx >= store_words_active);
+    // Covered: store_pack (all task types), vec_relu streaming path.
+    assign dma_producer_done = ((fsm_state == FSM_STORE) &&
+                                 (store_pack_state == STORE_PACK_IDLE) &&
+                                 dma_wr_started &&
+                                 (store_word_idx >= store_words_active)) ||
+                               ((fsm_state == FSM_VEC_RELU_PROC) &&
+                                 dma_wr_started &&
+                                 vec_relu_read_done &&
+                                 vec_relu_proc_done);
+
+    // ============================================================
+    // 32-lane INT8 ReLU: combinational vector postprocess
+    // For each byte lane: if signed bit[7]=1 (negative), output 0; else pass through
+    // Input: act_rd_data (256-bit beat from act_buffer, Phase B read)
+    // ============================================================
+    genvar vl;
+    generate
+        for (vl = 0; vl < 32; vl = vl + 1) begin : gen_vec_relu
+            wire signed [7:0] vl_in = act_rd_data[vl*8 +: 8];
+            assign vec_relu_result[vl*8 +: 8] = vl_in[7] ? 8'h00 : vl_in;
+        end
+    endgenerate
 
     wire [AXI_DMA_DATA_W-1:0] store_lane_word =
         {{(AXI_DMA_DATA_W-ACC_DATA_W){1'b0}}, acc_rd_data} << (store_pack_lane * ACC_DATA_W);
@@ -1242,6 +1289,33 @@ module npu_top #(
     reg task_active_r;
     assign perf_task_active = task_active_r;
     assign perf_freeze = (fsm_state == FSM_DONE) || (fsm_state == FSM_ERROR);
+
+    // === DEBUG: vec_relu counters ===
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            dbg_fifo_pop_count <= 32'd0;
+            dbg_w_hs_count <= 32'd0;
+            dbg_rd_issue_count <= 32'd0;
+            dbg_rd_data_count <= 32'd0;
+            dbg_fifo_full_stall <= 32'd0;
+            dbg_cycle_cnt <= 32'd0;
+        end else if (task_active_r && is_vec_relu_mode) begin
+            if (wf_rd_en)
+                dbg_fifo_pop_count <= dbg_fifo_pop_count + 32'd1;
+            if (m_axi_wvalid && m_axi_wready)
+                dbg_w_hs_count <= dbg_w_hs_count + 32'd1;
+            // AR handshakes: count DMA read bursts issued
+            if (m_axi_arvalid && m_axi_arready)
+                dbg_rd_issue_count <= dbg_rd_issue_count + 32'd1;
+            // R handshakes: count actual AXI read data beats
+            if (m_axi_rvalid && m_axi_rready)
+                dbg_rd_data_count <= dbg_rd_data_count + 32'd1;
+            // Phase B stall: push blocked because write_beat_fifo is full
+            if (wf_wr_full && vec_relu_proc_active && !vec_relu_proc_done)
+                dbg_fifo_full_stall <= dbg_fifo_full_stall + 32'd1;
+            dbg_cycle_cnt <= dbg_cycle_cnt + 32'd1;
+        end
+    end
 
     // ============================================================
     // Main FSM — sequential
@@ -1318,6 +1392,25 @@ module npu_top #(
                 for (bi = 0; bi < 64; bi = bi + 1)
                     bias_reg[bi] <= 32'sd0;
             end
+            vec_relu_beat_idx <= 32'd0;
+            vec_relu_total_beats <= 32'd0;
+            vec_relu_out_wr_valid <= 1'b0;
+            vec_relu_read_done <= 1'b0;
+            vec_relu_proc_active <= 1'b0;
+            vec_relu_rd_addr <= {BUF_ADDR_W{1'b0}};
+            vec_relu_rd_wait <= 1'b0;
+            vec_wr_done_latch <= 1'b0;
+            vec_relu_proc_done <= 1'b0;
+            dbg_vec_push_count <= 32'd0;
+            dbg_vec_push_skip <= 32'd0;
+            dbg_fifo_pop_count <= 32'd0;
+            dbg_w_hs_count <= 32'd0;
+            dbg_vec_total_beats <= 32'd0;
+            dbg_done_printed <= 1'b0;
+            dbg_rd_issue_count <= 32'd0;
+            dbg_rd_data_count <= 32'd0;
+            dbg_fifo_full_stall <= 32'd0;
+            dbg_cycle_cnt <= 32'd0;
         end else begin
             // Default: pulse signals low
             act_dma_start <= 1'b0; wgt_dma_start <= 1'b0; dma_wr_start <= 1'b0;
@@ -1361,6 +1454,31 @@ module npu_top #(
                             bias_return_state <= FSM_LOAD_ACT;
                             wgt_buf_flush <= 1'b1;
                             fsm_state <= FSM_LOAD_BIAS;
+                        end else if (is_vec_relu_mode) begin
+                            // P0-3 FIX: Vector INT8 ReLU 256b starts DMA ONCE here,
+                            // then transitions directly to FSM_VEC_RELU_PROC.
+                            // Previously FSM_TASK_SETUP started act_dma_start for all
+                            // task types, and FSM_LOAD_ACT (is_vec_relu_mode branch)
+                            // started a SECOND act_dma_start on act_dma_done, causing
+                            // 2x DMA read (1024 beats instead of 512 for 16KB).
+                            act_dma_start <= 1'b1;
+                            act_dma_addr <= blk_in_addr;
+                            act_dma_bytes <= blk_in_bytes;
+                            act_load_start <= 1'b1;
+                            act_load_bank <= block_bank;
+                            act_comp_bank <= block_bank;
+                            vec_relu_beat_idx <= 32'd0;
+                            vec_relu_total_beats <= (blk_in_bytes + 32'd31) >> 5;
+                            vec_relu_out_wr_valid <= 1'b0;
+                            vec_relu_read_done <= 1'b0;
+                            vec_relu_proc_active <= 1'b0;
+                            vec_relu_rd_addr <= {BUF_ADDR_W{1'b0}};
+                            vec_relu_rd_wait <= 1'b0;
+                            vec_wr_done_latch <= 1'b0;
+                            vec_relu_proc_done <= 1'b0;
+                            dma_wr_addr <= blk_out_addr;
+                            dma_wr_bytes <= blk_out_bytes;
+                            fsm_state <= FSM_VEC_RELU_PROC;
                         end else begin
                             act_dma_start <= 1'b1;
                             act_dma_addr <= blk_in_addr;
@@ -1462,6 +1580,13 @@ module npu_top #(
                             rq_store_addr <= blk_out_addr;
                             rq_store_bytes <= blk_out_bytes;
                             fsm_state <= FSM_REQUANT_COMPUTE;
+                        end else if (is_vec_relu_mode) begin
+                            // P0-3 FIX: Unreachable — vec_relu now transitions
+                            // directly from FSM_TASK_SETUP to FSM_VEC_RELU_PROC.
+                            // Keep as defensive dead-code guard.
+                            fsm_state <= FSM_ERROR;
+                            task_error_r <= 1'b1;
+                            task_error_code_r <= 8'hFF;
                         end else if (is_fc_mode) begin
                             fc_out_start <= 16'd0;
                             fc_in_base <= 16'd0;
@@ -1548,6 +1673,91 @@ module npu_top #(
                     // word one cycle to commit before STORE reads acc_buffer.
                     acc_load_start <= 1'b1;
                     fsm_state <= FSM_STORE;
+                end
+
+                // ============================================================
+                // FSM_VEC_RELU_PROC — 256-bit streaming vector INT8 ReLU
+                //
+                // Slow pipeline (rd_wait, 0.5 beat/cycle). Verified correct data.
+                // Writer partial burst handles tail when Phase B finishes first.
+                // ============================================================
+                FSM_VEC_RELU_PROC: begin
+                    dma_wr_valid_r <= 1'b0;
+
+                    if (!dma_wr_started) begin
+                        dma_wr_start <= 1'b1;
+                        dma_wr_started <= 1'b1;
+                    end
+
+                    if (dma_wr_done)
+                        vec_wr_done_latch <= 1'b1;
+
+                    if (!vec_relu_read_done) begin
+                        if (act_buf_wr_en)
+                            vec_relu_beat_idx <= vec_relu_beat_idx + 32'd1;
+                        if (act_dma_done) begin
+                            vec_relu_read_done <= 1'b1;
+                            vec_relu_beat_idx <= 32'd0;
+                            vec_relu_rd_addr <= {BUF_ADDR_W{1'b0}};
+                            vec_relu_rd_wait <= 1'b1;
+                        end
+                    end
+
+                    else if (!vec_relu_proc_done) begin
+                        if (vec_relu_rd_wait) begin
+                            vec_relu_rd_wait <= 1'b0;
+                        end else if (vec_relu_beat_idx < vec_relu_total_beats) begin
+                            if (!wf_wr_full) begin
+                                dma_wr_data_r <= vec_relu_result;
+                                dma_wr_valid_r <= 1'b1;
+                                vec_relu_beat_idx <= vec_relu_beat_idx + 32'd1;
+                                dbg_vec_push_count <= dbg_vec_push_count + 32'd1;
+                                if (vec_relu_beat_idx + 32'd1 < vec_relu_total_beats) begin
+                                    vec_relu_rd_addr <= vec_relu_rd_addr +
+                                        {{BUF_ADDR_W-1{1'b0}}, 1'b1};
+                                    vec_relu_rd_wait <= 1'b1;
+                                end
+                            end else begin
+                                dbg_vec_push_skip <= dbg_vec_push_skip + 32'd1;
+                            end
+                        end else begin
+                            vec_relu_proc_done <= 1'b1;
+                        end
+                    end
+
+                    if (vec_relu_proc_done && vec_relu_read_done) begin
+                        if (vec_wr_done_latch) begin
+                            // === DEBUG PRINT ===
+                            if (!dbg_done_printed) begin
+                                $display("[VEC_COUNT] expected_beats=%0d", vec_relu_total_beats);
+                                $display("[VEC_COUNT] vec_fifo_push_count=%0d", dbg_vec_push_count);
+                                $display("[VEC_COUNT] vec_fifo_push_skip=%0d", dbg_vec_push_skip);
+                                $display("[VEC_COUNT] fifo_pop_count=%0d", dbg_fifo_pop_count);
+                                $display("[VEC_COUNT] axi_w_handshake_count=%0d", dbg_w_hs_count);
+                                $display("[VEC_COUNT] ar_issue_count=%0d", dbg_rd_issue_count);
+                                $display("[VEC_COUNT] r_data_count=%0d", dbg_rd_data_count);
+                                $display("[VEC_COUNT] fifo_full_stall_count=%0d", dbg_fifo_full_stall);
+                                $display("[VEC_COUNT] cycle_count=%0d", dbg_cycle_cnt);
+                                $display("[VEC_COUNT] vec_beat_idx_at_done=%0d", vec_relu_beat_idx);
+                                $display("[VEC_COUNT] fifo_rd_level_at_done=%0d", wf_rd_level);
+                                $display("[VEC_COUNT] fifo_wr_full_at_done=%0d", wf_wr_full);
+                                dbg_done_printed <= 1'b1;
+                            end
+                            dma_wr_valid_r <= 1'b0;
+                            dma_wr_started <= 1'b0;
+                            vec_wr_done_latch <= 1'b0;
+                            vec_relu_proc_done <= 1'b0;
+                            act_comp_done <= 1'b1;
+                            blk_done <= 1'b1;
+                            fsm_state <= FSM_BLK_DONE;
+                        end
+                    end
+
+                    if (dma_wr_error) begin
+                        task_error_r <= 1'b1;
+                        task_error_code_r <= dma_wr_error_code;
+                        fsm_state <= FSM_ERROR;
+                    end
                 end
 
                 FSM_GAP_COMPUTE: begin
@@ -1777,11 +1987,38 @@ module npu_top #(
                         if (wgt_load_wait) begin
                             wgt_load_wait <= 1'b0;
                         end else if (wgt_load_phase < (fc_tile_outputs * fc_chunk_inputs)) begin
-                            wgt_load_reg[(fc_load_row_idx * PE_COLS + fc_load_out_idx)*8 +: 8] <= fc_weight_byte;
-                            if ((fc_next_weight_beat_addr != fc_weight_beat_addr) &&
-                                (wgt_load_phase + 32'd1 < (fc_tile_outputs * fc_chunk_inputs)))
+                            // Performance fix: load up to 32 bytes/cycle from 256-bit
+                            // weight buffer (matching buffer native width), instead of
+                            // the original 1 byte/cycle.  Uses same for-loop pattern as
+                            // the Conv path below.  All 32 bytes in a beat map to the
+                            // same output neuron (fc_load_out_idx constant) but different
+                            // input rows, so wgt_load_reg write targets are all distinct.
+                            reg [31:0] fc_load_remaining;
+                            reg [31:0] fc_bytes_in_beat;
+                            reg [31:0] fc_load_count;
+                            integer fc_load_lane;
+                            fc_load_remaining = (fc_tile_outputs * fc_chunk_inputs) - wgt_load_phase;
+                            fc_bytes_in_beat  = 32'd32 - {27'd0, fc_weight_dma_byte_idx[4:0]};
+                            fc_load_count     = (fc_load_remaining > 32'd32) ? 32'd32 : fc_load_remaining;
+                            if (fc_bytes_in_beat < fc_load_count)
+                                fc_load_count = fc_bytes_in_beat;
+                            for (fc_load_lane = 0; fc_load_lane < 32; fc_load_lane = fc_load_lane + 1) begin
+                                if (fc_load_lane < fc_load_count) begin
+                                    reg [31:0] fc_lane_idx;
+                                    reg [31:0] fc_lane_out_idx;
+                                    reg [31:0] fc_lane_row_idx;
+                                    reg [4:0]  fc_lane_byte_sel;
+                                    fc_lane_idx      = wgt_load_phase + fc_load_lane;
+                                    fc_lane_out_idx  = fc_lane_idx / {16'd0, fc_chunk_inputs};
+                                    fc_lane_row_idx  = fc_lane_idx % {16'd0, fc_chunk_inputs};
+                                    fc_lane_byte_sel = {27'd0, fc_weight_dma_byte_idx} + fc_load_lane;
+                                    wgt_load_reg[(fc_lane_row_idx * PE_COLS + fc_lane_out_idx)*8 +: 8] <=
+                                        hb_beat_byte(wgt_rd_data, fc_lane_byte_sel);
+                                end
+                            end
+                            if ((wgt_load_phase + fc_load_count < (fc_tile_outputs * fc_chunk_inputs)))
                                 wgt_load_wait <= 1'b1;
-                            wgt_load_phase <= wgt_load_phase + 32'd1;
+                            wgt_load_phase <= wgt_load_phase + fc_load_count;
                         end else begin
                             wgt_load_done_r <= 1'b1;
                             fsm_state <= FSM_WGT_LD;

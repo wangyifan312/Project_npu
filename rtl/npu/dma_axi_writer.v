@@ -189,6 +189,13 @@ module dma_axi_writer #(
     // ============================================================
     assign m_axi_bready = 1'b1;  // always ready for response
 
+    // P0-1 FIX: effective level includes pre-fetched beat in next_valid.
+    // Without this, S_WAIT_DATA deadlocks when next_valid has a carried-over
+    // beat but fifo_level alone doesn't meet the threshold.
+    wire [5:0] eff_level = {1'b0, fifo_level} + {5'd0, next_valid};
+
+    wire promote_now = !wvalid_r && next_valid;
+
     // ============================================================
     // State machine
     // ============================================================
@@ -236,17 +243,18 @@ module dma_axi_writer #(
                 end
 
                 S_WAIT_DATA: begin
-                    if (fifo_level >= {3'd0, beats_in_burst})
+                    // P0-1 FIX: eff_level includes next_valid (carried-over beat)
+                    if (eff_level >= {2'd0, beats_in_burst})
                         state <= S_AW;
-                    else if (producer_done && (fifo_level > 5'd0)) begin
-                        beats_in_burst <= {3'd0, fifo_level};
-                        burst_len      <= {3'd0, fifo_level} - 8'h1;
+                    else if (producer_done && (eff_level > 6'd0)) begin
+                        beats_in_burst <= eff_level[7:0];
+                        burst_len      <= eff_level[7:0] - 8'h1;
                         state <= S_AW;
                     end
                 end
 
                 S_AW: begin
-                    next_valid <= 1'b0;  // discard stale skid from previous burst
+                    // next_valid preserved: pre-fetched beat belongs to next burst
                     if (aw_hs) begin
                         aw_done <= 1'b1;
                         state <= S_WDATA;
@@ -254,72 +262,75 @@ module dma_axi_writer #(
                 end
 
                 S_WDATA: begin
-                    // Phase B2: next-beat preload pipeline -- 1 beat/cycle when FIFO has data.
-                    //   next_valid=1 ⇒ next_{data,strb,last} holds beat after current.
-                    //   On w_hs: transfer next→wdata_r, keep wvalid continuously high.
-                    //   data_ready = !next_valid || w_hs: accept when room or when
-                    //   w_hs frees up next this cycle.
+                    // Phase B2: next-beat preload pipeline — 1 beat/cycle.
+                    // P0-1 FIX: next_last uses conditional to handle the race
+                    // between preload and promotion. When next_valid=1 and w_hs=1,
+                    // the next beat will be promoted to main this cycle, so the
+                    // new preload is at beat_counter+2, not beat_counter+1.
+                    // P0-1 FIX: promote step uses current burst's (beat_counter==burst_len)
+                    // instead of carried-over next_last, because next_last was computed
+                    // for the PREVIOUS burst and is incorrect for the NEW burst.
+                    if (!wvalid_r && next_valid) begin
+                        wdata_r     <= next_data;
+                        wstrb_r     <= next_strb;
+                        wlast_r     <= (beat_counter == burst_len);
+                        wvalid_r    <= 1'b1;
+                        next_valid  <= 1'b0;
+                    end
 
                     // Load from FIFO: two-stage check allows loading main+next in 1 cycle.
+                    // P0-1 FIX: promote_now gates main-load to prevent overwrite
+                    // when Step 1 just promoted next→main (wvalid_r still 0 PRE-NBA).
+                    // Preload condition also widened to (wvalid_r || promote_now) so
+                    // new-burst first-cycle preload isn't starved.
                     if (data_valid) begin
-                        if (!wvalid_r) begin
-                            // Main empty: load directly
+                        if (!wvalid_r && !promote_now) begin
                             wdata_r  <= data_in;
                             wstrb_r  <= calc_wstrb(valid_bytes_this_beat);
                             wlast_r  <= (beat_counter == burst_len);
                             wvalid_r <= 1'b1;
                         end
-                        // Re-check: after first pop, next entry may be available
+                        // Re-check: after first pop, next entry may be available.
                         if (data_valid) begin
-                            if (wvalid_r && (!next_valid || w_hs)) begin
+                            if ((wvalid_r || promote_now) && (!next_valid || w_hs)) begin
                                 next_data  <= data_in;
                                 next_strb  <= calc_wstrb(valid_bytes_next);
-                                next_last  <= ((beat_counter + 8'h1) == burst_len);
+                                next_last  <= !next_valid ? ((beat_counter + 8'h1) == burst_len) :
+                                                            ((beat_counter + 8'h2) == burst_len);
                                 next_valid <= 1'b1;
                             end
                         end
                     end
 
                     // W channel handshake
-                    // next_ready = next_valid || (data_valid && data_ready)
-                    //   True when next beat IS or WILL-BE available after this cycle.
                     if (w_hs) begin
                         if (wlast_r) begin
-                            // Last beat: end W phase, discard stale next buffer
                             w_done      <= 1'b1;
                             wvalid_r    <= 1'b0;
-                            next_valid  <= 1'b0;
                             current_addr    <= current_addr + ({24'h0, beats_in_burst} * BEAT_BYTES);
                             bytes_remaining <= remaining_after_burst;
                             state <= S_WAIT_B;
-                        end else if (next_ready) begin
-                            // Transfer next→main: use existing next buffer or in-flight load
+                        end else if (next_valid || (data_valid && data_ready)) begin
                             if (next_valid) begin
                                 wdata_r <= next_data;
                                 wstrb_r <= next_strb;
                                 wlast_r <= next_last;
                             end else begin
-                                // In-flight: data_in has the next beat
                                 wdata_r <= data_in;
                                 wstrb_r <= calc_wstrb(valid_bytes_next);
                                 wlast_r <= ((beat_counter + 8'h1) == burst_len);
                             end
                             next_valid  <= 1'b0;
                             beat_counter <= beat_counter + 8'h1;
-                            // wvalid_r stays 1 (continuous!)
                         end else begin
-                            // No preloaded beat: bubble unavoidable
                             wvalid_r <= 1'b0;
                             beat_counter <= beat_counter + 8'h1;
                         end
-                    end else if (!wvalid_r && next_valid) begin
-                        // Main empty but next has data: promote without handshake
-                        wdata_r     <= next_data;
-                        wstrb_r     <= next_strb;
-                        wlast_r     <= next_last;
-                        wvalid_r    <= 1'b1;
-                        next_valid  <= 1'b0;
                     end
+                    // P0-1 FIX: removed redundant else-if (!wvalid_r && next_valid).
+                    // Step 1 (top of S_WDATA) already promotes next→main unconditionally,
+                    // using the correct (beat_counter==burst_len) for wlast.  Keeping
+                    // a duplicate here would overwrite wlast_r with stale next_last.
                 end
 
                 S_WAIT_B: begin
@@ -327,8 +338,21 @@ module dma_axi_writer #(
                         // Check for BRESP error
                         if (m_axi_bresp != 2'b00) begin
                             state <= S_ERROR;
-                        end else if (bytes_remaining == 32'h0) begin
+                        end else if ((bytes_remaining == 32'h0) && !next_valid) begin
                             state <= S_DONE;
+                        end else if (bytes_remaining == 32'h0) begin
+                            // P0-1 FIX: next_valid has pre-fetched beat.  Only send
+                            // it if wlast=1 (genuine tail beat).  If wlast=0, the
+                            // beat belongs to a non-existent next burst and must be
+                            // discarded to avoid deadlock in S_WDATA.
+                            if (!next_last) begin
+                                next_valid <= 1'b0;
+                                state <= S_DONE;
+                            end else begin
+                                aw_done  <= 1'b0;
+                                w_done   <= 1'b0;
+                                state <= S_WDATA;
+                            end
                         end else begin
                             // Next burst: bytes_remaining already holds remaining count
                             beat_counter    <= 8'h0;
