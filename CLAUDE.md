@@ -111,12 +111,15 @@ ResNet-20 不改变当前 LeNet/MNIST formal baseline，但它已经不再停留
 - output layout / layer memory map。
 - 单任务寄存器触发模型。
 - dma_axi_writer.v W-channel skid buffer logic (Phase B2)
-- write_beat_fifo.v
+- write_beat_fifo.v (depth parameter 64, from P2; do NOT reduce)
 - store_pack lane ordering
-- acc_buffer structure (32-bit, single-port)
+- acc_buffer structure (32-bit, single-port; 128-bit widening is separate project)
 - requant_i32_to_i8.v formula (round-half-away-from-zero, clamp [-128,127])
 - Golden/reference/scoreboard
 - Timeout values
+- FC Phase 1 preload bypass (B1 fix: FSM_FC_TILE_PREP forces fresh DMA per tile)
+- P4 FEED_ACT 32B broadcast latch block (is_fc_mode gated)
+- P4 COLLECT pipelined (acc_collect_wait removed for FC — writes col_results, not buffer data)
 
 runtime `CLUSTER_MODE / CLUSTER_MASK` 已支持 AXI-Lite 配置，但这不等同于 task queue、descriptor FIFO 或 shadow config 架构。
 
@@ -235,7 +238,11 @@ UVM npu_start_poll_seq simplified accordingly (workaround removed).
 
 - npu_fc_full_cluster_96out_test: 6-cluster 96-output FC. Sticky probe verifies
   all 6 clusters simultaneously active (enable=111111, all_active=1).
-  Output 384 bytes (96 INT32) matched.
+  **B1 FIXED 2026-06-28**: FC multi-tile preload produced 'x' weights for tile 2+.
+  Root cause: FC Phase 1 ping-pong preload wrote weights to alternate wgt_buffer
+  bank, but bank content was consumed as 'x' by FSM_FC_TILE_PREP.
+  Fix: bypass preload in FSM_FC_TILE_PREP; each tile does fresh DMA.
+  Output 384 bytes (96 INT32) matched.  See §8.3 for details.
 
 - npu_cluster_mask_sweep_test: 4 modes (single/dual/full/mask).
   Sticky mask matches expected per mode. All 4 output compares PASS.
@@ -254,19 +261,89 @@ simultaneously sampled.
 Structural UVM tests: 5/5 PASS.
 Existing UVM smoke regression: 3/3 PASS.
 Structural closure total: 8/8 PASS.
-npu_cluster_mode_test: 1/4 PASS (pre-existing Conv multi-cluster mismatch,
-  tracked in docs/known_issues/conv_multicluster_mismatch.md).
+npu_cluster_mode_test: 4/4 PASS (RESOLVED — root cause back-to-back start bug,
+  verified 2026-06-25. See docs/known_issues/conv_multicluster_mismatch.md).
 
-## 9. Future Work
+### 8.3. P0-P4 Bug Fixes & Performance (2026-06-26 ~ 2026-06-28)
 
-Phase C (acc_buffer 256-bit widening / 8-bank parallel read): DEFERRED.
-  Reason: write_transaction_util = 80% already achieved.
-  Phase C requires changing acc_buffer organization and all write paths.
-  Evaluate after FPGA synthesis, UVM full regression, and delivery hardening.
+Six rounds of targeted RTL improvements.  All changes verified with
+regression (FC/Conv/Requant smoke, bandwidth 60% stress, DMA writer directed).
 
-Priority order:
+**P0: vector_int8_relu_256b correctness & 60% bandwidth target**
+  - P0-1/P0-2: dma_axi_writer.v Phase B2 preload next_last off-by-one +
+    promote_now gating + eff_level + spurious beat discard.  Write beats
+    480→512, output PASS.
+  - P0-3: npu_top.v double DMA start in FSM_TASK_SETUP→FSM_LOAD_ACT.
+    Read beats 1024→512.
+  - P0-4: system_task_bus_active_ratio = 64.04% (≥60% target met).
+  Commit: 26eaa0b
+
+**P0 follow-up: FC K-streaming Phase 1+2**
+  - Phase 1: FC ping-pong weight DMA preload (wgt_buffer alternate bank)
+  - Phase 2: FC shadow weight register (wgt_load_reg_shadow, 32Kbit)
+  Commit: 60790b7
+
+**P1: Writer protocol hardening & stress test verdict**
+  - P1-1: dma_axi_writer.v ERR_UNDERFLOW detection, S_WAIT_DATA priority reorder
+    (full burst > partial tail > underflow error)
+  - P1-2: npu_bandwidth_60pct_stress_test 3-tier verdict
+    (functional_pass / bandwidth_pass / PASS_TARGET)
+  Commits: b1b74a0, e90efaf
+
+**P2: FIFO depth 16→64, bandwidth +2.4pp**
+  - write_beat_fifo.v, dma_axi_writer.v, npu_top.v port widths updated
+  - Eliminates vector_relu producer backpressure (fifo_full_stall: 63→0)
+  - bandwidth: 61.61% → 64.04%
+  Commit: f0b2815
+
+**P3/P4: FEED_ACT 32B broadcast + COLLECT pipeline (FC compute acceleration)**
+  - P4 FEED_ACT: 256-bit act_buffer broadcast latches 32 bytes/cycle.
+    FC rows per chunk: 64→3-4 cycles (was 64 cycles byte-by-byte).
+  - P4 COLLECT: pipelined 1 column/cycle (remove acc_collect_wait between cols).
+    FC columns per chunk: 64→33 cycles (was 64 cycles, 2 per col).
+  - P3 store_pack pipeline: DEFERRED.  Consecutive acc_buffer reads break
+    1-cycle buffer latency.  Requires acc_buffer 128-bit widening.
+  - FC 1K→96 bandwidth: ~18% (pre-optimization) → 50.57% (with FEED+COLLECT)
+  Commits: e982a5b, 03c94bc, a61410e (reverted in B1 fix branch)
+
+**B1: FC multi-tile mismatch FIX**
+  - Symptom: FC 16→96 (and 1K→96) with output_c > 1 had mismatches.
+    Pre-existing since commit 4312bcf (not introduced by P0-P4).
+  - Root cause: FC Phase 1 ping-pong preload wrote tile 2+ weights into
+    wgt_buffer alternate bank, but bank content read as 'x' by FSM_LOAD_ARRAY.
+  - Fix: FSM_FC_TILE_PREP bypasses preload; each tile does fresh weight DMA.
+    Cost: ~1024 cycles per additional tile.
+  - FC 16→96: 190/384 mismatches → 0/384 matched.
+  Commits: 4ff89f4, 992bec1 (on fix/fc-multi-output-bug, merged to main)
+
+**Regression status (2026-06-28):**
+  npu_bandwidth_60pct_stress_test: PASS_TARGET (64.04%)
+  npu_fc_smoke_test:              PASS
+  npu_conv_smoke_test:            PASS
+  npu_requant_smoke_test:         PASS
+  npu_cluster_mode_test:          4/4 PASS
+  npu_fc_full_cluster_96out_test: PASS (0/384 mismatches, B1 fixed)
+  tb_dma_writer_long_burst:       5/5 PASS (80.00%)
+  tb_dma_writer_tail_burst:       PASS
+  tb_dma_writer_awlen_wlast:      PASS
+  tb_dma_writer_backpressure:     PASS
+  tb_dma_writer_zero_byte:        PASS
+
+## 9. Future Work & Known Blockers
+
+### Active
+  - **P2 Phase B 1 beat/cycle**: blocked by act_buffer 2-cycle read latency.
+    Requires registered pipeline (vec_relu_pipe + vec_relu_pipe2) or dual-port
+    buffer.  vector_relu bandwidth theoretical cap ~87% (current: 64%).
+  - **P3 store_pack 128-bit**: blocked by acc_buffer 32-bit single-port.
+    Requires buffer DATA_WIDTH 32→128 + byte-enable writes + COLLECT column
+    packing.  ~150 lines across npu_buffer.v + npu_top.v (6 writer paths).
+    Expected: store_pack 16→~5 cycles/beat.
+
+### Deferred (post-FPGA)
   1. FPGA synthesis / timing check
   2. UVM full regression
   3. Coverage flow
   4. Delivery hardening
-  5. THEN re-evaluate Phase C
+  5. acc_buffer 128-bit widening (Phase C)
+  6. read/compute/write overlap (ping-pong buffer architecture)

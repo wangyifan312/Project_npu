@@ -1,6 +1,6 @@
 # Project_npu
 
-`Project_npu` 是面向赛题“CPU + NPU 异构处理器设计”的 RTL 仓库。当前正式基线是 `PicoRV32 CPU + 6-cluster NPU + shared memory` SoC，目标网络为 `LeNet(MNIST)`。
+`Project_npu` 是面向赛题"CPU + NPU 异构处理器设计"的 RTL 仓库。当前正式基线是 `PicoRV32 CPU + 6-cluster NPU + shared memory` SoC，目标网络为 `LeNet(MNIST)`。
 
 当前项目状态的唯一总表入口是：
 
@@ -30,7 +30,17 @@ README 只保留导航、关键边界和常用入口；不要把 README 当作�
 - NPU RTL `Workstream A/B/C` 已完成。
 - first-pass full-cluster 优化已达到 `top32 + subsystem64 stronger regression stable`。
 
-ResNet-20 当前也已经不再停留在“只做 software handoff”阶段。当前 ResNet 迁移线可准确表述为：
+### 赛题关键指标
+
+| 指标 | 目标 | 达成 | 证据 |
+|------|:--:|:--:|------|
+| AXI bus bandwidth | ≥60% | **64.04%** | `npu_bandwidth_60pct_stress_test` PASS_TARGET |
+| FC 带宽 (1K→96) | — | **50.57%** | `npu_system_bus_util_test` (read-dominated) |
+| DMA writer burst util | ≥80% | **80.00%** | `tb_dma_writer_long_burst` 5/5 PASS |
+| vector_relu output | exact | 512/512 | 16384 bytes vs golden |
+| write_beat_fifo depth | — | 64 | 消除 producer 背压 |
+
+ResNet-20 当前也已经不再停留在"只做 software handoff"阶段。当前 ResNet 迁移线可准确表述为：
 
 - `R0.5` software golden / export / handoff 已完成。
 - software fixed-point full-test gate 已通过：`8639/10000 = 86.39%`。
@@ -64,6 +74,7 @@ ResNet-20 当前也已经不再停留在“只做 software handoff”阶段。�
   - `3=Requant`
   - `4=ADD`
   - `5=GAP`
+  - `6=VectorReLU` (新增：256-bit streaming INT8 ReLU)
 - append-only AXI-Lite 控制寄存器已加入：
   - `VERSION / CAPABILITY`
   - `CONV_CFG`
@@ -113,6 +124,34 @@ DMA 写通道已完成 Phase A/B/B2 优化：
 - system-level write throughput 仍受 32-bit acc_buffer/store_pack 路径限制。
 - 不要把 80.00% 说成 system-level utilization。
 
+### P2: write_beat_fifo 深度 16→64
+
+FIFO 深度升级消除了 vector_relu producer 背压（fifo_full_stall: 63→0）。
+端口宽度同步更新（write_beat_fifo.v, dma_axi_writer.v, npu_top.v）。
+Bandwidth 收益：61.61% → 64.04%（+2.43pp）。
+
+### P0: dma_axi_writer Phase B2 correctness fixes
+
+P0-1/P0-2: next_last off-by-one、promote_now gating、eff_level、spurious beat
+discard。修复前 write beats 480/482 of 512 → 修复后 512/512。
+P0-3: npu_top.v 双 DMA read → 修复后 read beats 512/512。
+详细见 `CLAUDE.md §8.3`。
+
+### P4: FC compute acceleration
+
+- **FEED_ACT 32B broadcast**: 256-bit act_buffer 广播 latches 32 bytes/cycle，
+  FC 64 rows → 3-4 cycles（原 64 cycles byte-by-byte）。
+- **COLLECT pipeline**: 1 column/cycle（原 2 cycles/col）。
+- FC 1K→96 带宽：~18% → **50.57%**。
+
+### B1: FC multi-tile mismatch (FIXED 2026-06-28)
+
+- 症状: FC 16→96 (output_c > 1) 输出 mismatch (190/384 bytes)。
+- 根因: FC Phase 1 ping-pong preload 写权重到 wgt_buffer 备用 bank，
+  但 bank 内容被读为 'x'。
+- 修复: FSM_FC_TILE_PREP bypass preload，每 tile fresh DMA。
+- 结果: 0/384 mismatches。
+
 REQ-1 requant testbench 失败已结案：
 - 不是 requant_i32_to_i8 RTL bug。RTL 公式（round-half-away-from-zero + clamp [-128,127]）正确。
 - 根因：testbench 32-bit AXI preload（awsize=2）被 256-bit axi4_ram 拒绝，RAM 读出 X。
@@ -121,25 +160,22 @@ REQ-1 requant testbench 失败已结案：
 
 ## 验证状态
 
-DMA regression：10/10 Verilog directed + 3/3 UVM smoke PASS
+### 回归 (2026-06-28)
 
-Verilog directed tests (10/10 PASS)：
-  tb_shared, tb_requant, tb_task_requant, tb_fc, tb_npu_top,
-  tb_dma_writer_backpressure, tb_dma_writer_tail_burst,
-  tb_dma_writer_awlen_wlast, tb_dma_writer_zero_byte,
-  tb_dma_writer_long_burst
-
-UVM smoke tests (3/3 PASS)：
-  npu_conv_smoke_test, npu_fc_smoke_test, npu_requant_smoke_test
-
-Structural UVM tests (5/5 PASS，全部 FC 基底，output-compare 验证）：
-  npu_fc_16x16_full_array_test, npu_fc_full_cluster_96out_test,
-  npu_cluster_mask_sweep_test, npu_perf_counter_scaling_test,
-  npu_back_to_back_task_test
-
-Structural closure total：8/8 PASS（3 smoke + 5 structural）
-npu_cluster_mode_test：1/4 PASS（pre-existing Conv multi-cluster mismatch，
-  详见 docs/known_issues/conv_multicluster_mismatch.md）
+| 测试 | 状态 |
+|------|:--:|
+| `npu_bandwidth_60pct_stress_test` | PASS_TARGET (64.04%) |
+| `npu_fc_smoke_test` | PASS |
+| `npu_conv_smoke_test` | PASS |
+| `npu_requant_smoke_test` | PASS |
+| `npu_cluster_mode_test` | 4/4 PASS |
+| `npu_fc_full_cluster_96out_test` | PASS (B1 fixed) |
+| `npu_system_bus_util_test` | FC 50.57% bus ratio |
+| `tb_dma_writer_long_burst` | 5/5 PASS |
+| `tb_dma_writer_tail_burst` | PASS |
+| `tb_dma_writer_awlen_wlast` | PASS |
+| `tb_dma_writer_backpressure` | PASS |
+| `tb_dma_writer_zero_byte` | PASS |
 
 ### Back-to-Back Task Execution
 
@@ -158,10 +194,14 @@ soc_probe_if 在 NPU busy 窗口内对 cluster busy/enable/tile 信号做 OR-累
 - LeNet 地址图不变。
 - requant 算法语义不变。
 - shared memory 继续固定为 `32768 x 256-bit beat`。
-- NPU task base address contract 继续维持 `64B` 对齐，不在普通优化中顺手放宽到 `32B`。
+- NPU task base address contract 继续维持 `64B` 对齐。
 - `acc_buffer -> DMA writer` packing 固定为 `32-bit word -> 256-bit AXI beat`。
 - last-beat `WSTRB` 由实际 byte count 决定。
-- runtime `CLUSTER_MODE / CLUSTER_MASK` 已支持 AXI-Lite 配置，但当前仍是单任务寄存器触发模型，不是 queue / descriptor / shadow config 架构。
+- write_beat_fifo depth = 64（P2 升级，不得减小）。
+- FC Phase 1 preload bypass（B1 fix，FSM_FC_TILE_PREP 强制 fresh DMA）。
+- P4 FEED_ACT 32B broadcast latch block（is_fc_mode gated）。
+- P4 COLLECT pipelined（FC 写 col_results 不依赖 buffer 读数据）。
+- runtime `CLUSTER_MODE / CLUSTER_MASK` 已支持 AXI-Lite 配置。
 
 AXI Preload 规则：
   正式 256-bit data-plane testbench 写 axi4_ram 必须使用 256-bit WDATA + AWSIZE=3'd5。
@@ -180,9 +220,10 @@ AXI Preload 规则：
 - [docs/REAL_WEIGHT_FLOW.md](docs/REAL_WEIGHT_FLOW.md)：真实权重与 candidate-final 资产链。
 - [docs/MNIST_FULL_EVAL_PLAN.md](docs/MNIST_FULL_EVAL_PLAN.md)：full-set evaluation 口径。
 - [docs/DELIVERY_CHECKLIST.md](docs/DELIVERY_CHECKLIST.md)：答辩/交付收尾清单。
-- [docs/NEXT_TASK_WORKLIST.md](docs/NEXT_TASK_WORKLIST.md)：历史 W1-W6 工单定义；当前 W4-W6 为后续增强项。
+- [docs/NEXT_TASK_WORKLIST.md](docs/NEXT_TASK_WORKLIST.md)：历史 W1-W6 工单定义。
 - [docs/AXI_COMPLIANCE_SPEC.md](docs/AXI_COMPLIANCE_SPEC.md)：AXI 支持范围。
 - [docs/HB_256BIT_REFACTOR_SPEC.md](docs/HB_256BIT_REFACTOR_SPEC.md)：256-bit HB 数据面基线。
+- [CLAUDE.md](CLAUDE.md)：coding agent 工程约束与基线。
 
 ## 目标网络
 
@@ -229,6 +270,19 @@ results/   retained evidence and run outputs
 bash sim/run_sim.sh all
 ```
 
+UVM 测试（需要 VCS）：
+
+```bash
+# 单个测试
+bash verif/uvm_top/scripts/run_uvm.sh npu_fc_smoke_test
+
+# 带宽测试
+bash verif/uvm_top/scripts/run_uvm.sh npu_bandwidth_60pct_stress_test
+
+# FC 带宽测试
+bash verif/uvm_top/scripts/run_uvm.sh npu_system_bus_util_test
+```
+
 LeNet subsystem / top：
 
 ```bash
@@ -266,8 +320,12 @@ make fullset-subsystem-status
 
 ## 已知限制与后续工作
 
-- Phase C (acc_buffer 256-bit widening)：暂缓。当前 write_transaction_util = 80% 已达成。
-  system-level write throughput 仍受 32-bit acc_buffer/store path 限制。
+- **P2 Phase B 1 beat/cycle**: act_buffer 2-cycle 读延迟阻塞。
+  vector_relu 理论带宽上限约 87%（当前 64%）。
+- **P3 store_pack 128-bit**: acc_buffer 32-bit 单端口阻塞。
+  需 buffer 128-bit 宽 + byte-enable + COLLECT packing。
+  预期 store_pack 16→~5 cycles/beat。
+- Phase C (acc_buffer 256-bit widening)：暂缓。
 - FPGA synthesis / timing check：待完成。
 - UVM full regression：待扩展。
 - ResNet/CIFAR end-to-end RTL：不宣称完成。仅 foundation / directed smoke 已实现。
