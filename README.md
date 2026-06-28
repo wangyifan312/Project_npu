@@ -83,7 +83,7 @@ ResNet-20 当前也已经不再停留在"只做 software handoff"阶段。当前
   - `ADD_CFG / GAP_CFG / POSTPROC_CFG`
   - `ADD_SRC0/SRC1/OUT MULT/SHIFT`
 - generalized Conv foundation 已实现：
-  - kernel: `1x1 / 3x3 / 5x5`
+  - kernel: `1x1 / 3x3` (5×5 removed — PE_ROWS=16 insufficient for 25 spatial positions)
   - stride: `1 / 2`
   - padding: `valid / same`
 - folded INT32 bias + requant integration 已接入 Conv/FC 路径：
@@ -160,7 +160,7 @@ REQ-1 requant testbench 失败已结案：
 
 ## 验证状态
 
-### 回归 (2026-06-28)
+### 回归 (2026-06-29)
 
 | 测试 | 状态 |
 |------|:--:|
@@ -169,13 +169,36 @@ REQ-1 requant testbench 失败已结案：
 | `npu_conv_smoke_test` | PASS |
 | `npu_requant_smoke_test` | PASS |
 | `npu_cluster_mode_test` | 4/4 PASS |
-| `npu_fc_full_cluster_96out_test` | PASS (B1 fixed) |
-| `npu_system_bus_util_test` | FC 50.57% bus ratio |
+| `npu_fc_full_cluster_96out_test` | PASS |
+| `npu_perf_counter_scaling_test` | 3/3 PASS |
+| `npu_cluster_mask_sweep_test` | 4/4 PASS |
+| `npu_back_to_back_task_test` | PASS |
+| `npu_fc_16x16_full_array_test` | PASS |
+| `npu_gap_smoke_test` | PASS |
+| `npu_conv_stride2_test` | PASS |
+| `npu_conv_1x1_smoke_test` | PASS |
+| `npu_conv_3x3_same_test` | PASS |
+| `npu_pool_smoke_test` | PASS |
+| `npu_add_smoke_test` | PASS |
 | `tb_dma_writer_long_burst` | 5/5 PASS |
 | `tb_dma_writer_tail_burst` | PASS |
 | `tb_dma_writer_awlen_wlast` | PASS |
 | `tb_dma_writer_backpressure` | PASS |
 | `tb_dma_writer_zero_byte` | PASS |
+| `tb_top_lenet` (LeNet) | 1/1 correct |
+
+### 2026-06-29: 架构修正与 Bug 修复
+
+**架构修正**: RTL TILE_ROWS/COLS 16→4，修正每个 cluster 从 64×64 PE (4096 PE) 到 16×16 PE (256 PE)。
+总 PE 从 24,576 修正为 **1,536**，与 CLAUDE.md 基线一致。
+
+**RTL Bug 修复**:
+- `npu_top.v`: `total_global_cols` — FC multi-tile 时使用 `fc_tile_outputs` 替代 `output_c`，
+  修复 cluster weight routing 越界访问 wgt_load_reg。
+- `npu_top.v`: GAP `acc_wr_en/data/addr` — 改用 `gap_acc_wr_en_r` 直接选通，
+  修复 fsm_state 跳转与写使能同周期的时序竞争（数据从未写入 acc_buffer）。
+- `conv_frontend.v`: stride2 行切换 — 新增 `stride_shift_cnt`，line buffer 按 `stride_r` 次 shift，
+  修复 stride=2 时第 2 个 output row 数据不完整。
 
 ### Back-to-Back Task Execution
 

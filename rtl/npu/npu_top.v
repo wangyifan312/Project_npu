@@ -11,8 +11,8 @@ module npu_top #(
     parameter ACC_DATA_W  = 32,
     parameter BUF_ENTRIES = 1024,
     parameter BUF_ADDR_W  = 10,
-    parameter TILE_ROWS   = 16,
-    parameter TILE_COLS   = 16,
+    parameter TILE_ROWS   = 4,
+    parameter TILE_COLS   = 4,
     parameter [1:0] CLUSTER_MODE = 2'd0,
     parameter [5:0] CLUSTER_MASK_REQ = 6'b11_1111
 ) (
@@ -77,7 +77,7 @@ module npu_top #(
     localparam PE_ROWS = TILE_ROWS * 4;
     localparam PE_COLS = TILE_COLS * 4;
     localparam N_TILES = TILE_ROWS * TILE_COLS;
-    localparam KERNEL_SPATIAL = 25;   // 5x5 spatial kernel elements (never changes)
+    localparam KERNEL_SPATIAL = 16;   // max supported spatial kernel elements (4x4, PE_ROWS limited)
     localparam CLUSTER_COUNT = 6;
     localparam CLUSTER_ACT_W = PE_ROWS * 8;
     localparam CLUSTER_SUM_W = PE_COLS * 32;
@@ -236,6 +236,7 @@ module npu_top #(
     wire [31:0] perf_array_active, perf_array_stall;
     wire [31:0] perf_cluster_active, perf_cluster_stall;
     wire [31:0] perf_write_data_cycles, perf_write_txn_cycles;
+    wire [31:0] perf_ar_handshake, perf_aw_handshake, perf_b_handshake, perf_bus_active;
     wire [31:0] perf_cluster_cfg;
 
     wire [31:0] blk_in_addr, blk_wgt_addr, blk_out_addr;
@@ -289,7 +290,11 @@ module npu_top #(
         .perf_cluster_active_i(perf_cluster_active), .perf_cluster_stall_i(perf_cluster_stall),
         .perf_cluster_cfg_i(perf_cluster_cfg),
         .perf_write_data_cycles_i(perf_write_data_cycles),
-        .perf_write_txn_cycles_i(perf_write_txn_cycles)
+        .perf_write_txn_cycles_i(perf_write_txn_cycles),
+        .perf_ar_handshake_i(perf_ar_handshake),
+        .perf_aw_handshake_i(perf_aw_handshake),
+        .perf_b_handshake_i(perf_b_handshake),
+        .perf_bus_active_i(perf_bus_active)
     );
 
     assign npu_busy = ctrl_busy;
@@ -617,7 +622,22 @@ module npu_top #(
     integer arb_global_col_i;
     integer arb_route_col_i;
     assign array_active_rows = is_fc_mode ? fc_chunk_inputs : conv_kernel_area;
-    assign array_active_cols = is_fc_mode ? fc_tile_outputs : output_c;
+    // Multi-cluster work division:
+    //   total_global_cols = total output channels (used for weight/drain/collect routing)
+    //   array_active_cols = columns processed per cluster per pass (reduced for multi-cluster)
+    //   collect_total_cols = columns to iterate during COLLECT (all global cols for Conv)
+    // In single-cluster mode, all equal output_c.
+    wire [15:0] total_global_cols;
+    wire [15:0] cluster_active_cols;
+    wire [15:0] collect_total_cols;
+    assign total_global_cols  = is_fc_mode ? fc_tile_outputs : output_c;
+    assign cluster_active_cols = (cluster_count_i > 1 && output_c > 16'd0) ?
+                                  ((output_c + cluster_count_i - 16'd1) / cluster_count_i) : output_c;
+    assign array_active_cols = is_fc_mode ? fc_tile_outputs :
+                                (cluster_count_i > 1) ? cluster_active_cols : output_c;
+    // COLLECT iterates over all global columns for Conv (routed from all clusters),
+    // but only the per-tile columns for FC.
+    assign collect_total_cols = is_fc_mode ? array_active_cols : total_global_cols;
     // Drain latency is max(PE_ROWS - active_rows, 0) plus the fixed pipeline tail.
     // Conv kernels can use more active rows than the physical PE row count.
     assign array_drain_offset = (PE_ROWS_16 > array_active_rows) ?
@@ -646,8 +666,8 @@ module npu_top #(
                 if (perf_cluster_enable[cluster_col_i])
                     cluster_rank_i = cluster_rank_i + 1;
             end
-            cluster_base_i = (array_active_cols * cluster_rank_i) / cluster_count_i;
-            cluster_end_i  = (array_active_cols * (cluster_rank_i + 1)) / cluster_count_i;
+            cluster_base_i = (total_global_cols * cluster_rank_i) / cluster_count_i;
+            cluster_end_i  = (total_global_cols * (cluster_rank_i + 1)) / cluster_count_i;
 
             if (perf_cluster_enable[cluster_bus_idx]) begin
                 for (cluster_sp_i = 0; cluster_sp_i < PE_ROWS; cluster_sp_i = cluster_sp_i + 1) begin
@@ -655,7 +675,7 @@ module npu_top #(
                         cluster_global_col_i = cluster_base_i + cluster_col_i;
                         if ((cluster_sp_i < array_active_rows) &&
                             (cluster_global_col_i < cluster_end_i) &&
-                            (cluster_global_col_i < array_active_cols)) begin
+                            (cluster_global_col_i < total_global_cols)) begin
                             cluster_target_tile_i = (cluster_sp_i / 4) * TILE_COLS + (cluster_col_i / 4);
                             cluster_target_base_i = cluster_target_tile_i * 128 +
                                                     (cluster_sp_i % 4) * 32 +
@@ -694,12 +714,12 @@ module npu_top #(
                         if (perf_cluster_enable[arb_prev_i])
                             arb_rank_i = arb_rank_i + 1;
                     end
-                    arb_base_i = (array_active_cols * arb_rank_i) / arb_count_i;
-                    arb_end_i  = (array_active_cols * (arb_rank_i + 1)) / arb_count_i;
+                    arb_base_i = (total_global_cols * arb_rank_i) / arb_count_i;
+                    arb_end_i  = (total_global_cols * (arb_rank_i + 1)) / arb_count_i;
                     arb_global_col_i = arb_base_i + arb_route_col_i;
                     if (perf_cluster_enable[arb_bus_idx] &&
                         (arb_global_col_i < arb_end_i) &&
-                        (arb_global_col_i < array_active_cols) &&
+                        (arb_global_col_i < total_global_cols) &&
                         (arb_route_col_i < PE_COLS)) begin
                         cluster_arb_valid[arb_bus_idx] = 1'b1;
                         cluster_routed_sum_out_all_flat[
@@ -800,7 +820,7 @@ module npu_top #(
     reg [15:0] acc_col_idx;         // which output column to accumulate
     reg        acc_collect_wait;     // wait for synchronous acc_buffer read
     reg        acc_collect_skip_write;
-    reg [31:0] col_results [0:63];  // latched array column results (max 64 columns)
+    reg [31:0] col_results [0:PE_COLS-1];  // latched array column results
     reg                 rq_acc_wr_en_r;
     reg [BUF_ADDR_W-1:0] rq_acc_wr_addr_r;
     reg [31:0]          rq_acc_wr_data_r;
@@ -820,7 +840,7 @@ module npu_top #(
     reg [31:0]          bias_load_phase;
     reg [31:0]          bias_load_words;
     reg                 bias_load_wait;
-    reg signed [31:0]   bias_reg [0:63];
+    reg signed [31:0]   bias_reg [0:PE_COLS-1];
     reg [31:0]          add_src_idx;
     reg                 add_src_wait;
     reg [1:0]           add_pack_idx;
@@ -887,12 +907,20 @@ module npu_top #(
         .cluster_stall_inc(perf_array_stall_evt ? perf_cluster_count : 3'd0),
         .write_data_cycle(m_axi_wvalid && m_axi_wready),
         .write_txn_active(dma_wr_txn_active),
+        .ar_active(m_axi_arvalid && m_axi_arready),
+        .aw_active(m_axi_awvalid && m_axi_awready),
+        .b_active(m_axi_bvalid && m_axi_bready),
+        .bus_active((m_axi_arvalid && m_axi_arready) || (m_axi_rvalid && m_axi_rready) ||
+                    (m_axi_awvalid && m_axi_awready) || (m_axi_wvalid && m_axi_wready) ||
+                    (m_axi_bvalid && m_axi_bready)),
         .total_cycle_lo(perf_cycle_lo), .total_cycle_hi(perf_cycle_hi),
         .read_beat_count(perf_read_beats), .write_beat_count(perf_write_beats),
         .read_active_cycles(perf_read_active), .write_active_cycles(perf_write_active),
         .array_active_cycles(perf_array_active), .array_stall_cycles(perf_array_stall),
         .cluster_active_cycles(perf_cluster_active), .cluster_stall_cycles(perf_cluster_stall),
-        .write_data_cycles(perf_write_data_cycles), .write_txn_cycles(perf_write_txn_cycles)
+        .write_data_cycles(perf_write_data_cycles), .write_txn_cycles(perf_write_txn_cycles),
+        .ar_handshake_cycles(perf_ar_handshake), .aw_handshake_cycles(perf_aw_handshake),
+        .b_handshake_cycles(perf_b_handshake), .bus_active_cycles(perf_bus_active)
     );
 
     wire [15:0] fc_tile_capacity_raw = ((BUF_ENTRIES * HB_BEAT_BYTES) / input_c);
@@ -1174,7 +1202,7 @@ module npu_top #(
                          ? acc_partial_addr
                          : add_write_phase
                          ? add_acc_wr_addr_r
-                         : (fsm_state == FSM_GAP_COMPUTE)
+                         : gap_acc_wr_en_r
                          ? gap_acc_wr_addr_r
                          : (rq_internal_write_phase || is_requant_mode)
                          ? rq_acc_wr_addr_r
@@ -1187,19 +1215,19 @@ module npu_top #(
     wire array_relu_final = relu_en && !bias_enabled && array_final_accum && array_acc_sum[31];
     wire [31:0] array_acc_wr_data = array_relu_final ? 32'd0 : array_acc_sum;
     assign acc_wr_data = add_write_phase ? add_acc_wr_data_r :
-                         (fsm_state == FSM_GAP_COMPUTE) ? gap_acc_wr_data_r :
+                         gap_acc_wr_en_r ? gap_acc_wr_data_r :
                          rq_internal_write_phase ? rq_acc_wr_data_r :
                          (is_conv_mode || is_fc_mode) ? array_acc_wr_data :
                          is_requant_mode ? rq_acc_wr_data_r :
                                            pp_data_out;
     assign acc_wr_en   = add_write_phase ? add_acc_wr_en_r :
-        (fsm_state == FSM_GAP_COMPUTE) ? gap_acc_wr_en_r :
+        gap_acc_wr_en_r ? gap_acc_wr_en_r :
         rq_internal_write_phase ? rq_acc_wr_en_r :
         (is_conv_mode || is_fc_mode)
         ? ((fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_COLLECT) &&
            !acc_collect_wait && !acc_collect_skip_write &&
            (!is_conv_mode || ((comp_win_idx < comp_total_wins) &&
-                              (acc_col_idx < array_active_cols))))
+                              (acc_col_idx < collect_total_cols))))
         : is_requant_mode ? rq_acc_wr_en_r
         : pp_data_valid_o;
     assign acc_wr_bank = acc_load_bank;
@@ -1421,7 +1449,7 @@ module npu_top #(
             gap_acc_wr_data_r <= 32'd0;
             begin
                 integer bi;
-                for (bi = 0; bi < 64; bi = bi + 1)
+                for (bi = 0; bi < PE_COLS; bi = bi + 1)
                     bias_reg[bi] <= 32'sd0;
             end
             vec_relu_beat_idx <= 32'd0;
@@ -1551,7 +1579,7 @@ module npu_top #(
                     if (bias_load_wait) begin
                         bias_load_wait <= 1'b0;
                     end else begin
-                        if (bias_load_phase < 32'd64)
+                        if (bias_load_phase < PE_COLS)
                             bias_reg[bias_load_phase[5:0]] <= bias_word;
 
                         if (bias_load_phase + 32'd1 >= bias_load_words) begin
@@ -2062,7 +2090,7 @@ module npu_top #(
                     end else if (wgt_load_phase < conv_wgt_valid_bytes) begin
                         // Map memory byte idx to wgt_load_reg byte idx:
                         // memory: spatial_pos * C_out + out_c  (sequential)
-                        // wgt_reg: spatial_pos * 64 + out_c   (strided for array columns)
+                        // wgt_reg: spatial_pos * PE_COLS + out_c   (strided for array columns)
                         // HB1-B: phase is a byte index; beat address and byte lane
                         // use the same 256-bit extraction rule as FC weights.
                         reg [31:0] load_idx;
@@ -2221,7 +2249,7 @@ module npu_top #(
                                 // Set up partial sum address for this window
                                 if (is_conv_mode) begin
                                     conv_collect_base_next =
-                                        ({16'd0, comp_win_idx} * {16'd0, array_active_cols});
+                                        ({16'd0, comp_win_idx} * {16'd0, collect_total_cols});
                                     acc_partial_addr <= conv_collect_base_next[BUF_ADDR_W-1:0];
                                 end else if (is_fc_mode)
                                     acc_partial_addr <= {BUF_ADDR_W{1'b0}};
@@ -2244,7 +2272,7 @@ module npu_top #(
                                 if ((drain_count_i == 1) && perf_cluster_enable[0]) begin
                                     drain_global_col_i = comp_drain_cnt - array_drain_offset;
                                     if ((drain_global_col_i < array_active_cols) &&
-                                        (drain_global_col_i < 64)) begin
+                                        (drain_global_col_i < PE_COLS)) begin
                                         col_results[drain_global_col_i] <=
                                             array_sum_out[drain_global_col_i*32 +: 32];
                                     end
@@ -2255,13 +2283,13 @@ module npu_top #(
                                             if (perf_cluster_enable[drain_base_i])
                                                 drain_rank_i = drain_rank_i + 1;
                                         end
-                                        drain_base_i = (array_active_cols * drain_rank_i) / drain_count_i;
-                                        drain_end_i  = (array_active_cols * (drain_rank_i + 1)) / drain_count_i;
+                                        drain_base_i = (total_global_cols * drain_rank_i) / drain_count_i;
+                                        drain_end_i  = (total_global_cols * (drain_rank_i + 1)) / drain_count_i;
                                         drain_global_col_i = drain_base_i + (comp_drain_cnt - array_drain_offset);
                                         if (perf_cluster_enable[drain_cluster_idx] &&
                                             (drain_global_col_i < drain_end_i) &&
-                                            (drain_global_col_i < array_active_cols) &&
-                                            (drain_global_col_i < 64)) begin
+                                            (drain_global_col_i < total_global_cols) &&
+                                            (drain_global_col_i < PE_COLS)) begin
                                             col_results[drain_global_col_i] <=
                                                 array_sum_out[drain_global_col_i*32 +: 32];
                                         end
@@ -2290,7 +2318,7 @@ module npu_top #(
                         CP_COLLECT: begin
                             if (acc_collect_wait) begin
                                 acc_collect_wait <= 1'b0;
-                            end else if (acc_col_idx + 16'd1 < array_active_cols) begin
+                            end else if (acc_col_idx + 16'd1 < collect_total_cols) begin
                                 acc_col_idx <= acc_col_idx + 16'd1;
                                 acc_partial_addr <= acc_partial_addr + 1;
                                 // FC: keep 2-cycle (acc_buffer RAW hazard with multi-tile)
@@ -2300,7 +2328,7 @@ module npu_top #(
                                     acc_collect_skip_write <=
                                         (comp_total_wins != 16'd1) &&
                                         (comp_win_idx + 16'd1 >= comp_total_wins) &&
-                                        (acc_col_idx + 16'd2 >= array_active_cols) &&
+                                        (acc_col_idx + 16'd2 >= collect_total_cols) &&
                                         ((acc_partial_addr + {{(BUF_ADDR_W-1){1'b0}}, 1'b1}) == {BUF_ADDR_W{1'b0}});
                                 end
                             end else begin
@@ -2643,9 +2671,11 @@ module npu_top #(
                      (fc_shadow_chunk_inputs * fc_tile_outputs)))
                     fc_shadow_wait <= 1'b1;
                 fc_shadow_phase <= fc_shadow_phase + sh_load_count;
-            end else begin
-                fc_shadow_active <= 1'b0;
             end
+            // fc_shadow_active stays 1 after load completion;
+            // it is cleared at CP_COLLECT done after the swap into wgt_load_reg.
+            // Clearing it here would cause the swap to miss the shadow data
+            // and load zero weights for the next K-chunk.
         end
     end
 

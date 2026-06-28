@@ -11,7 +11,7 @@ class npu_conv_smoke_test extends soc_base_test;
   task run_phase(uvm_phase phase);
     npu_conv_task_seq conv_seq;
     byte unsigned input_bytes[25];
-    byte unsigned weight_bytes[25];
+    byte unsigned weight_bytes[9];   // 3x3 kernel = 9 weights
     byte unsigned expected_bytes[];
     int i;
     bit match;
@@ -19,9 +19,11 @@ class npu_conv_smoke_test extends soc_base_test;
     phase.raise_objection(this);
     #200;
 
-    // Build test data: 5x5 input of 0x01, 5x5 weight of 0x02
+    // Build test data: 5x5 input of 0x01, 3x3 weight of 0x02
     for (i = 0; i < 25; i++) begin
       input_bytes[i]  = 8'h01;
+    end
+    for (i = 0; i < 9; i++) begin
       weight_bytes[i] = 8'h02;
     end
 
@@ -30,7 +32,7 @@ class npu_conv_smoke_test extends soc_base_test;
     env.golden.compute_conv(input_bytes, weight_bytes,
                             5, 5,          // H=5, W=5
                             1, 1,          // Cin=1, Cout=1
-                            5, 5,          // kernel 5x5
+                            3, 3,          // kernel 3x3
                             1, 0);         // stride=1, padding=0 (valid)
     expected_bytes = env.golden.output_bytes;
 
@@ -49,6 +51,7 @@ class npu_conv_smoke_test extends soc_base_test;
     conv_seq.expected_output_bytes = expected_bytes.size();
     conv_seq.expected_output       = expected_bytes;
     conv_seq.cluster_mode          = 2'd2;   // full cluster (6 clusters)
+    conv_seq.conv_cfg              = 32'h2;   // kernel_sel=2 → 3x3, stride=1, valid
     conv_seq.input_base            = 32'h0000_0100;
     conv_seq.weight_base           = 32'h0000_0200;
     conv_seq.output_base           = 32'h0000_0300;

@@ -85,7 +85,7 @@ class npu_perf_counter_scaling_test extends soc_base_test;
       fc_seq.cluster_mode           = modes[t];
       fc_seq.input_base             = 32'h0000_0100 + (t * 32'h10000);
       fc_seq.weight_base            = 32'h0000_0200 + (t * 32'h10000);
-      fc_seq.output_base            = 32'h0000_0300 + (t * 32'h10000);
+      fc_seq.output_base            = 32'h0000_1000 + (t * 32'h10000);  // avoid overlap with weight region (0x200+768=0x500)
 
       clear_probe_sticky();
       fc_seq.start(env.axil_ag.seqr);

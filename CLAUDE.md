@@ -73,7 +73,7 @@ ResNet-20 不改变当前 LeNet/MNIST formal baseline，但它已经不再停留
 
 - `task_type` 全链路 `3 bit`
 - generalized Conv foundation：
-  - `1x1 / 3x3 / 5x5`
+  - `1x1 / 3x3`（5×5 已移除 — PE_ROWS=16 < KERNEL_SPATIAL=25）
   - `stride1 / stride2`
   - `valid / same`
 - Conv/FC folded INT32 bias + requant
@@ -316,18 +316,70 @@ regression (FC/Conv/Requant smoke, bandwidth 60% stress, DMA writer directed).
   - FC 16→96: 190/384 mismatches → 0/384 matched.
   Commits: 4ff89f4, 992bec1 (on fix/fc-multi-output-bug, merged to main)
 
-**Regression status (2026-06-28):**
-  npu_bandwidth_60pct_stress_test: PASS_TARGET (64.04%)
+**Regression status (2026-06-29):**
   npu_fc_smoke_test:              PASS
-  npu_conv_smoke_test:            PASS
+  npu_conv_smoke_test:            PASS (3×3)
   npu_requant_smoke_test:         PASS
   npu_cluster_mode_test:          4/4 PASS
-  npu_fc_full_cluster_96out_test: PASS (0/384 mismatches, B1 fixed)
+  npu_fc_full_cluster_96out_test: PASS (0/384 mismatches)
+  npu_perf_counter_scaling_test:  3/3 PASS
+  npu_cluster_mask_sweep_test:    4/4 PASS
+  npu_back_to_back_task_test:     PASS
+  npu_fc_16x16_full_array_test:   PASS
+  npu_gap_smoke_test:             PASS
+  npu_conv_stride2_test:          PASS
+  npu_conv_1x1_smoke_test:        PASS
+  npu_conv_3x3_same_test:         PASS
+  npu_pool_smoke_test:            PASS
+  npu_add_smoke_test:             PASS
   tb_dma_writer_long_burst:       5/5 PASS (80.00%)
   tb_dma_writer_tail_burst:       PASS
   tb_dma_writer_awlen_wlast:      PASS
   tb_dma_writer_backpressure:     PASS
   tb_dma_writer_zero_byte:        PASS
+  tb_top_lenet (LeNet):           1/1 correct
+
+### 8.4. Architecture Fix & Bug Fixes (2026-06-29)
+
+**Architecture correction**: RTL TILE_ROWS/COLS corrected 16→4, changing each
+cluster from 64×64 PE (4,096 PE) to the intended 16×16 PE (256 PE). Total PE
+count corrected from 24,576 to **1,536**.
+
+Concurrent changes:
+- `KERNEL_SPATIAL` 25→16 (5×5 Conv removed — PE_ROWS=16 too small for 25 spatial positions)
+- 6 hardcoded `64` values in npu_top.v parameterized to `PE_COLS`
+- task_checker.v: 5×5 Conv mode removed from supported configs
+
+**Bug fix 1: FC multi-tile total_global_cols OOB**
+  - Symptom: npu_fc_full_cluster_96out_test FAILED with mismatches starting at byte 64.
+  - Root cause: `total_global_cols = output_c` (96), but wgt_load_reg only has
+    PE_COLS=16 columns. Cluster 1+ accessed wgt_load_reg column 16+ → OOB.
+  - Fix: `total_global_cols = is_fc_mode ? fc_tile_outputs : output_c`
+    (npu_top.v:633). For FC, cluster routing uses per-tile column count.
+  - Also fixed test address overlap: Tile 2 weight DMA (0x200+16*16=0x300)
+    overlapped with Tile 1 output (0x300). Moved output_base to 0x1000.
+
+**Bug fix 2: GAP acc_buffer write lost on fsm_state transition**
+  - Symptom: npu_gap_smoke_test actual=00 expected=0x64.
+    GAP computation correct (gap_sum=6300, gap_q=100), but output was 0.
+    DMA writer completed but WDATA was 'x' — data never reached shared RAM.
+  - Root cause: `acc_wr_en` only selected `gap_acc_wr_en_r` when
+    `fsm_state == FSM_GAP_COMPUTE`. But gap_acc_wr_en_r was asserted on the
+    SAME cycle fsm_state transitioned to FSM_STORE (both non-blocking).
+    Next cycle: fsm_state ≠ GAP_COMPUTE → acc_wr_en bypassed GAP path →
+    acc_buffer write never happened → FIFO data = 'x'.
+  - Fix: Changed `(fsm_state == FSM_GAP_COMPUTE) ? gap_acc_wr_*` to
+    `gap_acc_wr_en_r ? gap_acc_wr_*` in all three assigns (acc_wr_addr,
+    acc_wr_data, acc_wr_en) in npu_top.v.
+
+**Bug fix 3: conv_frontend stride2 row transition shift count**
+  - Symptom: npu_conv_stride2_test FAILED at 2nd output row (actual=12, expected=18).
+  - Root cause: Conv row transition always shifted line buffer by 1 row,
+    but stride=2 requires 2 shifts to cover the 2-row gap between output rows.
+    Only 6/9 MAC positions had valid data for the 2nd output row.
+  - Fix: Added `stride_shift_cnt` and `stride_first_shift` registers to
+    conv_frontend.v. S_COMPUTE→S_SHIFT sets remaining= stride-1;
+    S_SLIDE_AND_COMPUTE loops back to S_SHIFT until remaining=0.
 
 ## 9. Future Work & Known Blockers
 

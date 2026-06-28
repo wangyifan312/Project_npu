@@ -73,6 +73,8 @@ module conv_frontend #(
     reg        load_phase;
     reg        shift_now;
     reg        flush_lb;
+    reg  [3:0] stride_shift_cnt;   // remaining shifts for stride>1 row transition
+    reg        stride_first_shift;  // 1 = first S_SHIFT visit (advance curr_row)
     integer    si, sj;
 
     wire [1:0] conv_kernel_sel = conv_cfg[1:0];
@@ -122,6 +124,8 @@ module conv_frontend #(
             load_phase      <= 1'b0;
             shift_now       <= 1'b0;
             flush_lb        <= 1'b0;
+            stride_shift_cnt <= 4'd0;
+            stride_first_shift <= 1'b0;
         end else begin
             shift_now <= 1'b0;
             flush_lb  <= 1'b0;
@@ -194,6 +198,7 @@ module conv_frontend #(
                             end else if (rows_loaded < block_in) begin
                                 shift_now <= 1'b1;
                                 load_col <= 16'd0;
+                                stride_first_shift <= 1'b1;
                                 state <= S_SHIFT;
                             end else begin
                                 curr_row <= curr_row + 16'd1;
@@ -205,9 +210,13 @@ module conv_frontend #(
                 end
 
                 S_SHIFT: begin
-                    curr_row <= curr_row + 16'd1;
                     load_col <= 16'd0;
                     load_phase <= 1'b1;
+                    if (stride_first_shift) begin
+                        curr_row <= curr_row + 16'd1;
+                        stride_first_shift <= 1'b0;
+                        stride_shift_cnt <= (stride_r > 16'd1) ? (stride_r - 16'd1) : 4'd0;
+                    end
                     state <= S_SLIDE_AND_COMPUTE;
                 end
 
@@ -218,7 +227,14 @@ module conv_frontend #(
                             load_col <= 16'd0;
                             rows_loaded <= rows_loaded + 16'd1;
                             load_phase <= 1'b0;
-                            state <= S_COMPUTE;
+                            // For stride>1, may need additional shifts to cover the stride gap
+                            if (stride_shift_cnt > 4'd0) begin
+                                stride_shift_cnt <= stride_shift_cnt - 4'd1;
+                                shift_now <= 1'b1;
+                                state <= S_SHIFT;
+                            end else begin
+                                state <= S_COMPUTE;
+                            end
                         end else begin
                             load_col <= load_col + 16'd1;
                         end

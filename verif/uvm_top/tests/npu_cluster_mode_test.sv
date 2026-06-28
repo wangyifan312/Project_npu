@@ -11,8 +11,8 @@ class npu_cluster_mode_test extends soc_base_test;
   task run_phase(uvm_phase phase);
     npu_conv_task_seq conv_seq;
     byte unsigned input_bytes[25];
-    byte unsigned weight_bytes[25];
-    byte unsigned expected_bytes[4];
+    byte unsigned weight_bytes[9];   // 3x3 kernel = 9 weights
+    byte unsigned expected_bytes[];
     bit [1:0] modes[4];
     string    labels[4];
     int i, t;
@@ -21,14 +21,18 @@ class npu_cluster_mode_test extends soc_base_test;
     phase.raise_objection(this);
     #200;
 
-    for (i = 0; i < 25; i++) begin
+    // Build test data: 5x5 input of 0x01, 3x3 weight of 0x02
+    for (i = 0; i < 25; i++)
       input_bytes[i]  = 8'h01;
+    for (i = 0; i < 9; i++)
       weight_bytes[i] = 8'h02;
-    end
-    expected_bytes[0] = 8'h32;
-    expected_bytes[1] = 8'h00;
-    expected_bytes[2] = 8'h00;
-    expected_bytes[3] = 8'h00;
+
+    // Use DPI-C golden model for 3x3 Conv
+    env.golden.compute_conv(input_bytes, weight_bytes,
+                            5, 5, 1, 1,    // H=5, W=5, Cin=1, Cout=1
+                            3, 3,           // kernel 3x3
+                            1, 0);          // stride=1, padding=0 (valid)
+    expected_bytes = env.golden.output_bytes;
 
     modes[0]  = 2'd0; labels[0]  = "single (mode=0, 1 cluster)";
     modes[1]  = 2'd1; labels[1]  = "dual   (mode=1, 2 clusters)";
@@ -39,14 +43,15 @@ class npu_cluster_mode_test extends soc_base_test;
       `uvm_info("TEST", $sformatf("=== Cluster mode: %s ===", labels[t]), UVM_NONE)
 
       conv_seq = npu_conv_task_seq::type_id::create("conv_seq");
-      conv_seq.input_data           = input_bytes;
-      conv_seq.weight_data          = weight_bytes;
-      conv_seq.input_h              = 16'd5;
-      conv_seq.input_w              = 16'd5;
-      conv_seq.input_c              = 16'd1;
-      conv_seq.output_c             = 16'd1;
-      conv_seq.expected_output_bytes = 4;
-      conv_seq.expected_output      = expected_bytes;
+      conv_seq.input_data            = input_bytes;
+      conv_seq.weight_data           = weight_bytes;
+      conv_seq.input_h               = 16'd5;
+      conv_seq.input_w               = 16'd5;
+      conv_seq.input_c               = 16'd1;
+      conv_seq.output_c              = 16'd1;
+      conv_seq.conv_cfg              = 32'h2;   // kernel_sel=2 → 3x3, stride=1, valid
+      conv_seq.expected_output_bytes = expected_bytes.size();
+      conv_seq.expected_output       = expected_bytes;
       conv_seq.cluster_mode          = modes[t];
       // Use unique addresses per test to avoid interference
       conv_seq.input_base           = 32'h0000_0100 + (t * 32'h1000);
@@ -56,7 +61,7 @@ class npu_cluster_mode_test extends soc_base_test;
 
       if (conv_seq.done && !conv_seq.error) begin
         match = 1'b1;
-        for (i = 0; i < 4; i++) begin
+        for (i = 0; i < expected_bytes.size(); i++) begin
           if (conv_seq.actual_output[i] !== expected_bytes[i]) match = 1'b0;
         end
         if (match)

@@ -76,7 +76,7 @@ class npu_fc_full_cluster_96out_test extends soc_base_test;
     fc_seq.cluster_mode           = 2'd2;     // full cluster (6 clusters)
     fc_seq.input_base             = 32'h0000_0100;
     fc_seq.weight_base            = 32'h0000_0200;
-    fc_seq.output_base            = 32'h0000_0300;
+    fc_seq.output_base            = 32'h0000_1000;  // avoid overlap with weight region (0x200+1536=0x800)
 
     `uvm_info("TEST", "=== npu_fc_full_cluster_96out_test: Full Cluster 16→96 FC ===", UVM_NONE)
 

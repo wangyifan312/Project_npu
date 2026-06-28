@@ -39,8 +39,8 @@ module tb_top_cluster_modes;
     localparam [7:0] EXPECTED_CLUSTER_CFG = {TEST_CLUSTER_MODE, TEST_CLUSTER_MASK};
 
     top #(
-        .NPU_TILE_ROWS(16),
-        .NPU_TILE_COLS(16),
+        .NPU_TILE_ROWS(4),
+        .NPU_TILE_COLS(4),
         .NPU_CLUSTER_MODE(TEST_CLUSTER_MODE),
         .NPU_CLUSTER_MASK_REQ(TEST_CLUSTER_MASK)
     ) u_top (

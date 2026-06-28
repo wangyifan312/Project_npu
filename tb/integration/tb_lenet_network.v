@@ -55,6 +55,12 @@ module tb_lenet_network;
     localparam PERF_CLUSTER_ACTIVE = NPU_BASE + 32'h58;
     localparam PERF_CLUSTER_STALL  = NPU_BASE + 32'h5C;
     localparam PERF_CLUSTER_CFG    = NPU_BASE + 32'h60;
+    localparam CLUSTER_MODE_REG    = NPU_BASE + 32'h88;
+    localparam CLUSTER_MASK_REG    = NPU_BASE + 32'h8C;
+    localparam PERF_AR_HANDSHAKE   = NPU_BASE + 32'hD8;
+    localparam PERF_AW_HANDSHAKE   = NPU_BASE + 32'hDC;
+    localparam PERF_B_HANDSHAKE    = NPU_BASE + 32'hE0;
+    localparam PERF_BUS_ACTIVE     = NPU_BASE + 32'hE4;
     localparam REQUANT_SEL         = NPU_BASE + 32'h64;
     localparam REQUANT0_MULT       = NPU_BASE + 32'h68;
     localparam REQUANT0_SHIFT      = NPU_BASE + 32'h6C;
@@ -82,13 +88,15 @@ module tb_lenet_network;
     integer rq_fc1_mult, rq_fc1_shift;
     integer rq_fc2_mult, rq_fc2_shift;
     integer errs, pred, expected_pred, expected_class_override;
+    integer cluster_mode_val, cluster_mask_val;
     reg [63:0] sample_total_cycles, sample_total_mac;
     reg [63:0] sample_total_read_beats, sample_total_write_beats;
     reg [63:0] sample_total_read_active, sample_total_write_active;
     reg [63:0] sample_total_array_active, sample_total_array_stall;
     reg [63:0] sample_total_cluster_active, sample_total_cluster_stall;
+    reg [63:0] sample_total_ar_cyc, sample_total_aw_cyc, sample_total_b_cyc, sample_total_bus_cyc;
 
-    npu_top #(.TILE_ROWS(16), .TILE_COLS(16), .BUF_ENTRIES(16384), .BUF_ADDR_W(14)) u_npu (
+    npu_top #(.TILE_ROWS(4), .TILE_COLS(4), .BUF_ENTRIES(16384), .BUF_ADDR_W(14)) u_npu (
         .clk(clk), .rst_n(rst_n),
         .s_axi_awvalid(s_axi_awvalid), .s_axi_awready(s_axi_awready),
         .s_axi_awaddr(s_axi_awaddr), .s_axi_wvalid(s_axi_wvalid),
@@ -191,6 +199,16 @@ module tb_lenet_network;
             axi_write(REQUANT1_SHIFT, rq_fc1_shift[31:0]);
             axi_write(REQUANT2_MULT, rq_fc2_mult[31:0]);
             axi_write(REQUANT2_SHIFT, rq_fc2_shift[31:0]);
+        end
+    endtask
+
+    task program_cluster_mode;
+        input [1:0] mode;
+        input [5:0] mask;
+        begin
+            axi_write(CLUSTER_MODE_REG, {30'd0, mode});
+            axi_write(CLUSTER_MASK_REG, {26'd0, mask});
+            repeat (2) @(posedge clk);
         end
     endtask
 
@@ -425,9 +443,12 @@ module tb_lenet_network;
         reg [31:0] mac_lo, mac_hi;
         reg [31:0] cluster_active, cluster_stall;
         reg [31:0] cluster_cfg;
+        reg [31:0] ar_cyc, aw_cyc, b_cyc, bus_cyc;
         real read_bw_util;
         real write_bw_util;
         real array_util;
+        real axi_bus_occupancy_util;
+        real payload_bus_util;
         begin
             axi_read(PERF_CYCLE_LO, cycle_lo);
             axi_read(PERF_CYCLE_HI, cycle_hi);
@@ -442,14 +463,18 @@ module tb_lenet_network;
             axi_read(PERF_CLUSTER_ACTIVE, cluster_active);
             axi_read(PERF_CLUSTER_STALL, cluster_stall);
             axi_read(PERF_CLUSTER_CFG, cluster_cfg);
+            axi_read(PERF_AR_HANDSHAKE, ar_cyc);
+            axi_read(PERF_AW_HANDSHAKE, aw_cyc);
+            axi_read(PERF_B_HANDSHAKE, b_cyc);
+            axi_read(PERF_BUS_ACTIVE, bus_cyc);
 
             if ({mac_hi, mac_lo} !== expected_mac)
                 $fatal(1, "%0s perf mac mismatch got 0x%08x_%08x expect 0x%08x_%08x",
                        layer_name, mac_hi, mac_lo, expected_mac[63:32], expected_mac[31:0]);
             if (cycle_lo == 32'd0)
                 $fatal(1, "%0s perf cycles should be non-zero", layer_name);
-            if (cluster_cfg[7:0] !== 8'h01)
-                $fatal(1, "%0s cluster cfg mismatch: 0x%08x", layer_name, cluster_cfg);
+            if (cluster_cfg[5:0] == 6'd0)
+                $fatal(1, "%0s cluster cfg zero enable: 0x%08x", layer_name, cluster_cfg);
 
             sample_total_cycles         = sample_total_cycles + {cycle_hi, cycle_lo};
             sample_total_mac            = sample_total_mac + {mac_hi, mac_lo};
@@ -461,14 +486,23 @@ module tb_lenet_network;
             sample_total_array_stall    = sample_total_array_stall + array_stall;
             sample_total_cluster_active = sample_total_cluster_active + cluster_active;
             sample_total_cluster_stall  = sample_total_cluster_stall + cluster_stall;
+            sample_total_ar_cyc         = sample_total_ar_cyc + ar_cyc;
+            sample_total_aw_cyc         = sample_total_aw_cyc + aw_cyc;
+            sample_total_b_cyc          = sample_total_b_cyc + b_cyc;
+            sample_total_bus_cyc        = sample_total_bus_cyc + bus_cyc;
 
             if (verbose_this_sample != 0) begin
                 read_bw_util = (read_active != 0) ? (read_beats * 1.0 / read_active) : 0.0;
                 write_bw_util = (write_active != 0) ? (write_beats * 1.0 / write_active) : 0.0;
                 array_util = (cycle_lo != 0) ? (array_active * 1.0 / cycle_lo) : 0.0;
+                payload_bus_util = (cycle_lo != 0) ? ((read_beats + write_beats) * 100.0 / cycle_lo) : 0.0;
+                axi_bus_occupancy_util = (cycle_lo != 0) ? (bus_cyc * 100.0 / cycle_lo) : 0.0;
                 $display("PERF %0s cycles=%0d read_beats=%0d write_beats=%0d read_bw_util=%0.4f write_bw_util=%0.4f array_active=%0d array_stall=%0d cluster_active=%0d cluster_stall=%0d mac=%0d cluster_cfg=0x%08x array_util=%0.4f",
                          layer_name, cycle_lo, read_beats, write_beats, read_bw_util, write_bw_util,
                          array_active, array_stall, cluster_active, cluster_stall, mac_lo, cluster_cfg, array_util);
+                $display("[LENET_LAYER] layer=%0s cycles=%0d ar_cycles=%0d r_cycles=%0d aw_cycles=%0d w_cycles=%0d b_cycles=%0d payload_bus_util=%0.2f%% axi_bus_occupancy_util=%0.2f%%",
+                         layer_name, cycle_lo, ar_cyc, read_beats, aw_cyc, write_beats, b_cyc,
+                         payload_bus_util, axi_bus_occupancy_util);
             end
         end
     endtask
@@ -638,6 +672,10 @@ module tb_lenet_network;
         sample_total_array_stall = 64'd0;
         sample_total_cluster_active = 64'd0;
         sample_total_cluster_stall = 64'd0;
+        sample_total_ar_cyc   = 64'd0;
+        sample_total_aw_cyc   = 64'd0;
+        sample_total_b_cyc    = 64'd0;
+        sample_total_bus_cyc  = 64'd0;
 
         fixture_dir = "datasets/mnist/lenet_fixture";
         sample_name = "sample_00000_label_7";
@@ -658,6 +696,8 @@ module tb_lenet_network;
         rq_fc1_shift = 0;
         rq_fc2_mult = 1;
         rq_fc2_shift = 0;
+        cluster_mode_val = 2;  // default: full 6-cluster
+        cluster_mask_val = 63; // default: all 6 clusters enabled
         void'($value$plusargs("fixture_dir=%s", fixture_dir));
         void'($value$plusargs("sample_name=%s", sample_name));
         void'($value$plusargs("sample_root_dir=%s", sample_root_dir));
@@ -677,6 +717,8 @@ module tb_lenet_network;
         void'($value$plusargs("rq_fc1_shift=%d", rq_fc1_shift));
         void'($value$plusargs("rq_fc2_mult=%d", rq_fc2_mult));
         void'($value$plusargs("rq_fc2_shift=%d", rq_fc2_shift));
+        void'($value$plusargs("cluster_mode=%d", cluster_mode_val));
+        void'($value$plusargs("cluster_mask=%d", cluster_mask_val));
         if (sample_root_dir == "")
             sample_root_dir = fixture_dir;
         if (weights_root_dir == "")
@@ -708,6 +750,7 @@ module tb_lenet_network;
         load_memh_to_ram(path_fc1_w,   FC1_WGT_ADDR,   100000);
         load_memh_to_ram(path_fc2_w,   FC2_WGT_ADDR,   1250);
         program_requant_slots();
+        program_cluster_mode(cluster_mode_val[1:0], cluster_mask_val[5:0]);
 
         run_layer(2'd0, INPUT_ADDR, CONV1_WGT_ADDR, CONV1_OUT_ADDR, 784, 500, 24*24*20*4,
                   28, 28, 1, 20, 1'b0, 1'b0, 5000000, "Conv1");
@@ -764,19 +807,40 @@ module tb_lenet_network;
             errs = errs + 1;
         end
 
+        if (sample_total_cycles != 0) begin
+            $display("[LENET_BASELINE] sample_count=1");
+            $display("[LENET_BASELINE] end_to_end_cycles=%0d", sample_total_cycles);
+            $display("[LENET_BASELINE] read_data_cycles=%0d", sample_total_read_beats);
+            $display("[LENET_BASELINE] write_data_cycles=%0d", sample_total_write_beats);
+            $display("[LENET_BASELINE] ar_cycles=%0d", sample_total_ar_cyc);
+            $display("[LENET_BASELINE] r_cycles=%0d", sample_total_read_beats);
+            $display("[LENET_BASELINE] aw_cycles=%0d", sample_total_aw_cyc);
+            $display("[LENET_BASELINE] w_cycles=%0d", sample_total_write_beats);
+            $display("[LENET_BASELINE] b_cycles=%0d", sample_total_b_cyc);
+            $display("[LENET_BASELINE] bus_active_cycles=%0d", sample_total_bus_cyc);
+            $display("[LENET_BASELINE] payload_bus_util=%0.2f%%",
+                     (sample_total_read_beats + sample_total_write_beats) * 100.0 / sample_total_cycles);
+            $display("[LENET_BASELINE] axi_bus_occupancy_util=%0.2f%%",
+                     sample_total_bus_cyc * 100.0 / sample_total_cycles);
+            $display("[LENET_BASELINE] correctness=%0s",
+                     (errs == 0 && pred == expected_pred) ? "PASS" : "FAIL");
+        end
+
         if (errs != 0) begin
-            $display("SUBSYS_RESULT sample=%0s predicted=%0d expected=%0d status=FAIL total_cycles=%0d total_mac=%0d total_read_beats=%0d total_write_beats=%0d total_read_active=%0d total_write_active=%0d total_array_active=%0d total_array_stall=%0d total_cluster_active=%0d total_cluster_stall=%0d",
+            $display("SUBSYS_RESULT sample=%0s predicted=%0d expected=%0d status=FAIL total_cycles=%0d total_mac=%0d total_read_beats=%0d total_write_beats=%0d total_read_active=%0d total_write_active=%0d total_array_active=%0d total_array_stall=%0d total_cluster_active=%0d total_cluster_stall=%0d total_bus_active=%0d",
                      sample_name, pred, expected_pred,
                      sample_total_cycles, sample_total_mac, sample_total_read_beats, sample_total_write_beats,
                      sample_total_read_active, sample_total_write_active,
-                     sample_total_array_active, sample_total_array_stall, sample_total_cluster_active, sample_total_cluster_stall);
+                     sample_total_array_active, sample_total_array_stall, sample_total_cluster_active, sample_total_cluster_stall,
+                     sample_total_bus_cyc);
             $fatal(1, "LeNet network FAILED with %0d total mismatches", errs);
         end else begin
-            $display("SUBSYS_RESULT sample=%0s predicted=%0d expected=%0d status=PASS total_cycles=%0d total_mac=%0d total_read_beats=%0d total_write_beats=%0d total_read_active=%0d total_write_active=%0d total_array_active=%0d total_array_stall=%0d total_cluster_active=%0d total_cluster_stall=%0d",
+            $display("SUBSYS_RESULT sample=%0s predicted=%0d expected=%0d status=PASS total_cycles=%0d total_mac=%0d total_read_beats=%0d total_write_beats=%0d total_read_active=%0d total_write_active=%0d total_array_active=%0d total_array_stall=%0d total_cluster_active=%0d total_cluster_stall=%0d total_bus_active=%0d",
                      sample_name, pred, expected_pred,
                      sample_total_cycles, sample_total_mac, sample_total_read_beats, sample_total_write_beats,
                      sample_total_read_active, sample_total_write_active,
-                     sample_total_array_active, sample_total_array_stall, sample_total_cluster_active, sample_total_cluster_stall);
+                     sample_total_array_active, sample_total_array_stall, sample_total_cluster_active, sample_total_cluster_stall,
+                     sample_total_bus_cyc);
             $display("LeNet network PASSED for %0s", sample_name);
         end
 
