@@ -2328,20 +2328,18 @@ module npu_top #(
                         end
 
                         CP_COLLECT: begin
-                            // P4: pipelined — startup wait then 1 col/cycle
                             if (acc_collect_wait) begin
                                 acc_collect_wait <= 1'b0;
                             end else if (acc_col_idx + 16'd1 < array_active_cols) begin
                                 acc_col_idx <= acc_col_idx + 16'd1;
                                 acc_partial_addr <= acc_partial_addr + 1;
-                                // P4: no wait — next col pre-fetched
-                                if (is_conv_mode) begin
-                                    acc_collect_skip_write <=
-                                        (comp_total_wins != 16'd1) &&
-                                        (comp_win_idx + 16'd1 >= comp_total_wins) &&
-                                        (acc_col_idx + 16'd2 >= array_active_cols) &&
-                                        ((acc_partial_addr + 1) == {BUF_ADDR_W{1'b0}});
-                                end
+                                acc_collect_wait <= 1'b1;
+                                acc_collect_skip_write <=
+                                    is_conv_mode &&
+                                    (comp_total_wins != 16'd1) &&
+                                    (comp_win_idx + 16'd1 >= comp_total_wins) &&
+                                    (acc_col_idx + 16'd2 >= array_active_cols) &&
+                                    ((acc_partial_addr + {{(BUF_ADDR_W-1){1'b0}}, 1'b1}) == {BUF_ADDR_W{1'b0}});
                             end else begin
                                 acc_collect_skip_write <= 1'b0;
                                 if (is_fc_mode) begin
@@ -2514,19 +2512,12 @@ module npu_top #(
                                     store_pack_lane <= 3'd0;
                                     store_word_idx <= store_word_idx + 32'd1;
                                     store_pack_state <= STORE_PACK_SEND;
-                                end else if (store_pack_lane == 3'd0) begin
-                                    // P3: lane 0 done — 1 WAIT for buffer read
-                                    store_pack_data <= store_pack_data_next;
-                                    store_pack_lane <= 3'd1;
-                                    store_word_idx <= store_word_idx + 32'd1;
-                                    dma_rd_ptr <= dma_rd_ptr + 1;
-                                    store_pack_state <= STORE_PACK_WAIT;
                                 end else begin
-                                    // P3: lanes 1-6 — consecutive (buffer ready)
                                     store_pack_data <= store_pack_data_next;
                                     store_pack_lane <= store_pack_lane + 3'd1;
                                     store_word_idx <= store_word_idx + 32'd1;
                                     dma_rd_ptr <= dma_rd_ptr + 1;
+                                    store_pack_state <= STORE_PACK_WAIT;
                                 end
                             end else begin
                                 store_pack_state <= STORE_PACK_IDLE;
@@ -2539,7 +2530,6 @@ module npu_top #(
                             end else if (!wf_wr_full) begin
                                 dma_wr_valid_r <= 1'b0;
                                 if (store_word_idx < store_words_active) begin
-                                    // P3: WAIT for buffer to read next beat's addr
                                     dma_rd_ptr <= dma_rd_ptr + 1;
                                     store_pack_state <= STORE_PACK_WAIT;
                                 end else begin
