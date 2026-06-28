@@ -66,12 +66,13 @@ module task_checker #(
     localparam ERR_NUMERIC_PARAM     = 8'h0B;
     localparam ERR_BIAS_PARAM        = 8'h0C;
 
-    localparam [2:0] TASK_CONV    = 3'd0;
-    localparam [2:0] TASK_FC      = 3'd1;
-    localparam [2:0] TASK_POOL    = 3'd2;
-    localparam [2:0] TASK_REQUANT = 3'd3;
-    localparam [2:0] TASK_ADD     = 3'd4;
-    localparam [2:0] TASK_GAP     = 3'd5;
+    localparam [2:0] TASK_CONV       = 3'd0;
+    localparam [2:0] TASK_FC         = 3'd1;
+    localparam [2:0] TASK_POOL       = 3'd2;
+    localparam [2:0] TASK_REQUANT    = 3'd3;
+    localparam [2:0] TASK_ADD        = 3'd4;
+    localparam [2:0] TASK_GAP        = 3'd5;
+    localparam [2:0] TASK_VECTOR_RELU = 3'd6;
 
     // ============================================================
     // Internal registers (latch inputs on task_start)
@@ -192,7 +193,8 @@ module task_checker #(
     wire weight_unused = (task_type_r == TASK_POOL) ||
                          (task_type_r == TASK_REQUANT) ||
                          (task_type_r == TASK_ADD) ||
-                         (task_type_r == TASK_GAP);
+                         (task_type_r == TASK_GAP) ||
+                         (task_type_r == TASK_VECTOR_RELU);
 
     // Alignment: require 64-byte alignment for AXI burst efficiency.
     // Pool/Requant/ADD may leave weight_addr unused.
@@ -224,13 +226,15 @@ module task_checker #(
                            (task_type_r == TASK_POOL)    ||
                            (task_type_r == TASK_REQUANT) ||
                            (task_type_r == TASK_ADD)     ||
-                           (task_type_r == TASK_GAP);
+                           (task_type_r == TASK_GAP)     ||
+                           (task_type_r == TASK_VECTOR_RELU);
     wire task_type_supported = (task_type_r == TASK_CONV)    ||
                                (task_type_r == TASK_FC)      ||
                                (task_type_r == TASK_POOL)    ||
                                (task_type_r == TASK_REQUANT) ||
                                (task_type_r == TASK_ADD)     ||
-                               (task_type_r == TASK_GAP);
+                               (task_type_r == TASK_GAP)     ||
+                               (task_type_r == TASK_VECTOR_RELU);
 
     wire [1:0] conv_kernel_sel = conv_cfg_r[1:0];
     wire       conv_stride2    = conv_cfg_r[2];
@@ -294,7 +298,8 @@ module task_checker #(
     // Conv: C_in >= 1, C_out >= 1
     // FC: C_in >= 1, C_out >= 1 (mapped to input_c/output_c or input_h/output_c)
     wire dim_relation_ok =
-        ((task_type_r == TASK_REQUANT) || (task_type_r == TASK_ADD) || (task_type_r == TASK_GAP)) ?
+        ((task_type_r == TASK_REQUANT) || (task_type_r == TASK_ADD) || (task_type_r == TASK_GAP) ||
+         (task_type_r == TASK_VECTOR_RELU)) ?
         1'b1 : ((input_c_r >= 16'd1) && (output_c_r >= 16'd1));
 
     // Requant task:
@@ -365,6 +370,15 @@ module task_checker #(
          (weight_bytes_r == 32'd0) &&
          gap_requant_ok);
 
+    // Vector INT8 ReLU 256b task:
+    // - input is INT8 array, output is INT8 array (same size)
+    // - no weight payload
+    // - requires 32B alignment (enforced by addr_aligned_ok)
+    wire vec_relu_param_ok =
+        (task_type_r != TASK_VECTOR_RELU) ||
+        ((input_bytes_r == output_bytes_r) &&
+         (weight_bytes_r == 32'd0));
+
     // Priority-encoded error
     always @(*) begin
         error_code_comb = ERR_NONE;
@@ -393,6 +407,8 @@ module task_checker #(
         else if (!add_param_ok)
             error_code_comb = ERR_NUMERIC_PARAM;
         else if (!gap_param_ok)
+            error_code_comb = ERR_NUMERIC_PARAM;
+        else if (!vec_relu_param_ok)
             error_code_comb = ERR_NUMERIC_PARAM;
         else if (!dim_relation_ok)
             error_code_comb = ERR_DIM_RELATION;

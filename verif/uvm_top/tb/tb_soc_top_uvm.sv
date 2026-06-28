@@ -144,6 +144,22 @@ module tb_soc_top_uvm;
   end
 
   //-----------------------------------------------------------------------------
+  // AXI bus address/response cycle counters during full NPU task window
+  // Gate: npu_status[1] (ctrl_busy) — covers the entire task from start to done.
+  // Read data (RVALID&&RREADY) and write data (WVALID&&WREADY) are counted by
+  // NPU perf counters (PERF_READ_BEATS and PERF_WRITE_DATA_CYC respectively).
+  // These AR/AW/B counters supplement the perf counters for waveform visibility.
+  // Cleared by test via probe_vif.clear_bus_counters() before each new task.
+  //-----------------------------------------------------------------------------
+  always @(posedge clk) begin
+    if (u_top.npu_status[1]) begin
+      probe_vif.bus_ar_cycles <= probe_vif.bus_ar_cycles + (u_top.npu_m_arvalid && u_top.npu_m_arready);
+      probe_vif.bus_aw_cycles <= probe_vif.bus_aw_cycles + (u_top.npu_m_awvalid && u_top.npu_m_awready);
+      probe_vif.bus_b_cycles  <= probe_vif.bus_b_cycles  + (u_top.npu_m_bvalid  && u_top.npu_m_bready);
+    end
+  end
+
+  //-----------------------------------------------------------------------------
   // Clock generation: 200 MHz => 2.5 ns half-period
   //-----------------------------------------------------------------------------
   always #2.5 clk = ~clk;

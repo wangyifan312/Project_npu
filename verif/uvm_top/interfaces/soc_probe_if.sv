@@ -45,6 +45,20 @@ interface soc_probe_if(input logic clk, input logic rst_n);
   logic         npu_dma_wr_txn_active;    // S_AW|S_WDATA|S_WAIT_B window
 
   // ---------------------------------------------------------------------------
+  // AXI bus cycle counters (accumulated during NPU task window, TB-managed)
+  // Cleared by test via clear_bus_counters() before each new task.
+  // ---------------------------------------------------------------------------
+  logic [31:0]  bus_ar_cycles;     // ARVALID && ARREADY cycles
+  logic [31:0]  bus_aw_cycles;     // AWVALID && AWREADY cycles
+  logic [31:0]  bus_b_cycles;      // BVALID && BREADY cycles
+
+  function void clear_bus_counters();
+    bus_ar_cycles = 32'd0;
+    bus_aw_cycles = 32'd0;
+    bus_b_cycles  = 32'd0;
+  endfunction
+
+  // ---------------------------------------------------------------------------
   // Cluster / tile activity probes (passive, read-only hierarchical observation)
   // ---------------------------------------------------------------------------
 

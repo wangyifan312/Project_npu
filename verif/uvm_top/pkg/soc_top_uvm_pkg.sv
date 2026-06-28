@@ -201,6 +201,16 @@ package soc_top_uvm_pkg;
   `include "npu_conv_1x1_full_96oc_diag_test.sv"
 
   //---------------------------------------------------------------------------
+  // System-level bandwidth utilization test
+  //---------------------------------------------------------------------------
+  `include "npu_system_bus_util_test.sv"
+
+  //---------------------------------------------------------------------------
+  // Bandwidth 60% stress test — standalone Requant 65536-element workload
+  //---------------------------------------------------------------------------
+  `include "npu_bandwidth_60pct_stress_test.sv"
+
+  //---------------------------------------------------------------------------
   // Agent B: Conv frontend hang diagnostic tests
   //---------------------------------------------------------------------------
   `include "npu_conv_1x1_multiwindow_diag_test.sv"
