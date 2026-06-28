@@ -2328,19 +2328,20 @@ module npu_top #(
                         end
 
                         CP_COLLECT: begin
-                            // Write accumulated result to acc_buffer (one column per cycle).
+                            // P4: pipelined — startup wait then 1 col/cycle
                             if (acc_collect_wait) begin
                                 acc_collect_wait <= 1'b0;
                             end else if (acc_col_idx + 16'd1 < array_active_cols) begin
                                 acc_col_idx <= acc_col_idx + 16'd1;
                                 acc_partial_addr <= acc_partial_addr + 1;
-                                acc_collect_wait <= 1'b1;
-                                acc_collect_skip_write <=
-                                    is_conv_mode &&
-                                    (comp_total_wins != 16'd1) &&
-                                    (comp_win_idx + 16'd1 >= comp_total_wins) &&
-                                    (acc_col_idx + 16'd2 >= array_active_cols) &&
-                                    ((acc_partial_addr + {{(BUF_ADDR_W-1){1'b0}}, 1'b1}) == {BUF_ADDR_W{1'b0}});
+                                // P4: no wait — next col pre-fetched
+                                if (is_conv_mode) begin
+                                    acc_collect_skip_write <=
+                                        (comp_total_wins != 16'd1) &&
+                                        (comp_win_idx + 16'd1 >= comp_total_wins) &&
+                                        (acc_col_idx + 16'd2 >= array_active_cols) &&
+                                        ((acc_partial_addr + 1) == {BUF_ADDR_W{1'b0}});
+                                end
                             end else begin
                                 acc_collect_skip_write <= 1'b0;
                                 if (is_fc_mode) begin
