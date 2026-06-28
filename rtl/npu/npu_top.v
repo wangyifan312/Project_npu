@@ -1854,36 +1854,14 @@ module npu_top #(
                     fc_in_base <= 16'd0;
                     fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
                     dma_rd_ptr <= 0;
-                    // Phase 1: check if next tile's weight DMA is in progress
-                    if (fc_preload_active) begin
-                        // Still loading — stay here until DMA completes
-                        ; // do nothing, wait for fc_preload_done in FSM_COMPUTE
-                    end else if (fc_preload_done && (fc_preload_out_start == fc_out_start) &&
-                        (fc_preload_tile_outputs >= fc_tile_outputs_next)) begin
-                        // Use preloaded weight bank — skip weight DMA entirely
-                        wgt_load_bank <= fc_preload_bank;
-                        wgt_consume_bank <= fc_preload_bank;
-                        fc_preload_done <= 1'b0;
-                        wgt_load_phase <= 32'd0;
-                        wgt_load_wait <= 1'b1;
-                        wgt_load_reg <= 0;
-                        if (bias_enabled) begin
-                            bias_load_words <= {16'd0, fc_tile_outputs_next};
-                            bias_return_state <= FSM_LOAD_ARRAY;
-                            fsm_state <= FSM_LOAD_BIAS;
-                        end else begin
-                            fsm_state <= FSM_LOAD_ARRAY;
-                        end
+                    // Phase 1: do fresh DMA every tile (preload bypassed pending fix)
+                    wgt_buf_flush <= 1'b1;
+                    if (bias_enabled) begin
+                        bias_load_words <= {16'd0, fc_tile_outputs_next};
+                        bias_return_state <= FSM_FC_LOAD_WGT;
+                        fsm_state <= FSM_LOAD_BIAS;
                     end else begin
-                        // No preload — do fresh weight DMA (first tile or last)
-                        wgt_buf_flush <= 1'b1;
-                        if (bias_enabled) begin
-                            bias_load_words <= {16'd0, fc_tile_outputs_next};
-                            bias_return_state <= FSM_FC_LOAD_WGT;
-                            fsm_state <= FSM_LOAD_BIAS;
-                        end else begin
-                            fsm_state <= FSM_FC_LOAD_WGT;
-                        end
+                        fsm_state <= FSM_FC_LOAD_WGT;
                     end
                 end
 
