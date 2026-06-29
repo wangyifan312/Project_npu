@@ -2065,11 +2065,11 @@ module npu_top #(
                             reg [31:0] fc_load_count;
                             integer fc_load_lane;
                             fc_load_remaining = (fc_tile_outputs * fc_chunk_inputs) - wgt_load_phase;
-                            fc_bytes_in_beat  = 32'd32 - {27'd0, fc_weight_dma_byte_idx[HB_BEAT_BYTE_BITS-1:0]};
-                            fc_load_count     = (fc_load_remaining > 32'd64) ? 32'd64 : fc_load_remaining;
+                            fc_bytes_in_beat  = HB_BEAT_BYTES[31:0] - {27'd0, fc_weight_dma_byte_idx[HB_BEAT_BYTE_BITS-1:0]};
+                            fc_load_count     = (fc_load_remaining > HB_BEAT_BYTES[31:0]) ? 32'd64 : fc_load_remaining;
                             if (fc_bytes_in_beat < fc_load_count)
                                 fc_load_count = fc_bytes_in_beat;
-                            for (fc_load_lane = 0; fc_load_lane < 64; fc_load_lane = fc_load_lane + 1) begin
+                            for (fc_load_lane = 0; fc_load_lane < HB_BEAT_BYTES; fc_load_lane = fc_load_lane + 1) begin
                                 if (fc_load_lane < fc_load_count) begin
                                     reg [31:0] fc_lane_idx;
                                     reg [31:0] fc_lane_out_idx;
@@ -2108,7 +2108,7 @@ module npu_top #(
                         reg [5:0]  oc0;
                         integer load_lane;
                         load_remaining = conv_wgt_valid_bytes - wgt_load_phase;
-                        bytes_left_in_beat = 32'd32 - {27'd0, conv_weight_dma_byte_idx[HB_BEAT_BYTE_BITS-1:0]};
+                        bytes_left_in_beat = HB_BEAT_BYTES[31:0] - {27'd0, conv_weight_dma_byte_idx[HB_BEAT_BYTE_BITS-1:0]};
                         load_count = (load_remaining > 32'd4) ? 32'd4 : load_remaining;
                         if (bytes_left_in_beat < load_count)
                             load_count = bytes_left_in_beat;
@@ -2123,7 +2123,7 @@ module npu_top #(
                                     hb_beat_byte(wgt_rd_data, load_byte_sel);
                             end
                         end
-                        if ((((conv_weight_dma_byte_idx[HB_BEAT_BYTE_BITS-1:0] + load_count) >= 32'd32) ||
+                        if ((((conv_weight_dma_byte_idx[HB_BEAT_BYTE_BITS-1:0] + load_count) >= HB_BEAT_BYTES[31:0]) ||
                              (load_count < 32'd4)) &&
                             (wgt_load_phase + load_count < conv_wgt_valid_bytes))
                             wgt_load_wait <= 1'b1;
@@ -2654,8 +2654,8 @@ module npu_top #(
                 reg [31:0] sh_load_count;
                 integer sh_lane;
                 sh_remaining  = (fc_shadow_chunk_inputs * fc_tile_outputs) - fc_shadow_phase;
-                sh_bytes_in_beat = 32'd32 - fc_shadow_dma_byte_idx[HB_BEAT_BYTE_BITS-1:0];
-                sh_load_count = (sh_remaining > 32'd32) ? 32'd32 : sh_remaining;
+                sh_bytes_in_beat = HB_BEAT_BYTES[31:0] - fc_shadow_dma_byte_idx[HB_BEAT_BYTE_BITS-1:0];
+                sh_load_count = (sh_remaining > HB_BEAT_BYTES[31:0]) ? 32'd32 : sh_remaining;
                 if (sh_bytes_in_beat < sh_load_count)
                     sh_load_count = sh_bytes_in_beat;
                 for (sh_lane = 0; sh_lane < 32; sh_lane = sh_lane + 1) begin
