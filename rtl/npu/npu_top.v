@@ -1899,8 +1899,6 @@ module npu_top #(
                 end
 
                 FSM_FC_LOAD_WGT: begin
-                             $time, fc_tile_outputs, input_c, fc_wgt_dma_base,
-                             (fc_tile_outputs * input_c) + {26'd0, fc_wgt_dma_base[HB_BEAT_BYTE_BITS-1:0]});
                     wgt_dma_start <= 1'b1;
                     wgt_dma_addr <= {fc_wgt_dma_base[31:6], 6'b0};
                     wgt_dma_byte_offset <= fc_wgt_dma_base[HB_BEAT_BYTE_BITS-1:0];
