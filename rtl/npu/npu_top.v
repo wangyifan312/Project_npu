@@ -1239,13 +1239,13 @@ module npu_top #(
             for (ri = 0; ri < PE_ROWS; ri = ri + 1)
                 act_held[ri] <= 8'd0;
         end else if ((fsm_state == FSM_CIN_RESTART) || (fsm_state == FSM_FC_TILE_PREP) ||
-                     (is_fc_mode && fsm_state == FSM_LOAD_ARRAY && wgt_load_phase == 32'd0)) begin
+                     (fc_or_gemm && fsm_state == FSM_LOAD_ARRAY && wgt_load_phase == 32'd0)) begin
             integer ri;
             for (ri = 0; ri < PE_ROWS; ri = ri + 1)
                 act_held[ri] <= 8'd0;
         end else if (act_feed_en) begin
             if ({9'd0, comp_feed_cnt} < array_active_rows) begin
-                if (is_fc_mode)
+                if (fc_or_gemm)
                     act_held[comp_feed_cnt] <= cf_act_data;
                 else
                     act_held[comp_feed_cnt] <= cf_window[comp_feed_cnt];
@@ -1294,14 +1294,32 @@ module npu_top #(
                          ? rq_acc_wr_addr_r
                          : acc_wr_ptr;
     wire array_first_accum = fc_or_gemm ? (fc_in_base == 16'd0) : (cin_idx == 16'd0);
-    // Quick debug: print acc write during GEMM COLLECT + array output
+    // Quick debug: X-source trace for GEMM
     always @(posedge clk) begin
-        if (is_gemm_mode && cluster_arb_out_valid && comp_drain_cnt >= array_drain_offset && comp_drain_cnt < array_drain_offset+5)
-            $display("[DRAIN_OUT] col=%0d sum=%0d cycle=%0d",
-              comp_drain_cnt - array_drain_offset, array_sum_out[(comp_drain_cnt - array_drain_offset)*32 +: 32], $time/5);
-        if (is_gemm_mode && acc_wr_en && (acc_wr_addr < 4))
-            $display("[GEMM_ACC_WR] addr=%0d data=%0d col_res=%0d first=%0d cycle=%0d",
-              acc_wr_addr, acc_wr_data, col_results[acc_col_idx], array_first_accum, $time/5);
+        if (is_gemm_mode && compute_fsm_active) begin
+            if ($isunknown(array_act_in[7:0]))
+                $display("[X_SRC] array_act_in[0] X at cycle=%0d", $time/5);
+            if ($isunknown(array_weight[7:0]))
+                $display("[X_SRC] array_weight[0] X at cycle=%0d", $time/5);
+            if ($isunknown(array_sum_out[31:0]))
+                $display("[X_SRC] array_sum_out[0] X at cycle=%0d drain_cnt=%0d", $time/5, comp_drain_cnt);
+            if ($isunknown(col_results[0]) && comp_drain_cnt >= array_drain_offset)
+                $display("[X_SRC] col_results[0] X at cycle=%0d drain=%0d off=%0d", $time/5, comp_drain_cnt, array_drain_offset);
+            // Check cluster_weight_all_flat directly
+            if ($isunknown(cluster_weight_all_flat[7:0]))
+                $display("[X_SRC] cluster_weight_all_flat[0] X at cycle=%0d", $time/5);
+            if ($isunknown(cluster_sum_out_all_flat[31:0]))
+                $display("[X_SRC] cluster_sum_out[0] X at cycle=%0d", $time/5);
+        end
+        // Check wgt_load_reg before compute and cluster enable
+        if (is_gemm_mode && fsm_state == FSM_WGT_LD) begin
+            if ($isunknown(wgt_load_reg[7:0]))
+                $display("[X_SRC] wgt_load_reg[0] X at WGT_LD cycle=%0d", $time/5);
+            if ($isunknown(array_weight[7:0]))
+                $display("[X_SRC] array_weight[0] X at WGT_LD cycle=%0d", $time/5);
+            $display("[X_CHK] WGT_LD: cluster_enable=%0d weight_ld=%0d cycle=%0d",
+              perf_cluster_enable[0], array_weight_ld, $time/5);
+        end
     end
     wire array_final_accum = fc_or_gemm ? (fc_in_base + fc_chunk_inputs >= input_c) :
                                          (cin_idx + 16'd1 >= cin_total);
