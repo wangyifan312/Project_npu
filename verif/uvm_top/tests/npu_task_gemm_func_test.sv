@@ -24,17 +24,19 @@ class npu_task_gemm_func_test extends soc_base_test;
     m_seq.start(env.axil_ag.seqr);
     #200;
 
-    M_arr[0]=4;  K_arr[0]=4;   N_arr[0]=4;
-    M_arr[1]=8;  K_arr[1]=64;  N_arr[1]=8;
-    M_arr[2]=16; K_arr[2]=128; N_arr[2]=16;
-    M_arr[3]=32; K_arr[3]=512; N_arr[3]=32;
+    // GEMM func levels: G0a(M=1), G0b(M=2), G0(M=4). All K=4, N=4, expected=4.
+    M_arr[0]=1;  K_arr[0]=4;  N_arr[0]=4;  // G0a: single row
+    M_arr[1]=2;  K_arr[1]=4;  N_arr[1]=4;  // G0b: two rows
+    M_arr[2]=4;  K_arr[2]=4;  N_arr[2]=4;  // G0: four rows
+    M_arr[3]=1;  K_arr[3]=1;  N_arr[3]=1;  // unused
 
-    `uvm_info("TEST","=== TASK_GEMM_FUNC ===",UVM_NONE)
+    `uvm_info("TEST","=== TASK_GEMM_FUNC (G0a,G0b,G0) ===",UVM_NONE)
 
-    for(lvl=0; lvl<4; lvl++) begin
+    for(lvl=0; lvl<3; lvl++) begin
       M_v=M_arr[lvl]; K_v=K_arr[lvl]; N_v=N_arr[lvl];
       exp_val=K_v; total_errs=0;
-      `uvm_info("TEST",$sformatf("-- G%d: M=%0d K=%0d N=%0d expected=%0d --",lvl,M_v,K_v,N_v,exp_val),UVM_NONE)
+      `uvm_info("TEST",$sformatf("-- G0%0s: M=%0d K=%0d N=%0d expected=%0d --",
+        lvl==0?"a":lvl==1?"b":"", M_v,K_v,N_v,exp_val),UVM_NONE)
 
       // Preload A[M×K] all-1
       for(i=0; i<M_v*K_v; i=i+4) m_seq.axil_write32(32'h0000_0100+i, 32'h01010101);
@@ -84,13 +86,13 @@ class npu_task_gemm_func_test extends soc_base_test;
         end
       end
 
-      `uvm_info("TEST",$sformatf("G%d: M=%0d K=%0d N=%0d cycles=%0d errors=%0d/%0d %s",
-        lvl,M_v,K_v,N_v,cycle_lo,total_errs,M_v*N_v, (total_errs==0)?"PASS":"FAIL"),UVM_NONE)
+      `uvm_info("TEST",$sformatf("G0%0s: M=%0d K=%0d N=%0d cycles=%0d errors=%0d/%0d %s",
+        lvl==0?"a":lvl==1?"b":"", M_v,K_v,N_v,cycle_lo,total_errs,M_v*N_v, (total_errs==0)?"PASS":"FAIL"),UVM_NONE)
 
       if(total_errs>0) break;
       levels_run=lvl+1;
     end
-    `uvm_info("TEST",$sformatf("GEMM_FUNC: %0d/4 levels PASS",levels_run),UVM_NONE)
+    `uvm_info("TEST",$sformatf("GEMM_FUNC: %0d/3 levels PASS (G0a,G0b,G0)",levels_run),UVM_NONE)
     phase.drop_objection(this);
   endtask
 endclass

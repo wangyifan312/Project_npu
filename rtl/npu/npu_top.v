@@ -165,6 +165,7 @@ module npu_top #(
     localparam CP_NEXT     = 3'd4;
 
     reg [5:0]  fsm_state;
+    reg [5:0]  prev_fsm_for_debug;
 
     // P3: helper — compute FSM active in either FSM_COMPUTE or FSM_PIPE_RUN
     wire compute_fsm_active = (fsm_state == FSM_COMPUTE) || (fsm_state == FSM_PIPE_RUN);
@@ -2953,6 +2954,8 @@ module npu_top #(
                 end
 
                 FSM_ERROR: begin
+                    $display("[ERR_TRACE] cycle=%0d fsm=ERROR prev_state=%0d error_code=0x%02x wgt_dma_err=%0d act_dma_err=%0d dma_wr_err=%0d gemm_row=%0d",
+                      $time/5, prev_fsm_for_debug, task_error_code_r, wgt_dma_error, act_dma_error, dma_wr_error, gemm_row_idx);
                     task_active_r <= 1'b0;
                     if (!ctrl_busy && !ctrl_error) begin
                         task_error_r <= 1'b0;
@@ -2962,6 +2965,10 @@ module npu_top #(
 
                 default: fsm_state <= FSM_IDLE;
             endcase
+
+            // Debug: track previous FSM state for error trace
+            if (fsm_state != prev_fsm_for_debug)
+                prev_fsm_for_debug <= fsm_state;
 
             // ================================================================
             // P5: pipelined shared store_pack state machine — runs during FSM_STORE
