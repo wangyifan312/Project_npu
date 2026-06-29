@@ -1217,6 +1217,12 @@ module npu_top #(
                 assign conv_row_feed_val = 8'd0;
             end
             wire [7:0] row_feed_val = fc_or_gemm ? cf_act_data : conv_row_feed_val;
+            // Quick debug
+            always @(posedge clk) begin
+                if (fc_or_gemm && act_feed_en)
+                    $display("[ACT_FEED] row=%0d act=0x%02x active_rows=%0d cycle=%0d",
+                      comp_feed_cnt, row_feed_val, array_active_rows, $time/5);
+            end
             wire array_act_drive = (comp_sub_state == CP_FEED_ACT) || (comp_sub_state == CP_DRAIN);
             assign array_act_in[ai*8 +: 8] =
                 row_active && (is_conv_mode || is_fc_mode || is_gemm_mode) && array_act_drive ?
@@ -1288,6 +1294,15 @@ module npu_top #(
                          ? rq_acc_wr_addr_r
                          : acc_wr_ptr;
     wire array_first_accum = fc_or_gemm ? (fc_in_base == 16'd0) : (cin_idx == 16'd0);
+    // Quick debug: print acc write during GEMM COLLECT + array output
+    always @(posedge clk) begin
+        if (is_gemm_mode && cluster_arb_out_valid && comp_drain_cnt >= array_drain_offset && comp_drain_cnt < array_drain_offset+5)
+            $display("[DRAIN_OUT] col=%0d sum=%0d cycle=%0d",
+              comp_drain_cnt - array_drain_offset, array_sum_out[(comp_drain_cnt - array_drain_offset)*32 +: 32], $time/5);
+        if (is_gemm_mode && acc_wr_en && (acc_wr_addr < 4))
+            $display("[GEMM_ACC_WR] addr=%0d data=%0d col_res=%0d first=%0d cycle=%0d",
+              acc_wr_addr, acc_wr_data, col_results[acc_col_idx], array_first_accum, $time/5);
+    end
     wire array_final_accum = fc_or_gemm ? (fc_in_base + fc_chunk_inputs >= input_c) :
                                          (cin_idx + 16'd1 >= cin_total);
     wire [31:0] array_acc_sum =
@@ -2073,7 +2088,10 @@ module npu_top #(
                 end
 
                 FSM_FC_TILE_PREP: begin
-                    fc_tile_outputs <= fc_tile_outputs_next;
+                    // GEMM: output columns = N (≤64 for V1). Bypass capacity calc.
+                    fc_tile_outputs <= is_gemm_mode ?
+                        ((output_c > PE_COLS_16) ? PE_COLS_16 : output_c) :
+                        fc_tile_outputs_next;
                     fc_in_base <= 16'd0;
                     fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
                     dma_rd_ptr <= 0;
@@ -2264,7 +2282,7 @@ module npu_top #(
                 // FSM_LOAD_ARRAY: load weights from wgt_buffer into array + wgt_load_reg
                 // ============================================================
                 FSM_LOAD_ARRAY: begin
-                    if (is_fc_mode) begin
+                    if (fc_or_gemm) begin
                         if (wgt_load_wait) begin
                             wgt_load_wait <= 1'b0;
                         end else if (wgt_load_phase < (fc_tile_outputs * fc_chunk_inputs)) begin
@@ -2350,6 +2368,8 @@ module npu_top #(
 
                 FSM_WGT_LD: begin
                     // weight_ld pulsed → weights now in array PEs
+                    if (fc_or_gemm) $display("[WGT_LD] fc_in_base=%0d chunk=%0d tile=%0d wgt_reg[0]=%0d cycle=%0d",
+                      fc_in_base, fc_chunk_inputs, fc_tile_outputs, wgt_load_reg[7:0], $time/5);
                     comp_feed_cnt <= 7'd0;
                     comp_drain_cnt <= 16'd0;
                     comp_sub_state <= fc_or_gemm ? CP_FEED_ACT : CP_WAIT_WIN;
@@ -2474,6 +2494,8 @@ module npu_top #(
                         end
 
                         CP_FEED_ACT: begin
+                            if (fc_or_gemm) $display("[CP_FEED_ACT] row=%0d active_rows=%0d fsm=%0d cycle=%0d",
+                              comp_feed_cnt, array_active_rows, fsm_state, $time/5);
                             if ({9'd0, comp_feed_cnt} < array_active_rows) begin
                                 comp_feed_cnt <= comp_feed_cnt + 7'd1;
                             end else begin
@@ -2598,7 +2620,10 @@ module npu_top #(
                                         fsm_state <= FSM_LOAD_ARRAY;
                                     end else begin
                                         if (is_gemm_mode) begin
-                                            // GEMM row-by-row store: store N outputs immediately
+                                            // GEMM row-by-row store: set DMA addr/bytes HERE
+                                            // (before FSM_STORE, so dma_wr_start pulse sees valid values)
+                                            dma_wr_addr <= blk_out_addr + (gemm_row_idx * gemm_N_val * 32'd4);
+                                            dma_wr_bytes <= gemm_N_val * 32'd4;
                                             fc_store_addr <= blk_out_addr + (gemm_row_idx * gemm_N_val * 32'd4);
                                             fc_store_bytes <= gemm_N_val * 32'd4;
                                             acc_load_start <= 1'b1;
@@ -2782,6 +2807,8 @@ module npu_top #(
                                     is_requant_mode ? rq_store_bytes :
                                                       blk_out_bytes;
                     if (!dma_wr_started) begin
+                        if (is_gemm_mode) $display("[GEMM_STORE_START] addr=0x%08h bytes=%0d words=%0d acc_rd=%0d cycle=%0d",
+                          dma_wr_addr, dma_wr_bytes, store_words_active, acc_rd_data, $time/5);
                         dma_wr_start <= 1'b1;
                         dma_wr_started <= 1'b1;
                         dma_rd_ptr <= 0;
@@ -3092,6 +3119,8 @@ module npu_top #(
                         store_word_idx <= 32'd0;
                         store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
                         if (is_gemm_mode) begin
+                            $display("[GEMM_STORE_DONE] row=%0d next=%0d M=%0d cycle=%0d",
+                              gemm_row_idx, gemm_row_idx+1, gemm_M_val, $time/5);
                             // GEMM row-by-row: store current row, advance to next
                             if (gemm_row_idx + 16'd1 < gemm_M_val) begin
                                 gemm_row_idx <= gemm_row_idx + 16'd1;
