@@ -223,6 +223,11 @@ package soc_top_uvm_pkg;
   `include "npu_conv_bandwidth_test.sv"
 
   //---------------------------------------------------------------------------
+  // TASK_GEMM functional correctness test
+  //---------------------------------------------------------------------------
+  `include "npu_task_gemm_func_test.sv"
+
+  //---------------------------------------------------------------------------
   // AXI-fed NPU GEMM Peak Microbenchmark — full subsystem matrix multiply
   //---------------------------------------------------------------------------
   `include "npu_axi_gemm_peak_test.sv"

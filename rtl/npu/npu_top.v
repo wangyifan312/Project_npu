@@ -581,6 +581,13 @@ module npu_top #(
     reg [31:0] fc_store_addr;
     reg [31:0] fc_store_bytes;
 
+    // GEMM mode: outer loop over M rows, each row = one FC/GEMV pass
+    reg [15:0] gemm_row_idx;     // current GEMM output row (0..M-1)
+    wire [15:0] gemm_M_val;      // M = input_h in GEMM mode
+    wire [15:0] gemm_N_val;      // N = output_c in GEMM mode
+    assign gemm_M_val = input_h;
+    assign gemm_N_val = output_c;
+
     conv_frontend #(.MAX_W(32), .MAX_C_IN(64), .AW(11)) u_conv_fe (
         .clk(clk), .rst_n(rst_n),
         .act_data(cf_act_data), .act_valid(cf_act_valid), .act_ready(conv_act_ready),
@@ -639,6 +646,7 @@ module npu_top #(
     wire is_add_mode     = (task_type == 3'd4);
     wire is_gap_mode     = (task_type == 3'd5);
     wire is_vec_relu_mode = (task_type == 3'd6);
+    wire is_gemm_mode    = (task_type == 3'd7);
     wire [15:0] array_active_rows;
     wire [15:0] array_active_cols;
     wire [15:0] array_drain_offset;
@@ -661,23 +669,18 @@ module npu_top #(
     integer arb_prev_i;
     integer arb_global_col_i;
     integer arb_route_col_i;
-    assign array_active_rows = is_fc_mode ? fc_chunk_inputs : conv_kernel_area;
-    // Multi-cluster work division:
-    //   total_global_cols = total output channels (used for weight/drain/collect routing)
-    //   array_active_cols = columns processed per cluster per pass (reduced for multi-cluster)
-    //   collect_total_cols = columns to iterate during COLLECT (all global cols for Conv)
-    // In single-cluster mode, all equal output_c.
+    // GEMM mode reuses FC array mapping: PE rows = K (input dim), PE cols = N (output dim)
+    wire fc_or_gemm = is_fc_mode || is_gemm_mode;
+    assign array_active_rows = fc_or_gemm ? fc_chunk_inputs : conv_kernel_area;
     wire [15:0] total_global_cols;
     wire [15:0] cluster_active_cols;
     wire [15:0] collect_total_cols;
     assign total_global_cols  = output_c;
     assign cluster_active_cols = (cluster_count_i > 1 && output_c > 16'd0) ?
                                   ((output_c + cluster_count_i - 16'd1) / cluster_count_i) : output_c;
-    assign array_active_cols = is_fc_mode ? fc_tile_outputs :
+    assign array_active_cols = fc_or_gemm ? fc_tile_outputs :
                                 (cluster_count_i > 1) ? cluster_active_cols : output_c;
-    // COLLECT iterates over all global columns for Conv (routed from all clusters),
-    // but only the per-tile columns for FC.
-    assign collect_total_cols = is_fc_mode ? array_active_cols : total_global_cols;
+    assign collect_total_cols = fc_or_gemm ? array_active_cols : total_global_cols;
     // Drain latency is max(PE_ROWS - active_rows, 0) plus the fixed pipeline tail.
     // Conv kernels can use more active rows than the physical PE row count.
     assign array_drain_offset = (PE_ROWS_16 > array_active_rows) ?
@@ -917,7 +920,7 @@ module npu_top #(
         !cf_new_window &&
         !cf_done;
     assign perf_fc_array_active =
-        is_fc_mode &&
+        (is_fc_mode || is_gemm_mode) &&
         compute_fsm_active &&
         ((comp_sub_state == CP_FEED_ACT) ||
          (comp_sub_state == CP_DRAIN) ||
@@ -1060,7 +1063,7 @@ module npu_top #(
     );
 
     wire [5:0] rq_bias_idx =
-        is_fc_mode ? rq_src_idx[5:0] :
+        fc_or_gemm ? rq_src_idx[5:0] :
         (output_c == 16'd0) ? 6'd0 : (rq_src_idx % {16'd0, output_c});
     wire signed [31:0] rq_bias_value = bias_reg[rq_bias_idx];
     wire signed [31:0] rq_bias_acc;
@@ -1117,7 +1120,7 @@ module npu_top #(
     wire [BUF_ADDR_W-1:0] act_pool_beat_addr = act_feed_ptr[BUF_ADDR_W+2:3];
     wire [2:0] act_pool_word_sel = act_feed_ptr[2:0];
     wire [31:0] act_pool_word = hb_beat_word(act_rd_data, act_pool_word_sel);
-    wire [HB_BEAT_BYTE_BITS-1:0] act_byte_sel = is_fc_mode ? fc_act_byte_sel : act_feed_ptr[4:0];
+    wire [HB_BEAT_BYTE_BITS-1:0] act_byte_sel = fc_or_gemm ? fc_act_byte_sel : act_feed_ptr[4:0];
 
     assign cf_act_data  = hb_beat_byte(act_rd_data, act_byte_sel);
     assign act_rd_bank  = act_comp_bank;
@@ -1146,7 +1149,7 @@ module npu_top #(
     wire [31:0] conv_wgt_dma_base = blk_wgt_addr + cin_idx * wgt_per_cin;
     wire [31:0] conv_next_wgt_dma_base = blk_wgt_addr + (cin_idx + 16'd1) * wgt_per_cin;
     wire [31:0] conv_wgt_valid_bytes = {16'd0, conv_kernel_area} * output_c;
-    wire [31:0] bias_dma_base = is_fc_mode ? (bias_addr + fc_out_start * 32'd4) : bias_addr;
+    wire [31:0] bias_dma_base = fc_or_gemm ? (bias_addr + fc_out_start * 32'd4) : bias_addr;
     wire [31:0] bias_byte_idx = (bias_load_phase << 2) + {27'd0, wgt_dma_byte_offset};
     wire [31:0] bias_next_byte_idx = bias_byte_idx + 32'd4;
     wire [BUF_ADDR_W-1:0] bias_beat_addr = bias_byte_idx[BUF_ADDR_W+4:5];
@@ -1212,10 +1215,10 @@ module npu_top #(
             end else begin : conv_row_inactive
                 assign conv_row_feed_val = 8'd0;
             end
-            wire [7:0] row_feed_val = is_fc_mode ? cf_act_data : conv_row_feed_val;
+            wire [7:0] row_feed_val = fc_or_gemm ? cf_act_data : conv_row_feed_val;
             wire array_act_drive = (comp_sub_state == CP_FEED_ACT) || (comp_sub_state == CP_DRAIN);
             assign array_act_in[ai*8 +: 8] =
-                row_active && (is_conv_mode || is_fc_mode) && array_act_drive ?
+                row_active && (is_conv_mode || is_fc_mode || is_gemm_mode) && array_act_drive ?
                 ((act_feed_en && comp_feed_cnt == ai) ? row_feed_val : act_held[ai]) :
                 8'd0;
         end
@@ -1283,8 +1286,8 @@ module npu_top #(
                          : (rq_internal_write_phase || is_requant_mode)
                          ? rq_acc_wr_addr_r
                          : acc_wr_ptr;
-    wire array_first_accum = is_fc_mode ? (fc_in_base == 16'd0) : (cin_idx == 16'd0);
-    wire array_final_accum = is_fc_mode ? (fc_in_base + fc_chunk_inputs >= input_c) :
+    wire array_first_accum = fc_or_gemm ? (fc_in_base == 16'd0) : (cin_idx == 16'd0);
+    wire array_final_accum = fc_or_gemm ? (fc_in_base + fc_chunk_inputs >= input_c) :
                                          (cin_idx + 16'd1 >= cin_total);
     wire [31:0] array_acc_sum =
         array_first_accum ? col_results[acc_col_idx] : (acc_rd_data + col_results[acc_col_idx]);
@@ -1293,7 +1296,7 @@ module npu_top #(
     assign acc_wr_data = add_write_phase ? add_acc_wr_data_r :
                          gap_acc_wr_en_r ? gap_acc_wr_data_r :
                          rq_internal_write_phase ? rq_acc_wr_data_r :
-                         (is_conv_mode || is_fc_mode) ? array_acc_wr_data :
+                         (is_conv_mode || is_fc_mode || is_gemm_mode) ? array_acc_wr_data :
                          is_requant_mode ? rq_acc_wr_data_r :
                                            pp_data_out;
     // P0 FIX: During CP_DRAIN, only enable accumulator writes AFTER drain_offset
@@ -1305,7 +1308,7 @@ module npu_top #(
     assign acc_wr_en   = add_write_phase ? add_acc_wr_en_r :
         gap_acc_wr_en_r ? gap_acc_wr_en_r :
         rq_internal_write_phase ? rq_acc_wr_en_r :
-        (is_conv_mode || is_fc_mode)
+        (is_conv_mode || is_fc_mode || is_gemm_mode)
         ? (compute_fsm_active &&
            ((comp_sub_state == CP_COLLECT) || (comp_sub_state == CP_DRAIN)) &&
            !acc_collect_wait && !acc_collect_skip_write && drain_collect_active &&
@@ -1476,7 +1479,7 @@ module npu_top #(
     wire [31:0] store_bytes_active = rq_mode_internal ? rq_store_bytes :
                                      is_add_mode ? output_bytes :
                                      is_gap_mode ? output_bytes :
-                                     is_fc_mode ? fc_store_bytes :
+                                     fc_or_gemm ? fc_store_bytes :
                                      is_requant_mode ? rq_store_bytes :
                                                        blk_out_bytes;
     wire [31:0] store_words_active = (store_bytes_active + 32'd3) >> 2;
@@ -1602,6 +1605,7 @@ module npu_top #(
             acc_collect_skip_write <= 1'b0;
             fc_out_start <= 16'd0; fc_tile_outputs <= 16'd0;
             fc_in_base <= 16'd0; fc_chunk_inputs <= 16'd0;
+            gemm_row_idx <= 16'd0;
             fc_store_addr <= 32'd0; fc_store_bytes <= 32'd0;
             rq_acc_wr_en_r <= 1'b0; rq_acc_wr_addr_r <= {BUF_ADDR_W{1'b0}}; rq_acc_wr_data_r <= 32'd0;
             rq_src_idx <= 32'd0; rq_src_wait <= 1'b0; rq_total_words <= 32'd0; rq_pack_idx <= 2'd0; rq_pack_word <= 32'd0;
@@ -1831,6 +1835,14 @@ module npu_top #(
                             task_error_r <= 1'b1;
                             task_error_code_r <= 8'hFF;
                         end else if (is_fc_mode) begin
+                            fc_out_start <= 16'd0;
+                            fc_in_base <= 16'd0;
+                            fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
+                            fsm_state <= FSM_FC_TILE_PREP;
+                        end else if (is_gemm_mode) begin
+                            // GEMM: M output rows, each row uses one FC/GEMV pass
+                            // Reuse FC infrastructure: PE rows = K (input dim), PE cols = N
+                            gemm_row_idx <= 16'd0;
                             fc_out_start <= 16'd0;
                             fc_in_base <= 16'd0;
                             fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
@@ -2339,7 +2351,7 @@ module npu_top #(
                     // weight_ld pulsed → weights now in array PEs
                     comp_feed_cnt <= 7'd0;
                     comp_drain_cnt <= 16'd0;
-                    comp_sub_state <= is_fc_mode ? CP_FEED_ACT : CP_WAIT_WIN;
+                    comp_sub_state <= fc_or_gemm ? CP_FEED_ACT : CP_WAIT_WIN;
                     fc_use_preload <= 1'b0;  // P1: preload consumed, clear flag
                     // Phase 2: trigger shadow load for next FC chunk
                     if (is_fc_mode && (fc_in_base + fc_chunk_inputs < input_c)) begin
@@ -2415,7 +2427,7 @@ module npu_top #(
                     end
                     case (comp_sub_state)
                         CP_WAIT_WIN: begin
-                            if (is_fc_mode) begin
+                            if (fc_or_gemm) begin
                                 comp_feed_cnt <= 7'd0;
                                 comp_sub_state <= CP_FEED_ACT;
                             end else if (is_pool_mode) begin
@@ -2477,8 +2489,11 @@ module npu_top #(
                                     conv_collect_base_next =
                                         ({16'd0, comp_win_idx} * {16'd0, collect_total_cols});
                                     acc_partial_addr <= conv_collect_base_next[BUF_ADDR_W-1:0];
-                                end else if (is_fc_mode)
-                                    acc_partial_addr <= {BUF_ADDR_W{1'b0}};
+                                end else if (fc_or_gemm) begin
+                                    // GEMM: offset accumulator by gemm_row_idx * N
+                                    acc_partial_addr <= is_gemm_mode ?
+                                        (gemm_row_idx * gemm_N_val) : {BUF_ADDR_W{1'b0}};
+                                end
                                 comp_sub_state <= CP_DRAIN;
                             end
                         end
@@ -2563,7 +2578,7 @@ module npu_top #(
                                  (fc_shadow_phase >= (fc_shadow_chunk_inputs * fc_tile_outputs)) ||
                                  !(fc_in_base + fc_chunk_inputs < input_c))) begin
                                 acc_collect_skip_write <= 1'b0;
-                                if (is_fc_mode) begin
+                                if (fc_or_gemm) begin
                                     if (fc_in_base + fc_chunk_inputs < input_c) begin
                                         // P0 FIX: Bypass Phase-2 shadow register.
                                         // Shadow weight preload can fail to complete before
@@ -2582,21 +2597,28 @@ module npu_top #(
                                         fc_shadow_active <= 1'b0;
                                         fsm_state <= FSM_LOAD_ARRAY;
                                     end else begin
-                                        if (bias_enabled) begin
+                                        if (is_gemm_mode && (gemm_row_idx + 16'd1 < gemm_M_val)) begin
+                                            // GEMM: more rows → next M row, reset K-chunks
+                                            gemm_row_idx <= gemm_row_idx + 16'd1;
+                                            fc_out_start <= 16'd0;
+                                            fc_in_base <= 16'd0;
+                                            fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
+                                            fsm_state <= FSM_FC_TILE_PREP;
+                                        end else if (bias_enabled) begin
                                             rq_mode_internal <= 1'b1;
                                             rq_word_store_mode <= 1'b0;
                                             rq_src_idx <= 32'd0;
                                             rq_src_wait <= 1'b1;
-                                            rq_total_words <= {16'd0, fc_tile_outputs};
+                                            rq_total_words <= is_gemm_mode ? (gemm_M_val * gemm_N_val) : {16'd0, fc_tile_outputs};
                                             rq_pack_idx <= 2'd0;
                                             rq_pack_word <= 32'd0;
                                             rq_store_addr <= blk_out_addr + {16'd0, fc_out_start};
-                                            rq_store_bytes <= {16'd0, fc_tile_outputs};
+                                            rq_store_bytes <= is_gemm_mode ? (gemm_M_val * gemm_N_val * 32'd4) : {16'd0, fc_tile_outputs};
                                             acc_load_start <= 1'b1;
                                             fsm_state <= FSM_REQUANT_COMPUTE;
                                         end else begin
-                                            fc_store_addr <= blk_out_addr + fc_out_start * 32'd4;
-                                            fc_store_bytes <= fc_tile_outputs * 32'd4;
+                                            fc_store_addr <= is_gemm_mode ? blk_out_addr : (blk_out_addr + fc_out_start * 32'd4);
+                                            fc_store_bytes <= is_gemm_mode ? (gemm_M_val * gemm_N_val * 32'd4) : (fc_tile_outputs * 32'd4);
                                             acc_load_start <= 1'b1;
                                             fsm_state <= FSM_STORE;
                                         end
@@ -2751,13 +2773,13 @@ module npu_top #(
                     dma_wr_addr <= rq_mode_internal ? rq_store_addr :
                                    is_add_mode ? output_addr :
                                    is_gap_mode ? output_addr :
-                                   is_fc_mode ? fc_store_addr :
+                                   fc_or_gemm ? fc_store_addr :
                                    is_requant_mode ? rq_store_addr :
                                                      blk_out_addr;
                     dma_wr_bytes <= rq_mode_internal ? rq_store_bytes :
                                     is_add_mode ? output_bytes :
                                     is_gap_mode ? output_bytes :
-                                    is_fc_mode ? fc_store_bytes :
+                                    fc_or_gemm ? fc_store_bytes :
                                     is_requant_mode ? rq_store_bytes :
                                                       blk_out_bytes;
                     if (!dma_wr_started) begin

@@ -73,6 +73,7 @@ module task_checker #(
     localparam [2:0] TASK_ADD        = 3'd4;
     localparam [2:0] TASK_GAP        = 3'd5;
     localparam [2:0] TASK_VECTOR_RELU = 3'd6;
+    localparam [2:0] TASK_GEMM        = 3'd7;
 
     // ============================================================
     // Internal registers (latch inputs on task_start)
@@ -227,14 +228,16 @@ module task_checker #(
                            (task_type_r == TASK_REQUANT) ||
                            (task_type_r == TASK_ADD)     ||
                            (task_type_r == TASK_GAP)     ||
-                           (task_type_r == TASK_VECTOR_RELU);
+                           (task_type_r == TASK_VECTOR_RELU) ||
+                           (task_type_r == TASK_GEMM);
     wire task_type_supported = (task_type_r == TASK_CONV)    ||
                                (task_type_r == TASK_FC)      ||
                                (task_type_r == TASK_POOL)    ||
                                (task_type_r == TASK_REQUANT) ||
                                (task_type_r == TASK_ADD)     ||
                                (task_type_r == TASK_GAP)     ||
-                               (task_type_r == TASK_VECTOR_RELU);
+                               (task_type_r == TASK_VECTOR_RELU) ||
+                               (task_type_r == TASK_GEMM);
 
     wire [1:0] conv_kernel_sel = conv_cfg_r[1:0];
     wire       conv_stride2    = conv_cfg_r[2];
