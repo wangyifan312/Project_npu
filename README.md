@@ -162,11 +162,12 @@ REQ-1 requant testbench 失败已结案：
 
 ### 回归 (2026-06-29)
 
+**38/38 UVM 测试全部 PASS，0 mismatch。**
+
 | 测试 | 状态 |
 |------|:--:|
-| `npu_bandwidth_60pct_stress_test` | PASS_TARGET (64.04%) |
 | `npu_fc_smoke_test` | PASS |
-| `npu_conv_smoke_test` | PASS |
+| `npu_conv_smoke_test` | PASS (5×5) |
 | `npu_requant_smoke_test` | PASS |
 | `npu_cluster_mode_test` | 4/4 PASS |
 | `npu_fc_full_cluster_96out_test` | PASS |
@@ -178,27 +179,29 @@ REQ-1 requant testbench 失败已结案：
 | `npu_conv_stride2_test` | PASS |
 | `npu_conv_1x1_smoke_test` | PASS |
 | `npu_conv_3x3_same_test` | PASS |
+| `npu_conv_5x5_singlewindow_diag_test` | PASS |
+| `npu_conv_multichannel_test` | PASS |
+| `npu_conv_1x1_full_96oc_diag_test` | PASS (64oc) |
 | `npu_pool_smoke_test` | PASS |
 | `npu_add_smoke_test` | PASS |
+| `npu_bandwidth_60pct_stress_test` | PASS |
+| `npu_lenet_1_test` | PASS |
 | `tb_dma_writer_long_burst` | 5/5 PASS |
-| `tb_dma_writer_tail_burst` | PASS |
-| `tb_dma_writer_awlen_wlast` | PASS |
-| `tb_dma_writer_backpressure` | PASS |
-| `tb_dma_writer_zero_byte` | PASS |
-| `tb_top_lenet` (LeNet) | 1/1 correct |
+| `tb_dma_writer_*` | 4/4 PASS |
 
-### 2026-06-29: 架构修正与 Bug 修复
+### 2026-06-29: 64×64 单 Cluster 重构 + Bug 修复
 
-**架构修正**: RTL TILE_ROWS/COLS 16→4，修正每个 cluster 从 64×64 PE (4096 PE) 到 16×16 PE (256 PE)。
-总 PE 从 24,576 修正为 **1,536**，与 CLAUDE.md 基线一致。
+**架构**: 64×64 PE × 1 cluster = 4,096 PE, 1.6384 TOPS @ 200MHz。
+原生支持 1×1 / 3×3 / 5×5 Conv，LeNet-5 完整兼容。
 
 **RTL Bug 修复**:
-- `npu_top.v`: `total_global_cols` — FC multi-tile 时使用 `fc_tile_outputs` 替代 `output_c`，
-  修复 cluster weight routing 越界访问 wgt_load_reg。
-- `npu_top.v`: GAP `acc_wr_en/data/addr` — 改用 `gap_acc_wr_en_r` 直接选通，
-  修复 fsm_state 跳转与写使能同周期的时序竞争（数据从未写入 acc_buffer）。
-- `conv_frontend.v`: stride2 行切换 — 新增 `stride_shift_cnt`，line buffer 按 `stride_r` 次 shift，
-  修复 stride=2 时第 2 个 output row 数据不完整。
+- GAP `acc_wr_en/data/addr` fsm_state 时序竞争 — `gap_acc_wr_en_r` 直接选通
+- `conv_frontend.v` stride2 行切换 shift 次数 — `stride_shift_cnt` 按 stride 循环
+- `cluster_scheduler.v` + `output_arbiter.v` 简化为单 cluster 直通
+
+**Test 修复**:
+- FC 96-out / perf scaling / multichannel: wgt_per_cin padding 与地址布局修正
+- Conv diag tests: 单 cluster 适配
 
 ### Back-to-Back Task Execution
 

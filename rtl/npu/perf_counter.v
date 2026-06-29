@@ -26,6 +26,12 @@ module perf_counter (
     input  wire        write_data_cycle,     // WVALID && WREADY (per AXI W beat)
     input  wire        write_txn_active,     // AW handshake -> B handshake window
 
+    // AXI channel handshake cycle inputs
+    input  wire        ar_active,            // ARVALID && ARREADY
+    input  wire        aw_active,            // AWVALID && AWREADY
+    input  wire        b_active,             // BVALID && BREADY
+    input  wire        bus_active,           // union of AR/R/AW/W/B handshake
+
     // Counter outputs (frozen on done/error)
     output wire [31:0] total_cycle_lo,
     output wire [31:0] total_cycle_hi,
@@ -38,7 +44,11 @@ module perf_counter (
     output wire [31:0] cluster_active_cycles,
     output wire [31:0] cluster_stall_cycles,
     output wire [31:0] write_data_cycles,
-    output wire [31:0] write_txn_cycles
+    output wire [31:0] write_txn_cycles,
+    output wire [31:0] ar_handshake_cycles,
+    output wire [31:0] aw_handshake_cycles,
+    output wire [31:0] b_handshake_cycles,
+    output wire [31:0] bus_active_cycles
 );
 
     // 64-bit cycle counter
@@ -52,6 +62,7 @@ module perf_counter (
     reg [31:0] arr_active_cyc, arr_stall_cyc;
     reg [31:0] cl_active_cyc, cl_stall_cyc;
     reg [31:0] wr_data_cyc, wr_txn_cyc;
+    reg [31:0] ar_cyc, aw_cyc, b_cyc, bus_cyc;
     reg        task_active_d;
 
     wire counting = task_active && !freeze;
@@ -150,6 +161,54 @@ module perf_counter (
         end
     end
 
+    // AR handshake cycles (ARVALID && ARREADY)
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            ar_cyc <= 32'h0;
+        end else if (task_start_pulse) begin
+            ar_cyc <= (!freeze && ar_active) ? 32'd1 : 32'd0;
+        end else if (task_active) begin
+            if (!freeze && ar_active)
+                ar_cyc <= ar_cyc + 32'd1;
+        end
+    end
+
+    // AW handshake cycles (AWVALID && AWREADY)
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            aw_cyc <= 32'h0;
+        end else if (task_start_pulse) begin
+            aw_cyc <= (!freeze && aw_active) ? 32'd1 : 32'd0;
+        end else if (task_active) begin
+            if (!freeze && aw_active)
+                aw_cyc <= aw_cyc + 32'd1;
+        end
+    end
+
+    // B handshake cycles (BVALID && BREADY)
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            b_cyc <= 32'h0;
+        end else if (task_start_pulse) begin
+            b_cyc <= (!freeze && b_active) ? 32'd1 : 32'd0;
+        end else if (task_active) begin
+            if (!freeze && b_active)
+                b_cyc <= b_cyc + 32'd1;
+        end
+    end
+
+    // Bus active cycles (union of AR/R/AW/W/B handshake)
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            bus_cyc <= 32'h0;
+        end else if (task_start_pulse) begin
+            bus_cyc <= (!freeze && bus_active) ? 32'd1 : 32'd0;
+        end else if (task_active) begin
+            if (!freeze && bus_active)
+                bus_cyc <= bus_cyc + 32'd1;
+        end
+    end
+
     // Array active cycles
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -210,5 +269,9 @@ module perf_counter (
     assign cluster_stall_cycles  = cl_stall_cyc;
     assign write_data_cycles     = wr_data_cyc;
     assign write_txn_cycles      = wr_txn_cyc;
+    assign ar_handshake_cycles   = ar_cyc;
+    assign aw_handshake_cycles   = aw_cyc;
+    assign b_handshake_cycles    = b_cyc;
+    assign bus_active_cycles     = bus_cyc;
 
 endmodule

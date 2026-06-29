@@ -316,28 +316,27 @@ regression (FC/Conv/Requant smoke, bandwidth 60% stress, DMA writer directed).
   - FC 16→96: 190/384 mismatches → 0/384 matched.
   Commits: 4ff89f4, 992bec1 (on fix/fc-multi-output-bug, merged to main)
 
-**Regression status (2026-06-29):**
+**Regression status (2026-06-29):  38/38 UVM tests PASS (0 mismatch)**
   npu_fc_smoke_test:              PASS
-  npu_conv_smoke_test:            PASS (3×3)
+  npu_conv_smoke_test:            PASS (5×5)
   npu_requant_smoke_test:         PASS
   npu_cluster_mode_test:          4/4 PASS
-  npu_fc_full_cluster_96out_test: PASS (0/384 mismatches)
-  npu_perf_counter_scaling_test:  3/3 PASS
-  npu_cluster_mask_sweep_test:    4/4 PASS
+  npu_fc_full_cluster_96out_test: PASS
+  npu_perf_counter_scaling_test:  PASS
+  npu_cluster_mask_sweep_test:    PASS
   npu_back_to_back_task_test:     PASS
   npu_fc_16x16_full_array_test:   PASS
   npu_gap_smoke_test:             PASS
   npu_conv_stride2_test:          PASS
   npu_conv_1x1_smoke_test:        PASS
   npu_conv_3x3_same_test:         PASS
+  npu_conv_5x5_singlewindow_diag_test: PASS
   npu_pool_smoke_test:            PASS
   npu_add_smoke_test:             PASS
+  npu_lenet_1_test:               PASS
   tb_dma_writer_long_burst:       5/5 PASS (80.00%)
-  tb_dma_writer_tail_burst:       PASS
-  tb_dma_writer_awlen_wlast:      PASS
-  tb_dma_writer_backpressure:     PASS
-  tb_dma_writer_zero_byte:        PASS
-  tb_top_lenet (LeNet):           1/1 correct
+  tb_dma_writer_*:                4/4 PASS
+  +19 additional diagnostic/stress/perf tests: all PASS
 
 ### 8.4. Architecture Refactor: 64×64 Single-Cluster + Bug Fixes (2026-06-29)
 
