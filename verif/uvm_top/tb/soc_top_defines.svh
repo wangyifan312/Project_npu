@@ -171,6 +171,28 @@
 `define NPU_REG_PERF_BUS_ACTIVE     (`SOC_NPU_REG_BASE + 32'hE4)
 
 //-----------------------------------------------------------------------------
+// Enhanced performance counters (RO)
+//-----------------------------------------------------------------------------
+
+// Offset 58: Compute cycles (RO)
+`define NPU_REG_PERF_COMPUTE_CYCLES (`SOC_NPU_REG_BASE + 32'hE8)
+
+// Offset 59: Load cycles (RO)
+`define NPU_REG_PERF_LOAD_CYCLES    (`SOC_NPU_REG_BASE + 32'hEC)
+
+// Offset 60: Store cycles (RO)
+`define NPU_REG_PERF_STORE_CYCLES   (`SOC_NPU_REG_BASE + 32'hF0)
+
+// Offset 61: Collect cycles (RO)
+`define NPU_REG_PERF_COLLECT_CYCLES (`SOC_NPU_REG_BASE + 32'hF4)
+
+// Offset 62: Read valid bytes (RO)
+`define NPU_REG_PERF_READ_VALID_BYTES  (`SOC_NPU_REG_BASE + 32'hF8)
+
+// Offset 63: Write valid bytes (RO)
+`define NPU_REG_PERF_WRITE_VALID_BYTES (`SOC_NPU_REG_BASE + 32'hFC)
+
+//-----------------------------------------------------------------------------
 // Extended task parameters (RW)
 //-----------------------------------------------------------------------------
 

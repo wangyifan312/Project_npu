@@ -25,16 +25,31 @@
 | P3: 并行流水线 (FSM_PIPE_RUN) | ✅ | 多 block Conv TOPS 0.79 (2.5× vs 单 block) |
 | 命名清理 | ✅ | compute_core_6cluster→compute_core, cluster_16x16→pe_cluster |
 
-### 性能指标
+### 性能指标 (更新于 2026-06-29, P5 优化后)
 
 | 指标 | 值 | 证据 |
 |------|:--:|------|
-| VecReLU bus bandwidth | **64.04%** ≥60% ✅ | `npu_bandwidth_60pct_stress_test` |
-| Conv/FC bus bandwidth | ~5% (256-bit 瓶颈) | 需 512-bit + acc 128-bit |
-| FC 64→64 TOPS | 0.32 | `npu_peak_throughput_test` |
-| FC 64→128 TOPS | 0.32 | `npu_fc_128x128_peak_test` |
-| Conv multi-block TOPS | **0.79** | `npu_conv_multiblock_test` |
-| DMA writer burst util | 80.00% | `tb_dma_writer_long_burst` |
+| **赛题: AXI Burst BW ≥60%** | **64.04%** ✅ | `npu_bandwidth_60pct_stress_test` |
+| **赛题: NPU TOPS ≥0.5** | **Conv: 1.02** ✅ | `npu_conv_multiblock_test` |
+| VecReLU bus bandwidth | **64.04%** ✅ | `npu_bandwidth_60pct_stress_test` (PASS_TARGET) |
+| Conv multi-block TOPS | **1.02** (P5 后提升) | `npu_conv_multiblock_test` |
+| FC 64→128 TOPS | 0.35 | `npu_fc_128x128_peak_test` |
+| Conv task-level BW | ~4.5% (compute-bound, 正常) | `npu_conv_multiblock_test` |
+| FC task-level BW | ~31% | `npu_fc_128x128_peak_test` |
+| DMA write burst util | **72.7%~84.2%** (P5 提升 3×) | UVM DMA monitor |
+| DMA read burst util | 87.0%~93.9% | UVM DMA monitor |
+| P5 pipelined store | ✅ 已修复 SP_PUSH bug, 所有 smoke PASS |
+
+### 增强性能计数器 (新增 0xE8-0xFC)
+
+| 寄存器 | 地址 | 说明 |
+|--------|------|------|
+| PERF_COMPUTE_CYCLES | 0xE8 | COMPUTE/PIPE_RUN 状态周期 |
+| PERF_LOAD_CYCLES | 0xEC | 各类 LOAD 状态周期 |
+| PERF_STORE_CYCLES | 0xF0 | STORE 状态周期 |
+| PERF_COLLECT_CYCLES | 0xF4 | COLLECT 子状态周期 |
+| PERF_READ_VALID_BYTES | 0xF8 | AXI 读有效 payload 字节 |
+| PERF_WRITE_VALID_BYTES | 0xFC | AXI 写按 WSTRB 有效字节 |
 
 ---
 
@@ -91,8 +106,9 @@
 |------|:--:|------|
 | FC input_c > 64 多 chunk | ⚠️ | Phase 2 shadow register timing issue |
 | Conv multi-c_in 权重 preload | ⚠️ | 原始基线 bug，cin=2 时 4/8 字节 mismatch |
-| Conv/FC bus bandwidth ≥60% | ❌ | 受 256-bit + 32-bit acc_buffer 限制 |
-| TOPS >1.3 | ❌ | 需 512-bit + acc 128-bit + 多 block 工作负载 |
+| TOPS >1.3 (FC path) | ❌ | FC 0.35 TOPS，需 P3 double-buffering + 512-bit AXI |
+| npu_gemm_pipeline_bw_tops_test | 🔬 | 实验性测试，暂不作为达标证据 |
+| Conv/FC task-level BW | ⚠️ | ~4.5%~31%，compute-bound 场景下任务级 BW 天然低，非瓶颈 |
 
 已解决的历史问题: `docs/known_issues/` (conv_multicluster_mismatch, conv_multiwindow_drain_hang)
 

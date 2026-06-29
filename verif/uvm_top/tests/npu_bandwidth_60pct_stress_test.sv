@@ -44,7 +44,11 @@ class npu_bandwidth_60pct_stress_test extends soc_base_test;
     bit [31:0] read_data_cycles;
     bit [31:0] write_data_cycles;
     bit [31:0] bus_active_cycles;
+    bit [31:0] comp_cyc, load_cyc, store_cyc, coll_cyc;
+    bit [31:0] r_valid_bytes, w_valid_bytes;
+    bit [31:0] read_beats, write_beats;
     real       system_task_bus_active_ratio;
+    real       read_task_bw, write_task_bw;
     bit        output_compare_passed;
     bit        target_met;
     bit        functional_pass;
@@ -186,6 +190,15 @@ class npu_bandwidth_60pct_stress_test extends soc_base_test;
     m_seq.axil_read32(`NPU_REG_PERF_CYCLE_LO,      task_cycles);
     m_seq.axil_read32(`NPU_REG_PERF_READ_BEATS,    read_data_cycles);
     m_seq.axil_read32(`NPU_REG_PERF_WRITE_DATA_CYC, write_data_cycles);
+    // Enhanced counters (new registers 0xE8-0xFC)
+    m_seq.axil_read32(`NPU_REG_PERF_COMPUTE_CYCLES,    comp_cyc);
+    m_seq.axil_read32(`NPU_REG_PERF_LOAD_CYCLES,       load_cyc);
+    m_seq.axil_read32(`NPU_REG_PERF_STORE_CYCLES,      store_cyc);
+    m_seq.axil_read32(`NPU_REG_PERF_COLLECT_CYCLES,    coll_cyc);
+    m_seq.axil_read32(`NPU_REG_PERF_READ_VALID_BYTES,  r_valid_bytes);
+    m_seq.axil_read32(`NPU_REG_PERF_WRITE_VALID_BYTES, w_valid_bytes);
+    m_seq.axil_read32(`NPU_REG_PERF_READ_BEATS,    read_beats);
+    m_seq.axil_read32(`NPU_REG_PERF_WRITE_BEATS,   write_beats);
 
     bus_active_cycles = read_data_cycles + write_data_cycles;
 
@@ -256,6 +269,25 @@ class npu_bandwidth_60pct_stress_test extends soc_base_test;
     `uvm_info("SYS_BUS_60", "[SYS_BUS_60] --- Primary Metric ---", UVM_NONE)
     `uvm_info("SYS_BUS_60", $sformatf("[SYS_BUS_60]   system_task_bus_active_ratio = %0.2f%%", system_task_bus_active_ratio), UVM_NONE)
     `uvm_info("SYS_BUS_60", $sformatf("[SYS_BUS_60]   Formula: (read_data_cycles + write_data_cycles) / task_cycles * 100"), UVM_NONE)
+    `uvm_info("SYS_BUS_60", "", UVM_NONE)
+    `uvm_info("SYS_BUS_60", "[SYS_BUS_60] --- Burst-Level Bandwidth Metrics ---", UVM_NONE)
+    `uvm_info("SYS_BUS_60", $sformatf("[SYS_BUS_60]   read_beats (0x38)        = %0d", read_beats), UVM_NONE)
+    `uvm_info("SYS_BUS_60", $sformatf("[SYS_BUS_60]   write_beats (0x3C)       = %0d", write_beats), UVM_NONE)
+    `uvm_info("SYS_BUS_60", $sformatf("[SYS_BUS_60]   r_valid_bytes (0xF8)      = %0d", r_valid_bytes), UVM_NONE)
+    `uvm_info("SYS_BUS_60", $sformatf("[SYS_BUS_60]   w_valid_bytes (0xFC)      = %0d", w_valid_bytes), UVM_NONE)
+    `uvm_info("SYS_BUS_60", "", UVM_NONE)
+    `uvm_info("SYS_BUS_60", "[SYS_BUS_60] --- Task-Level Bandwidth (engineering reference) ---", UVM_NONE)
+    read_task_bw  = (task_cycles>0) ? ($itor(r_valid_bytes)*100.0/($itor(task_cycles)*32.0)) : 0.0;
+    write_task_bw = (task_cycles>0) ? ($itor(w_valid_bytes)*100.0/($itor(task_cycles)*32.0)) : 0.0;
+    `uvm_info("SYS_BUS_60", $sformatf("[SYS_BUS_60]   read_task_bw_util         = %.2f%%", read_task_bw), UVM_NONE)
+    `uvm_info("SYS_BUS_60", $sformatf("[SYS_BUS_60]   write_task_bw_util        = %.2f%%", write_task_bw), UVM_NONE)
+    `uvm_info("SYS_BUS_60", $sformatf("[SYS_BUS_60]   total_task_bw_util        = %.2f%%", read_task_bw+write_task_bw), UVM_NONE)
+    `uvm_info("SYS_BUS_60", "", UVM_NONE)
+    `uvm_info("SYS_BUS_60", "[SYS_BUS_60] --- Enhanced Counter Verification (0xE8-0xFC) ---", UVM_NONE)
+    `uvm_info("SYS_BUS_60", $sformatf("[SYS_BUS_60]   compute_cycles (0xE8)      = %0d %s", comp_cyc, (comp_cyc>0)?"OK":"ZERO(VecReLU has no compute phase)"), UVM_NONE)
+    `uvm_info("SYS_BUS_60", $sformatf("[SYS_BUS_60]   load_cycles (0xEC)         = %0d %s", load_cyc, (load_cyc>0)?"OK":"ZERO(verify)"), UVM_NONE)
+    `uvm_info("SYS_BUS_60", $sformatf("[SYS_BUS_60]   store_cycles (0xF0)        = %0d %s", store_cyc, (store_cyc>0)?"OK":"ZERO(VecReLU streaming)"), UVM_NONE)
+    `uvm_info("SYS_BUS_60", $sformatf("[SYS_BUS_60]   collect_cycles (0xF4)      = %0d %s", coll_cyc, (coll_cyc>0)?"OK":"ZERO(VecReLU has no collect)"), UVM_NONE)
     `uvm_info("SYS_BUS_60", "", UVM_NONE)
 
     // --- P1-2: Three-tier verdict ---

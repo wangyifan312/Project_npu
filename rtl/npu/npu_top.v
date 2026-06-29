@@ -245,6 +245,19 @@ module npu_top #(
     wire [31:0] perf_ar_handshake, perf_aw_handshake, perf_b_handshake, perf_bus_active;
     wire [31:0] perf_cluster_cfg;
 
+    // Enhanced performance counters
+    wire [31:0] perf_compute_cycles, perf_load_cycles, perf_store_cycles, perf_collect_cycles;
+    wire [31:0] perf_read_valid_bytes, perf_write_valid_bytes;
+    wire [31:0] perf_mac_count_lo, perf_mac_count_hi;
+    wire [31:0] perf_stall_act, perf_stall_wgt, perf_stall_acc, perf_stall_store;
+    wire [31:0] perf_array_fill_drain;
+    wire        perf_compute_active, perf_load_active, perf_store_active, perf_collect_active;
+    wire [5:0]  perf_read_byte_cnt, perf_write_byte_cnt;
+    wire        perf_mac_count_valid;
+    wire [15:0] perf_mac_count_add;
+    wire        perf_stall_act_evt, perf_stall_wgt_evt, perf_stall_acc_evt, perf_stall_store_evt;
+    wire        perf_array_fill_drain_evt;
+
     wire [31:0] blk_in_addr, blk_wgt_addr, blk_out_addr;
     wire [31:0] blk_in_bytes, blk_wgt_bytes, blk_out_bytes;
     wire [15:0] blk_in_rows, blk_out_rows;
@@ -300,7 +313,21 @@ module npu_top #(
         .perf_ar_handshake_i(perf_ar_handshake),
         .perf_aw_handshake_i(perf_aw_handshake),
         .perf_b_handshake_i(perf_b_handshake),
-        .perf_bus_active_i(perf_bus_active)
+        .perf_bus_active_i(perf_bus_active),
+        // Enhanced perf counters
+        .perf_compute_cycles_i(perf_compute_cycles),
+        .perf_load_cycles_i(perf_load_cycles),
+        .perf_store_cycles_i(perf_store_cycles),
+        .perf_collect_cycles_i(perf_collect_cycles),
+        .perf_read_valid_bytes_i(perf_read_valid_bytes),
+        .perf_write_valid_bytes_i(perf_write_valid_bytes),
+        .perf_mac_count_lo_i(perf_mac_count_lo),
+        .perf_mac_count_hi_i(perf_mac_count_hi),
+        .perf_stall_act_i(perf_stall_act),
+        .perf_stall_wgt_i(perf_stall_wgt),
+        .perf_stall_acc_i(perf_stall_acc),
+        .perf_stall_store_i(perf_stall_store),
+        .perf_array_fill_drain_i(perf_array_fill_drain)
     );
 
     assign npu_busy = ctrl_busy;
@@ -926,6 +953,21 @@ module npu_top #(
         .bus_active((m_axi_arvalid && m_axi_arready) || (m_axi_rvalid && m_axi_rready) ||
                     (m_axi_awvalid && m_axi_awready) || (m_axi_wvalid && m_axi_wready) ||
                     (m_axi_bvalid && m_axi_bready)),
+        // Enhanced inputs
+        .compute_active(perf_compute_active),
+        .load_active(perf_load_active),
+        .store_active(perf_store_active),
+        .collect_active(perf_collect_active),
+        .read_byte_cnt(perf_read_byte_cnt),
+        .write_byte_cnt(perf_write_byte_cnt),
+        .mac_count_valid(perf_mac_count_valid),
+        .mac_count_add(perf_mac_count_add),
+        .stall_act(perf_stall_act_evt),
+        .stall_wgt(perf_stall_wgt_evt),
+        .stall_acc(perf_stall_acc_evt),
+        .stall_store(perf_stall_store_evt),
+        .array_fill_drain(perf_array_fill_drain_evt),
+        // Outputs
         .total_cycle_lo(perf_cycle_lo), .total_cycle_hi(perf_cycle_hi),
         .read_beat_count(perf_read_beats), .write_beat_count(perf_write_beats),
         .read_active_cycles(perf_read_active), .write_active_cycles(perf_write_active),
@@ -933,7 +975,21 @@ module npu_top #(
         .cluster_active_cycles(perf_cluster_active), .cluster_stall_cycles(perf_cluster_stall),
         .write_data_cycles(perf_write_data_cycles), .write_txn_cycles(perf_write_txn_cycles),
         .ar_handshake_cycles(perf_ar_handshake), .aw_handshake_cycles(perf_aw_handshake),
-        .b_handshake_cycles(perf_b_handshake), .bus_active_cycles(perf_bus_active)
+        .b_handshake_cycles(perf_b_handshake), .bus_active_cycles(perf_bus_active),
+        // Enhanced outputs
+        .compute_cycles(perf_compute_cycles),
+        .load_cycles(perf_load_cycles),
+        .store_cycles(perf_store_cycles),
+        .collect_cycles(perf_collect_cycles),
+        .read_valid_bytes(perf_read_valid_bytes),
+        .write_valid_bytes(perf_write_valid_bytes),
+        .mac_count_lo(perf_mac_count_lo),
+        .mac_count_hi(perf_mac_count_hi),
+        .stall_act_cycles(perf_stall_act),
+        .stall_wgt_cycles(perf_stall_wgt),
+        .stall_acc_cycles(perf_stall_acc),
+        .stall_store_cycles(perf_stall_store),
+        .array_fill_drain_cycles(perf_array_fill_drain)
     );
 
     wire [15:0] fc_tile_capacity_raw = ((BUF_ENTRIES * HB_BEAT_BYTES) / input_c);
@@ -1240,13 +1296,19 @@ module npu_top #(
                          (is_conv_mode || is_fc_mode) ? array_acc_wr_data :
                          is_requant_mode ? rq_acc_wr_data_r :
                                            pp_data_out;
+    // P0 FIX: During CP_DRAIN, only enable accumulator writes AFTER drain_offset
+    // (i.e., when COLLECT has been properly initialized).  Before drain_offset,
+    // acc_col_idx is stale (from previous chunk) and acc_partial_addr may not
+    // be set correctly, causing spurious writes that corrupt partial sums.
+    wire drain_collect_active = (comp_sub_state == CP_DRAIN)
+        ? (comp_drain_cnt >= array_drain_offset) : 1'b1;
     assign acc_wr_en   = add_write_phase ? add_acc_wr_en_r :
         gap_acc_wr_en_r ? gap_acc_wr_en_r :
         rq_internal_write_phase ? rq_acc_wr_en_r :
         (is_conv_mode || is_fc_mode)
         ? (compute_fsm_active &&
            ((comp_sub_state == CP_COLLECT) || (comp_sub_state == CP_DRAIN)) &&
-           !acc_collect_wait && !acc_collect_skip_write &&
+           !acc_collect_wait && !acc_collect_skip_write && drain_collect_active &&
            (!is_conv_mode || ((comp_win_idx < comp_total_wins) &&
                               (acc_col_idx < collect_total_cols))))
         : is_requant_mode ? rq_acc_wr_en_r
@@ -1293,13 +1355,84 @@ module npu_top #(
 
     // DMA writer: stream from acc_buffer during STORE
     // During CP_COLLECT: read the current column's old partial sum.
-    localparam STORE_PACK_IDLE = 2'd0;
-    localparam STORE_PACK_WAIT = 2'd1;
-    localparam STORE_PACK_CAPTURE = 2'd2;
-    localparam STORE_PACK_SEND = 2'd3;
+    // Pipelined store states (P5: 1 word/cycle sustained)
+    localparam SP_IDLE    = 2'd0;  // idle / waiting for store to start
+    localparam SP_FIRST   = 2'd1;  // first read issued, data not yet valid
+    localparam SP_STREAM  = 2'd2;  // data valid every cycle, issue next read
+    localparam SP_PUSH    = 2'd3;  // beat assembled, push to FIFO
 
     reg [BUF_ADDR_W-1:0] dma_rd_ptr;
+    reg [BUF_ADDR_W-1:0] store_rd_prefetch;  // P5: prefetch pointer (1 ahead of dma_rd_ptr for pipelined reads)
     reg [1:0] store_pack_state;
+
+    // ============================================================
+    // Enhanced performance counter event signals
+    // (placed here because they reference registers declared above)
+    // ============================================================
+
+    // --- Enhanced phase-level activity signals ---
+    assign perf_compute_active = compute_fsm_active;
+    assign perf_load_active = (fsm_state == FSM_LOAD_ACT) || (fsm_state == FSM_CF_START) ||
+        (fsm_state == FSM_PRE_COMP) || (fsm_state == FSM_CIN_START) ||
+        (fsm_state == FSM_CIN_LOAD_WGT) || (fsm_state == FSM_CIN_LOAD_DONE) ||
+        (fsm_state == FSM_LOAD_ARRAY) || (fsm_state == FSM_WGT_LD) ||
+        (fsm_state == FSM_TASK_SETUP) || (fsm_state == FSM_LOAD_BIAS) ||
+        (fsm_state == FSM_BIAS_WAIT) || (fsm_state == FSM_BIAS_EXTRACT) ||
+        (fsm_state == FSM_LOAD_ADD_SRC1) || (fsm_state == FSM_ADD_SRC1_WAIT) ||
+        (fsm_state == FSM_FC_TILE_PREP) || (fsm_state == FSM_FC_LOAD_WGT) ||
+        (fsm_state == FSM_FC_LOAD_WAIT) || (fsm_state == FSM_CIN_RESTART);
+    assign perf_store_active = (fsm_state == FSM_STORE) || (pipe_mode && fsm_state == FSM_PIPE_RUN);
+    assign perf_collect_active = compute_fsm_active && (comp_sub_state == CP_COLLECT);
+
+    // --- Read/Write valid byte counts ---
+    assign perf_read_byte_cnt = 6'd32;  // all read beats are full 256-bit (32 bytes)
+    wire [5:0] wstrb_popcount;
+    assign wstrb_popcount =
+        {5'd0, m_axi_wstrb[0]}  + {5'd0, m_axi_wstrb[1]}  +
+        {5'd0, m_axi_wstrb[2]}  + {5'd0, m_axi_wstrb[3]}  +
+        {5'd0, m_axi_wstrb[4]}  + {5'd0, m_axi_wstrb[5]}  +
+        {5'd0, m_axi_wstrb[6]}  + {5'd0, m_axi_wstrb[7]}  +
+        {5'd0, m_axi_wstrb[8]}  + {5'd0, m_axi_wstrb[9]}  +
+        {5'd0, m_axi_wstrb[10]} + {5'd0, m_axi_wstrb[11]} +
+        {5'd0, m_axi_wstrb[12]} + {5'd0, m_axi_wstrb[13]} +
+        {5'd0, m_axi_wstrb[14]} + {5'd0, m_axi_wstrb[15]} +
+        {5'd0, m_axi_wstrb[16]} + {5'd0, m_axi_wstrb[17]} +
+        {5'd0, m_axi_wstrb[18]} + {5'd0, m_axi_wstrb[19]} +
+        {5'd0, m_axi_wstrb[20]} + {5'd0, m_axi_wstrb[21]} +
+        {5'd0, m_axi_wstrb[22]} + {5'd0, m_axi_wstrb[23]} +
+        {5'd0, m_axi_wstrb[24]} + {5'd0, m_axi_wstrb[25]} +
+        {5'd0, m_axi_wstrb[26]} + {5'd0, m_axi_wstrb[27]} +
+        {5'd0, m_axi_wstrb[28]} + {5'd0, m_axi_wstrb[29]} +
+        {5'd0, m_axi_wstrb[30]} + {5'd0, m_axi_wstrb[31]};
+    assign perf_write_byte_cnt = (m_axi_wvalid && m_axi_wready) ? wstrb_popcount : 6'd0;
+
+    // --- MAC count: count actual MAC operations per cycle ---
+    wire mac_event = compute_fsm_active && (comp_sub_state == CP_DRAIN) &&
+        cluster_arb_out_valid &&
+        (comp_drain_cnt >= array_drain_offset) &&
+        (comp_drain_cnt < array_drain_offset + array_active_cols);
+    // Each drain cycle: all active PE columns produce results simultaneously.
+    // Total MAC per drain cycle = active_rows × active_cols (all active PEs).
+    wire [15:0] macs_per_drain_event = array_active_rows * array_active_cols;
+    assign perf_mac_count_valid = mac_event;
+    assign perf_mac_count_add = macs_per_drain_event;
+
+    // --- Compute stall breakdown ---
+    assign perf_stall_act_evt = is_conv_mode && compute_fsm_active &&
+        (comp_sub_state == CP_WAIT_WIN) && !cf_new_window && !cf_done;
+    assign perf_stall_wgt_evt = (fsm_state == FSM_CIN_LOAD_WGT) ||
+        (fsm_state == FSM_CIN_LOAD_DONE) || (fsm_state == FSM_LOAD_ARRAY) ||
+        (fsm_state == FSM_FC_LOAD_WGT) || (fsm_state == FSM_FC_LOAD_WAIT);
+    assign perf_stall_acc_evt = compute_fsm_active && acc_collect_wait;
+    assign perf_stall_store_evt = ((fsm_state == FSM_STORE) || pipe_mode) &&
+        (store_pack_state == SP_PUSH) && wf_wr_full;
+
+    // --- Array fill/drain ---
+    assign perf_array_fill_drain_evt = compute_fsm_active &&
+        ((comp_sub_state == CP_FEED_ACT) ||
+         ((comp_sub_state == CP_DRAIN) && (comp_drain_cnt < array_drain_offset)));
+
+    // ============================================================
     reg [2:0] store_pack_lane;
     reg [31:0] store_word_idx;
     reg [AXI_DMA_DATA_W-1:0] store_pack_data;
@@ -1312,12 +1445,19 @@ module npu_top #(
         ((comp_sub_state == CP_DRAIN && comp_drain_cnt > array_drain_offset && acc_collect_wait) ||
          (comp_sub_state == CP_COLLECT && acc_collect_wait));
 
+    // P5: During store, use prefetch pointer for pipelined acc_buffer reads.
+    // dma_rd_ptr is the "data valid" index (what's currently on acc_rd_data),
+    // store_rd_prefetch is the "next read" index (issued to buffer).
+    wire [BUF_ADDR_W-1:0] store_rd_addr;
+    assign store_rd_addr = ((fsm_state == FSM_STORE || pipe_mode) &&
+                            (store_pack_state == SP_FIRST || store_pack_state == SP_STREAM))
+                           ? store_rd_prefetch : dma_rd_ptr;
     assign acc_rd_addr = ((fsm_state == FSM_REQUANT_COMPUTE) && rq_mode_internal)
                          ? rq_acc_rd_addr
                          : (compute_fsm_active &&
                             ((comp_sub_state == CP_COLLECT) || (comp_sub_state == CP_DRAIN)))
                          ? acc_partial_addr
-                         : dma_rd_ptr;
+                         : store_rd_addr;
     // P3: During COMPUTE (COLLECT/DRAIN) including PIPE_RUN, COLLECT reads from load_bank.
     // During STORE (and PIPE_RUN store), reads from comp_bank (previous compute's results).
     assign acc_rd_bank = pipe_coll_acc_rd ? acc_load_bank :
@@ -1346,7 +1486,7 @@ module npu_top #(
     // when the remaining FIFO data is less than the calculated burst size.
     // Covered: store_pack (all task types), vec_relu streaming path.
     assign dma_producer_done = (((fsm_state == FSM_STORE) || (fsm_state == FSM_PIPE_RUN) || pipe_mode) &&
-                                 (store_pack_state == STORE_PACK_IDLE) &&
+                                 (store_pack_state == SP_IDLE) &&
                                  dma_wr_started &&
                                  (store_word_idx >= store_words_active)) ||
                                ((fsm_state == FSM_VEC_RELU_PROC) &&
@@ -1422,7 +1562,8 @@ module npu_top #(
             dma_wr_start <= 1'b0; dma_wr_started <= 1'b0;
             block_bank <= 1'b0; dma_wr_addr <= 32'h0; dma_wr_bytes <= 32'h0;
             dma_rd_ptr <= 0;
-            store_pack_state <= STORE_PACK_IDLE;
+            store_rd_prefetch <= 0;
+            store_pack_state <= SP_IDLE;
             store_pack_lane <= 3'd0;
             store_word_idx <= 32'd0;
             store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
@@ -2324,6 +2465,13 @@ module npu_top #(
                                 comp_feed_cnt <= comp_feed_cnt + 7'd1;
                             end else begin
                                 comp_drain_cnt <= 16'd0;
+                                // P0 FIX: pre-set acc_collect_wait to block spurious writes
+                                // before the COLLECT init at drain_offset.  Without this,
+                                // the first drain cycles (before drain_offset) and the
+                                // init cycle itself (comp_drain_cnt == drain_offset, where
+                                // acc_collect_wait NBA hasn't taken effect yet) can write
+                                // stale col_results to acc_buffer, corrupting partial sums.
+                                acc_collect_wait <= 1'b1;
                                 // Set up partial sum address for this window
                                 if (is_conv_mode) begin
                                     conv_collect_base_next =
@@ -2417,19 +2565,22 @@ module npu_top #(
                                 acc_collect_skip_write <= 1'b0;
                                 if (is_fc_mode) begin
                                     if (fc_in_base + fc_chunk_inputs < input_c) begin
+                                        // P0 FIX: Bypass Phase-2 shadow register.
+                                        // Shadow weight preload can fail to complete before
+                                        // compute finishes (P2 reduced compute from 261→133
+                                        // cycles, shadow needs ~256).  Instead of swapping
+                                        // possibly-incomplete wgt_load_reg_shadow, go through
+                                        // FSM_LOAD_ARRAY which reloads the next chunk's weights
+                                        // directly from wgt_buffer.  Cost: ~128 cycles per
+                                        // additional K-chunk.  Correctness > performance.
                                         fc_in_base <= fc_in_base + fc_chunk_inputs;
                                         fc_chunk_inputs <= ((input_c - (fc_in_base + fc_chunk_inputs)) > PE_ROWS_16) ?
                                                            PE_ROWS_16 :
                                                            (input_c - (fc_in_base + fc_chunk_inputs));
                                         wgt_load_phase <= 32'd0;
-                                        wgt_load_wait <= 1'b0;
-                                        if (fc_shadow_active) begin
-                                            wgt_load_reg <= wgt_load_reg_shadow;
-                                        end else begin
-                                            wgt_load_reg <= 0;
-                                        end
+                                        wgt_load_wait <= 1'b1;
                                         fc_shadow_active <= 1'b0;
-                                        fsm_state <= FSM_WGT_LD;
+                                        fsm_state <= FSM_LOAD_ARRAY;
                                     end else begin
                                         if (bias_enabled) begin
                                             rq_mode_internal <= 1'b1;
@@ -2479,24 +2630,16 @@ module npu_top #(
                                 acc_collect_skip_write <= 1'b0;
                                 if (is_fc_mode) begin
                                     if (fc_in_base + fc_chunk_inputs < input_c) begin
-                                        // Phase 2: swap shadow register into wgt_load_reg
-                                        // (bypasses the 128-cycle FSM_LOAD_ARRAY)
+                                        // P0 FIX: Same as CP_DRAIN path — bypass shadow.
+                                        // Reload weights via LOAD_ARRAY for safety.
                                         fc_in_base <= fc_in_base + fc_chunk_inputs;
                                         fc_chunk_inputs <= ((input_c - (fc_in_base + fc_chunk_inputs)) > PE_ROWS_16) ?
                                                            PE_ROWS_16 :
                                                            (input_c - (fc_in_base + fc_chunk_inputs));
                                         wgt_load_phase <= 32'd0;
-                                        wgt_load_wait <= 1'b0;
-                                        if (fc_shadow_active) begin
-                                            // Shadow load completed during compute — swap
-                                            wgt_load_reg <= wgt_load_reg_shadow;
-                                        end else begin
-                                            // Shadow didn't finish (shouldn't happen with
-                                            // 165-cycle compute vs 128-cycle load) — fallback
-                                            wgt_load_reg <= 0;
-                                        end
+                                        wgt_load_wait <= 1'b1;
                                         fc_shadow_active <= 1'b0;
-                                        fsm_state <= FSM_WGT_LD;
+                                        fsm_state <= FSM_LOAD_ARRAY;
                                     end else begin
                                         if (bias_enabled) begin
                                             rq_mode_internal <= 1'b1;
@@ -2621,7 +2764,8 @@ module npu_top #(
                         dma_wr_start <= 1'b1;
                         dma_wr_started <= 1'b1;
                         dma_rd_ptr <= 0;
-                        store_pack_state <= STORE_PACK_IDLE;
+                        store_rd_prefetch <= 0;
+                        store_pack_state <= SP_IDLE;
                         store_pack_lane <= 3'd0;
                         store_word_idx <= 32'd0;
                         store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
@@ -2717,7 +2861,7 @@ module npu_top #(
                         dma_wr_valid_r <= 1'b0;
                         dma_wr_started <= 1'b0;
                         dma_rd_ptr <= 0;
-                        store_pack_state <= STORE_PACK_IDLE;
+                        store_pack_state <= SP_IDLE;
                         store_pack_lane <= 3'd0;
                         store_word_idx <= 32'd0;
                         store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
@@ -2800,65 +2944,108 @@ module npu_top #(
             endcase
 
             // ================================================================
-            // P3: shared store_pack state machine — runs during FSM_STORE or
-            // pipe_mode.  Placed AFTER the fsm_state case so store overrides
+            // P5: pipelined shared store_pack state machine — runs during FSM_STORE
+            // or pipe_mode.  Placed AFTER the fsm_state case so store overrides
             // signals set in FSM_STORE init on the same cycle.
+            //
+            // Pipelined read: we issue the NEXT read address (store_rd_prefetch)
+            // while consuming the CURRENT data (dma_rd_ptr tracks consumed index).
+            // This achieves 1 word/cycle sustained throughput (was 1 word/2 cycles
+            // due to WAIT state for acc_buffer's 1-cycle read latency).
             // ================================================================
             if (fsm_state == FSM_STORE || pipe_mode) begin
                 case (store_pack_state)
-                    STORE_PACK_IDLE: begin
+                    SP_IDLE: begin
                         dma_wr_valid_r <= 1'b0;
                         if (!dma_wr_started) begin
-                            dma_rd_ptr <= 0; store_pack_lane <= 3'd0;
+                            dma_rd_ptr <= 0;
+                            store_rd_prefetch <= 0;
+                            store_pack_lane <= 3'd0;
                             store_word_idx <= 32'd0;
                             store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
                         end else if (store_word_idx < store_words_active) begin
-                            store_pack_state <= STORE_PACK_CAPTURE;
+                            // Issue first read: prefetch addr 0
+                            store_rd_prefetch <= 1;
+                            store_pack_state <= SP_FIRST;
                         end
                     end
 
-                    STORE_PACK_WAIT: begin
-                        if (store_word_idx < store_words_active)
-                            store_pack_state <= STORE_PACK_CAPTURE;
-                    end
-
-                    STORE_PACK_CAPTURE: begin
+                    SP_FIRST: begin
+                        // First data word (addr 0) is now valid on acc_rd_data
+                        // Accumulate it and issue next read
                         if (store_word_idx < store_words_active) begin
+                            store_pack_data <= store_pack_data_next;
+                            store_pack_lane <= store_pack_lane + 3'd1;
+                            store_word_idx <= store_word_idx + 32'd1;
+                            dma_rd_ptr <= dma_rd_ptr + 1;
+
                             if ((store_pack_lane == 3'd7) ||
                                 (store_word_idx + 32'd1 >= store_words_active)) begin
+                                // Last lane of this beat → assemble and push
                                 dma_wr_data_r <= store_pack_data_next;
                                 dma_wr_valid_r <= 1'b1;
                                 store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
                                 store_pack_lane <= 3'd0;
-                                store_word_idx <= store_word_idx + 32'd1;
-                                store_pack_state <= STORE_PACK_SEND;
+                                store_pack_state <= SP_PUSH;
                             end else begin
-                                store_pack_data <= store_pack_data_next;
-                                store_pack_lane <= store_pack_lane + 3'd1;
-                                store_word_idx <= store_word_idx + 32'd1;
-                                dma_rd_ptr <= dma_rd_ptr + 1;
-                                store_pack_state <= STORE_PACK_WAIT;
+                                // More lanes in this beat → issue next read
+                                if (store_word_idx + 32'd1 < store_words_active)
+                                    store_rd_prefetch <= store_rd_prefetch + 1;
+                                store_pack_state <= SP_STREAM;
                             end
                         end else begin
-                            store_pack_state <= STORE_PACK_IDLE;
+                            store_pack_state <= SP_IDLE;
                         end
                     end
 
-                    STORE_PACK_SEND: begin
+                    SP_STREAM: begin
+                        // Data from previous read is valid. Accumulate and issue next.
+                        if (store_word_idx < store_words_active) begin
+                            store_pack_data <= store_pack_data_next;
+                            store_pack_lane <= store_pack_lane + 3'd1;
+                            store_word_idx <= store_word_idx + 32'd1;
+                            dma_rd_ptr <= dma_rd_ptr + 1;
+
+                            if ((store_pack_lane == 3'd7) ||
+                                (store_word_idx + 32'd1 >= store_words_active)) begin
+                                // Beat complete
+                                dma_wr_data_r <= store_pack_data_next;
+                                dma_wr_valid_r <= 1'b1;
+                                store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
+                                store_pack_lane <= 3'd0;
+                                store_pack_state <= SP_PUSH;
+                            end else begin
+                                // Issue next read
+                                if (store_word_idx + 32'd1 < store_words_active)
+                                    store_rd_prefetch <= store_rd_prefetch + 1;
+                                // stay in SP_STREAM
+                            end
+                        end else begin
+                            store_pack_state <= SP_IDLE;
+                        end
+                    end
+
+                    SP_PUSH: begin
+                        // Beat pushed to FIFO; wait for FIFO to accept, then continue.
+                        // NOTE: do NOT increment dma_rd_ptr here — no new data was consumed.
+                        // dma_rd_ptr already points to the next word to consume (set by
+                        // SP_STREAM beat-complete cycle). Only advance store_rd_prefetch
+                        // to issue the next buffer read.
                         if (!dma_wr_started) begin
-                            store_pack_state <= STORE_PACK_IDLE;
+                            store_pack_state <= SP_IDLE;
                         end else if (!wf_wr_full) begin
                             dma_wr_valid_r <= 1'b0;
                             if (store_word_idx < store_words_active) begin
-                                dma_rd_ptr <= dma_rd_ptr + 1;
-                                store_pack_state <= STORE_PACK_WAIT;
+                                // Prefetch next address (dma_rd_ptr is already correct)
+                                store_rd_prefetch <= dma_rd_ptr + 1;
+                                store_pack_state <= SP_FIRST;
                             end else begin
-                                store_pack_state <= STORE_PACK_IDLE;
+                                store_pack_state <= SP_IDLE;
                             end
                         end
                     end
 
-                    default: store_pack_state <= STORE_PACK_IDLE;
+                    default: store_pack_state <= SP_IDLE;
                 endcase
 
                 // --- dma_wr_done / error handling ---
@@ -2873,7 +3060,7 @@ module npu_top #(
                         dma_wr_valid_r <= 1'b0;
                         dma_wr_started <= 1'b0;
                         dma_rd_ptr <= 0;
-                        store_pack_state <= STORE_PACK_IDLE;
+                        store_pack_state <= SP_IDLE;
                         store_pack_lane <= 3'd0;
                         store_word_idx <= 32'd0;
                         store_pack_data <= {AXI_DMA_DATA_W{1'b0}};

@@ -222,6 +222,16 @@ package soc_top_uvm_pkg;
   `include "npu_conv_multiblock_test.sv"
   `include "npu_conv_bandwidth_test.sv"
 
+  //---------------------------------------------------------------------------
+  // AXI-fed NPU GEMM Peak Microbenchmark — full subsystem matrix multiply
+  //---------------------------------------------------------------------------
+  `include "npu_axi_gemm_peak_test.sv"
+
+  //---------------------------------------------------------------------------
+  // Joint TOPS + Bandwidth performance test — GEMM 512→256 workload (EXPERIMENTAL)
+  //---------------------------------------------------------------------------
+  `include "npu_gemm_pipeline_bw_tops_test.sv"
+
 endpackage
 
 `endif // SOC_TOP_UVM_PKG_SV

@@ -101,7 +101,20 @@ module npu_ctrl #(
     input  wire [31:0]                 perf_ar_handshake_i,
     input  wire [31:0]                 perf_aw_handshake_i,
     input  wire [31:0]                 perf_b_handshake_i,
-    input  wire [31:0]                 perf_bus_active_i
+    input  wire [31:0]                 perf_bus_active_i,
+    input  wire [31:0]                 perf_compute_cycles_i,
+    input  wire [31:0]                 perf_load_cycles_i,
+    input  wire [31:0]                 perf_store_cycles_i,
+    input  wire [31:0]                 perf_collect_cycles_i,
+    input  wire [31:0]                 perf_read_valid_bytes_i,
+    input  wire [31:0]                 perf_write_valid_bytes_i,
+    input  wire [31:0]                 perf_mac_count_lo_i,
+    input  wire [31:0]                 perf_mac_count_hi_i,
+    input  wire [31:0]                 perf_stall_act_i,
+    input  wire [31:0]                 perf_stall_wgt_i,
+    input  wire [31:0]                 perf_stall_acc_i,
+    input  wire [31:0]                 perf_stall_store_i,
+    input  wire [31:0]                 perf_array_fill_drain_i
 );
 
     // ============================================================
@@ -138,6 +151,12 @@ module npu_ctrl #(
     localparam ADDR_PERF_AW_HANDSHAKE   = 6'd55;  // 0xDC
     localparam ADDR_PERF_B_HANDSHAKE    = 6'd56;  // 0xE0
     localparam ADDR_PERF_BUS_ACTIVE     = 6'd57;  // 0xE4
+    localparam ADDR_PERF_COMPUTE_CYCLES = 6'd58;  // 0xE8
+    localparam ADDR_PERF_LOAD_CYCLES    = 6'd59;  // 0xEC
+    localparam ADDR_PERF_STORE_CYCLES   = 6'd60;  // 0xF0 (was 60, fix: 6'd60 = 0xF0 correct)
+    localparam ADDR_PERF_COLLECT_CYCLES = 6'd61;  // 0xF4
+    localparam ADDR_PERF_READ_VALID_BYTES  = 6'd62;  // 0xF8
+    localparam ADDR_PERF_WRITE_VALID_BYTES = 6'd63;  // 0xFC (max 6-bit addr)
     localparam ADDR_REQUANT_SEL         = 6'd25;  // 0x64: [1:0]=slot select
     localparam ADDR_REQUANT0_MULT       = 6'd26;  // 0x68
     localparam ADDR_REQUANT0_SHIFT      = 6'd27;  // 0x6C: [5:0]=shift
@@ -239,6 +258,9 @@ module npu_ctrl #(
                 ADDR_PERF_WRITE_DATA_CYC, ADDR_PERF_WRITE_TXN_CYC,
                 ADDR_PERF_AR_HANDSHAKE, ADDR_PERF_AW_HANDSHAKE,
                 ADDR_PERF_B_HANDSHAKE, ADDR_PERF_BUS_ACTIVE,
+                ADDR_PERF_COMPUTE_CYCLES, ADDR_PERF_LOAD_CYCLES,
+                ADDR_PERF_STORE_CYCLES, ADDR_PERF_COLLECT_CYCLES,
+                ADDR_PERF_READ_VALID_BYTES, ADDR_PERF_WRITE_VALID_BYTES,
                 ADDR_REQUANT_SEL,
                 ADDR_REQUANT0_MULT, ADDR_REQUANT0_SHIFT,
                 ADDR_REQUANT1_MULT, ADDR_REQUANT1_SHIFT,
@@ -746,6 +768,12 @@ module npu_ctrl #(
         (rd_addr == ADDR_PERF_AW_HANDSHAKE)   ? perf_aw_handshake_i      :
         (rd_addr == ADDR_PERF_B_HANDSHAKE)    ? perf_b_handshake_i       :
         (rd_addr == ADDR_PERF_BUS_ACTIVE)     ? perf_bus_active_i        :
+        (rd_addr == ADDR_PERF_COMPUTE_CYCLES) ? perf_compute_cycles_i    :
+        (rd_addr == ADDR_PERF_LOAD_CYCLES)    ? perf_load_cycles_i       :
+        (rd_addr == ADDR_PERF_STORE_CYCLES)   ? perf_store_cycles_i      :
+        (rd_addr == ADDR_PERF_COLLECT_CYCLES) ? perf_collect_cycles_i    :
+        (rd_addr == ADDR_PERF_READ_VALID_BYTES)  ? perf_read_valid_bytes_i  :
+        (rd_addr == ADDR_PERF_WRITE_VALID_BYTES) ? perf_write_valid_bytes_i :
         (rd_addr == ADDR_REQUANT0_MULT)      ? cfg_requant_mult[0]   :
         (rd_addr == ADDR_REQUANT0_SHIFT)     ? cfg_requant_shift[0]  :
         (rd_addr == ADDR_REQUANT1_MULT)      ? cfg_requant_mult[1]   :
