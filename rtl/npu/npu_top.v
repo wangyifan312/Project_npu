@@ -394,6 +394,9 @@ module npu_top #(
     // ============================================================
     reg         dma_wr_start, dma_wr_started;
     reg         block_bank;
+    reg         next_blk_prep;        // P3: step1: blk_done pulsed
+    reg         next_blk_wait;        // P3: step2: waiting for scheduler update
+    reg         next_dma_launched;    // P3: next block DMA launched during STORE
     reg  [31:0] dma_wr_addr, dma_wr_bytes;
     wire        dma_wr_done, dma_wr_error, dma_wr_busy, dma_wr_txn_active;
     wire [7:0]  dma_wr_error_code;
@@ -1301,7 +1304,9 @@ module npu_top #(
                             ((comp_sub_state == CP_COLLECT) || (comp_sub_state == CP_DRAIN)))
                          ? acc_partial_addr
                          : dma_rd_ptr;
-    assign acc_rd_bank = acc_load_bank;
+    // P3: during COMPUTE (COLLECT/DRAIN), acc reads from load_bank (same as writes).
+    // During STORE, acc reads from comp_bank (previous compute's results).
+    assign acc_rd_bank = (fsm_state == FSM_STORE) ? acc_comp_bank : acc_load_bank;
     assign dma_wr_data  = wf_rd_data;
     assign dma_wr_valid = wf_rd_valid;
     assign wf_rd_en     = dma_wr_ready && wf_rd_valid;
@@ -1429,6 +1434,7 @@ module npu_top #(
             acc_comp_start <= 1'b0; acc_comp_done <= 1'b0;
             acc_load_bank <= 1'b0; acc_comp_bank <= 1'b0;
             blk_done <= 1'b0;
+            next_blk_prep <= 1'b0; next_blk_wait <= 1'b0; next_dma_launched <= 1'b0;
             cf_last_row <= 16'hFFFF; cf_last_col <= 16'hFFFF;
             cf_channel_sel <= 6'd0;
             cin_idx <= 16'd0; cin_total <= 16'd0;
@@ -1513,6 +1519,7 @@ module npu_top #(
                         wgt_load_phase <= 32'd0; wgt_load_done_r <= 1'b0;
                         wgt_preload_active <= 1'b0; wgt_preload_done <= 1'b0;
                         wgt_load_reg <= 0; blk_done <= 1'b0;
+                        next_blk_prep <= 1'b0; next_blk_wait <= 1'b0; next_dma_launched <= 1'b0;
                         fc_preload_active <= 1'b0; fc_preload_done <= 1'b0;
                         fsm_state <= FSM_TASK_SETUP;
                     end
@@ -2560,6 +2567,9 @@ module npu_top #(
                 // FSM_STORE: DMA write acc_buffer to memory
                 // ============================================================
                 FSM_STORE: begin
+                    // P3: lock compute bank at STORE entry so reads come from
+                    // the bank with computed results (not the load bank)
+                    acc_comp_bank <= acc_load_bank;
                     dma_wr_addr <= rq_mode_internal ? rq_store_addr :
                                    is_add_mode ? output_addr :
                                    is_gap_mode ? output_addr :
@@ -2582,6 +2592,31 @@ module npu_top #(
                         store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
                         dma_wr_data_r <= {AXI_DMA_DATA_W{1'b0}};
                         dma_wr_valid_r <= 1'b0;
+                    end
+
+                    // P3: start next block's act DMA during current block STORE.
+                    // 3-cycle sequence: (1) pulse blk_done, (2) wait for
+                    // block_scheduler update, (3) check blk_all_done & launch.
+                    // Gated for Conv/Pool; skipped for FC/requant/add/gap.
+                    if (!next_blk_prep && !next_blk_wait && !next_dma_launched &&
+                        dma_wr_started &&
+                        !is_fc_mode && !is_requant_mode && !is_add_mode && !is_gap_mode) begin
+                        next_blk_prep <= 1'b1;
+                        blk_done <= 1'b1;
+                    end else if (next_blk_prep) begin
+                        next_blk_prep <= 1'b0;
+                        next_blk_wait <= 1'b1;
+                    end else if (next_blk_wait) begin
+                        next_blk_wait <= 1'b0;
+                        if (blk_valid) begin
+                            act_dma_start <= 1'b1;
+                            act_dma_addr <= blk_in_addr;
+                            act_dma_bytes <= blk_in_bytes;
+                            act_load_start <= 1'b1;
+                            act_load_bank <= ~block_bank;
+                        end
+                        // Set launched regardless to prevent re-firing
+                        next_dma_launched <= 1'b1;
                     end
 
                     case (store_pack_state)
@@ -2669,7 +2704,8 @@ module npu_top #(
                         end else begin
                             acc_comp_start <= 1'b1;
                             acc_comp_bank <= acc_load_bank;
-                            blk_done <= 1'b1;
+                            // P3: skip blk_done if already advanced during STORE overlap
+                            if (!next_dma_launched) blk_done <= 1'b1;
                             fsm_state <= FSM_BLK_DONE;
                         end
                     end else if (dma_wr_error) begin
@@ -2683,9 +2719,16 @@ module npu_top #(
                 end
 
                 FSM_BLK_CHECK: begin
-                    if (blk_all_done) begin
+                    // P3: use !blk_valid instead of blk_all_done because
+                    // block_scheduler may have already decayed S_DONE→S_IDLE
+                    // (task_start=0 after initial validation). Both indicate
+                    // no more blocks are available.
+                    if (!blk_valid) begin
                         task_done_r <= 1'b1;
                         task_active_r <= 1'b0;
+                        next_blk_prep <= 1'b0;
+                        next_blk_wait <= 1'b0;
+                        next_dma_launched <= 1'b0;
                         fsm_state <= FSM_DONE;
                     end else begin
                         // Next block
@@ -2699,20 +2742,28 @@ module npu_top #(
                         cf_last_col <= 16'hFFFF;
                         cin_idx <= 16'd0;
                         if (is_pool_mode) begin
-                            act_dma_start <= 1'b1;
-                            act_dma_addr <= blk_in_addr;
-                            act_dma_bytes <= blk_in_bytes;
-                            act_load_start <= 1'b1;
-                            act_load_bank <= ~block_bank;
+                            // P3: skip DMA if already launched during STORE
+                            if (!next_dma_launched) begin
+                                act_dma_start <= 1'b1;
+                                act_dma_addr <= blk_in_addr;
+                                act_dma_bytes <= blk_in_bytes;
+                                act_load_start <= 1'b1;
+                                act_load_bank <= ~block_bank;
+                            end
                             fsm_state <= FSM_LOAD_ACT;
                         end else begin
-                            act_dma_start <= 1'b1;
-                            act_dma_addr <= blk_in_addr;
-                            act_dma_bytes <= blk_in_bytes;
-                            act_load_start <= 1'b1;
-                            act_load_bank <= ~block_bank;
+                            // P3: skip DMA if already launched during STORE
+                            if (!next_dma_launched) begin
+                                act_dma_start <= 1'b1;
+                                act_dma_addr <= blk_in_addr;
+                                act_dma_bytes <= blk_in_bytes;
+                                act_load_start <= 1'b1;
+                                act_load_bank <= ~block_bank;
+                            end
                             fsm_state <= FSM_LOAD_ACT;
                         end
+                        next_dma_launched <= 1'b0;
+                        next_blk_wait <= 1'b0;
                     end
                 end
 
