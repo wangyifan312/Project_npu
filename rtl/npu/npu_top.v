@@ -2638,12 +2638,12 @@ module npu_top #(
                                         fsm_state <= FSM_LOAD_ARRAY;
                                     end else begin
                                         if (is_gemm_mode) begin
-                                            // GEMM row-by-row store: set DMA addr/bytes HERE
-                                            // (before FSM_STORE, so dma_wr_start pulse sees valid values)
-                                            dma_wr_addr <= blk_out_addr + (gemm_row_idx * gemm_N_val * 32'd4);
-                                            dma_wr_bytes <= gemm_N_val * 32'd4;
-                                            fc_store_addr <= blk_out_addr + (gemm_row_idx * gemm_N_val * 32'd4);
+                                            // GEMM row-by-row store: 32B-aligned row stride
+                                            // Row stride = ceil(N*4/32)*32 to keep DMA addr aligned
+                                            fc_store_addr <= blk_out_addr + (gemm_row_idx * ((gemm_N_val * 32'd4 + 32'd31) & 32'hFFFF_FFE0));
                                             fc_store_bytes <= gemm_N_val * 32'd4;
+                                            dma_wr_addr <= blk_out_addr + (gemm_row_idx * ((gemm_N_val * 32'd4 + 32'd31) & 32'hFFFF_FFE0));
+                                            dma_wr_bytes <= gemm_N_val * 32'd4;
                                             acc_load_start <= 1'b1;
                                             fsm_state <= FSM_STORE;
                                         end else if (bias_enabled) begin

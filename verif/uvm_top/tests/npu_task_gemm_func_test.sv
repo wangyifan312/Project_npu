@@ -75,13 +75,17 @@ class npu_task_gemm_func_test extends soc_base_test;
         break;
       end
 
-      // Check outputs
-      for(i=0; i<M_v; i++) begin
-        for(j=0; j<N_v; j++) begin
-          m_seq.axil_read32(32'h0002_0000 + (i*N_v+j)*4, rdata);
+      // Check outputs (row stride = ceil(N*4/32)*32 for 32B-aligned DMA)
+      begin
+        int row_stride;
+        row_stride = ((N_v*4 + 31) / 32) * 32;
+        for(i=0; i<M_v; i++) begin
+          for(j=0; j<N_v; j++) begin
+            m_seq.axil_read32(32'h0002_0000 + i*row_stride + j*4, rdata);
           if($signed(rdata) != exp_val) begin
             if(total_errs<5) `uvm_error("TEST",$sformatf("G%d C[%0d][%0d]=%0d expected %0d",lvl,i,j,$signed(rdata),exp_val))
             total_errs++;
+          end
           end
         end
       end
