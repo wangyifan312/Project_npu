@@ -2376,7 +2376,11 @@ module npu_top #(
                             if ((comp_drain_cnt > array_drain_offset) &&
                                 (comp_drain_cnt >= (array_drain_offset + array_active_cols - 1)) &&
                                 (acc_col_idx + 16'd1 >= collect_total_cols) &&
-                                !acc_collect_wait) begin
+                                !acc_collect_wait &&
+                                (!is_fc_mode ||
+                                 !fc_shadow_active ||
+                                 (fc_shadow_phase >= (fc_shadow_chunk_inputs * fc_tile_outputs)) ||
+                                 !(fc_in_base + fc_chunk_inputs < input_c))) begin
                                 acc_collect_skip_write <= 1'b0;
                                 if (is_fc_mode) begin
                                     if (fc_in_base + fc_chunk_inputs < input_c) begin
