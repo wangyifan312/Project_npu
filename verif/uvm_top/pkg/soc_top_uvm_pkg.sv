@@ -219,6 +219,8 @@ package soc_top_uvm_pkg;
   `include "npu_conv_3x3_multiwindow_diag_test.sv"
   `include "npu_conv_5x5_singlewindow_diag_test.sv"
   `include "npu_conv_1x1_fullcluster_multiwindow_diag_test.sv"
+  `include "npu_conv_multiblock_test.sv"
+  `include "npu_conv_bandwidth_test.sv"
 
 endpackage
 
