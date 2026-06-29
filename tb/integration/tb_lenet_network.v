@@ -696,8 +696,8 @@ module tb_lenet_network;
         rq_fc1_shift = 0;
         rq_fc2_mult = 1;
         rq_fc2_shift = 0;
-        cluster_mode_val = 2;  // default: full 6-cluster
-        cluster_mask_val = 63; // default: all 6 clusters enabled
+        cluster_mode_val = 2;  // default: full single-cluster
+        cluster_mask_val = 63; // default: all single-clusters enabled
         void'($value$plusargs("fixture_dir=%s", fixture_dir));
         void'($value$plusargs("sample_name=%s", sample_name));
         void'($value$plusargs("sample_root_dir=%s", sample_root_dir));

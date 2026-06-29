@@ -9,7 +9,7 @@
 ## 1. Original Symptom (Pre-Investigation)
 
 `npu_cluster_mode_test` showed Conv output mismatch when using dual (2-cluster),
-full (6-cluster), or mask (subset) cluster modes. Single-cluster Conv mode PASSED.
+full (single-cluster), or mask (subset) cluster modes. Single-cluster Conv mode PASSED.
 
 This was incorrectly attributed to Conv-specific channel mapping, weight routing,
 or output_arbiter ordering issues.
@@ -101,7 +101,7 @@ All tests PASS with the current codebase:
 |------|--------|
 | Conv single-cluster | PASS |
 | Conv dual-cluster | PASS (verified by diagnostic test) |
-| Conv full-cluster (6 clusters) | PASS (verified by cluster_mode_test) |
+| Conv full-cluster (single-clusters) | PASS (verified by cluster_mode_test) |
 | Conv mask mode | PASS (verified by cluster_mode_test) |
 | Conv drain hang (multi-window, all modes) | Known limitation (affects single-cluster too) |
 | FC multi-cluster | PASS (all 5 structural tests) |

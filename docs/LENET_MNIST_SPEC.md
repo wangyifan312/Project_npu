@@ -65,10 +65,10 @@
 
 ### FC
 
-- 必须走共享 `6-cluster` compute hierarchy
+- 必须走共享 `single-cluster` compute hierarchy
 - 不允许再用“FC 未支持”描述当前基线
 - `FC1` 与 `FC2` 都属于本轮强制验收范围
-- P0-3 后，`FC1` / `FC2` 正式执行流使用 `cluster_scheduler -> compute_core_6cluster -> output_arbiter`
+- P0-3 后，`FC1` / `FC2` 正式执行流使用 `cluster_scheduler -> compute_core -> output_arbiter`
 - `Pool2 -> FC1` 与 `FC1(ReLU) -> FC2` 的 handoff 继续通过当前 layer-wise requant 语义提供 `INT8` 输入
 
 ## 4. Tensor Layout

@@ -1,4 +1,4 @@
-// npu_top: NPU accelerator orchestration top for the formal 6-cluster SoC baseline
+// npu_top: NPU accelerator orchestration top for the formal single-cluster SoC baseline
 // Multi-channel Conv: temporal input-channel iteration with parallel output channels
 // Conv formal path: cluster_scheduler -> compute_core -> output_arbiter
 `timescale 1ns / 1ps
@@ -546,7 +546,7 @@ module npu_top #(
     wire        cf_window_hold;
 
     // FC formal path state. FC tiles output neurons across the shared
-    // 6-cluster array and chunks long input vectors across PE rows.
+    // single-cluster array and chunks long input vectors across PE rows.
     reg [15:0] fc_out_start;
     reg [15:0] fc_tile_outputs;
     reg [15:0] fc_in_base;
@@ -577,7 +577,7 @@ module npu_top #(
     );
 
     // ============================================================
-    // Formal 6-cluster compute path
+    // Formal single-cluster compute path
     // ============================================================
     wire [(PE_ROWS*8)-1:0]    array_act_in;
     wire [(PE_COLS*32)-1:0]   array_sum_in;

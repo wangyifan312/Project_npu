@@ -137,7 +137,7 @@ module tb_soc_top_uvm;
       // Check if any tiles in cluster0 are clock-enabled (OR of 256 bits)
       if (|u_top.u_npu.cluster_tile_clk_en_all_flat[255:0])
         probe_vif.observed_tile_all_on <= 1'b1;
-      // Check if all 6 clusters busy simultaneously
+      // Check if all single-clusters busy simultaneously
       if (&u_top.u_npu.cluster_busy[5:0])
         probe_vif.observed_all_clusters_active <= 1'b1;
     end

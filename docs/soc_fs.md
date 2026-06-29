@@ -1,6 +1,6 @@
 # CPU+NPU SoC Functional Specification
 
-本文档描述 `Project_npu` 当前 `CPU + NPU` 异构 SoC 的功能规格。文档内容以当前 RTL 实现和正式 6-cluster SoC 基线为准，主要参考：
+本文档描述 `Project_npu` 当前 `CPU + NPU` 异构 SoC 的功能规格。文档内容以当前 RTL 实现和正式 single-cluster SoC 基线为准，主要参考：
 
 - `rtl/soc/top.v`
 - `rtl/bus/axi_interconnect.v`
@@ -36,7 +36,7 @@
 | Task Type | Encoding | Description |
 | --- | ---: | --- |
 | Conv | `2'd0` | 5x5 valid convolution，INT8 x INT8 -> INT32 |
-| FC | `2'd1` | fully-connected，复用 6-cluster compute hierarchy |
+| FC | `2'd1` | fully-connected，复用 single-cluster compute hierarchy |
 | Pool | `2'd2` | 2x2 max pooling，stride=2 |
 | Requant | `2'd3` | INT32 -> INT8，layer-wise multiplier/shift |
 
@@ -69,7 +69,7 @@ SoC 顶层由 CPU、AXI interconnect、shared RAM 和 NPU 四个主要部分组�
                     |        +----------------+
                     |        |    NPU Core    |
                     |        | DMA + Buffer + |
-                    |        | 6-cluster MAC  |
+                    |        | single-cluster MAC  |
                     |        +-------+--------+
                     |                |
                     +----------------+
@@ -226,14 +226,14 @@ shared RAM
 
 ### 4.3 NPU 计算路径
 
-Conv 和 FC 正式执行流都走 6-cluster compute hierarchy。
+Conv 和 FC 正式执行流都走 single-cluster compute hierarchy。
 
 ```text
 npu_buffer / weight register
   -> conv/fc frontend and FSM
   -> cluster_scheduler
-  -> compute_core_6cluster
-  -> 6 x cluster_16x16
+  -> compute_core
+  -> 6 x pe_cluster
   -> output_arbiter
   -> postproc / requant / writeback datapath
 ```
@@ -241,8 +241,8 @@ npu_buffer / weight register
 其中：
 
 - `cluster_scheduler` 根据 `CLUSTER_MODE` 和 `CLUSTER_MASK_REQ` 产生 `cluster_enable[5:0]`。
-- `compute_core_6cluster` 真正例化 6 个 `cluster_16x16`。
-- 每个 `cluster_16x16` 内部复用 `array_top`，阵列规模为 `16x16 PE`。
+- `compute_core` 真正例化 6 个 `pe_cluster`。
+- 每个 `pe_cluster` 内部复用 `array_top`，阵列规模为 `16x16 PE`。
 - `output_arbiter` 汇聚多个 cluster 的结果，并输出给后续写回路径。
 
 ### 4.4 NPU DMA 写回路径
@@ -312,8 +312,8 @@ NPU 内部主要子模块如下：
 | `block_scheduler` | 生成 block 级输入、权重、输出地址和 byte count |
 | `conv_frontend` | Conv 窗口/数据组织相关前端逻辑 |
 | `cluster_scheduler` | 根据 cluster mode 和 mask 选择启用 cluster |
-| `compute_core_6cluster` | 6 个 `cluster_16x16` 的正式计算核心 |
-| `cluster_16x16` | 单个 `16x16 PE` cluster，内部复用 `array_top` |
+| `compute_core` | 6 个 `pe_cluster` 的正式计算核心 |
+| `pe_cluster` | 单个 `16x16 PE` cluster，内部复用 `array_top` |
 | `output_arbiter` | 多 cluster 输出聚合与仲裁 |
 | `postproc` | ReLU/Pool 等后处理 |
 | `requant_i32_to_i8` | INT32 到 INT8 的 layer-wise requant |

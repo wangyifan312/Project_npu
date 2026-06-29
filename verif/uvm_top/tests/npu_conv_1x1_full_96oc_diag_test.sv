@@ -1,14 +1,14 @@
 //=============================================================================
 // npu_conv_1x1_full_96oc_diag_test.sv — Diagnostic: Full-Cluster 3x3 Conv (96 OC)
 //
-// Purpose: FINGERPRINT full 6-cluster Conv mismatch with many output channels.
-// All 6 clusters should participate.
+// Purpose: FINGERPRINT full single-cluster Conv mismatch with many output channels.
+// All single-clusters should participate.
 //
 // Configuration:
 //   input:  5x5 spatial, Cin=1, all 0x01 (25 bytes)
 //   weight: 3x3 kernel, Cin=1, Cout=96, all 0x01 (9*96 = 864 bytes)
 //   conv_cfg = 32'd2 (3x3 kernel, stride1, valid)
-//   cluster_mode = full (2'd2) — uses all 6 clusters
+//   cluster_mode = full (2'd2) — uses all single-clusters
 //   Each cluster handles 16 output channels:
 //     Cluster0: ch[ 0:15], Cluster1: ch[16:31], Cluster2: ch[32:47]
 //     Cluster3: ch[48:63], Cluster4: ch[64:79], Cluster5: ch[80:95]
@@ -18,7 +18,7 @@
 // Checks:
 //   1. Output compare — detailed mismatch report
 //   2. Per-cluster channel-range pattern
-//   3. Sticky probes: all 6 clusters show activity
+//   3. Sticky probes: all single-clusters show activity
 //=============================================================================
 
 `timescale 1ns / 1ps
@@ -187,7 +187,7 @@ class npu_conv_1x1_full_96oc_diag_test extends soc_base_test;
     `uvm_info("TEST", $sformatf("observed_all_clusters_active = %b", probe_vif.observed_all_clusters_active), UVM_NONE)
 
     if (probe_vif.observed_cluster_busy_mask == 6'b111111)
-      `uvm_info("TEST", "PASS: All 6 clusters observed busy", UVM_NONE)
+      `uvm_info("TEST", "PASS: All single-clusters observed busy", UVM_NONE)
     else
       `uvm_info("TEST", $sformatf("WARNING: observed_cluster_busy_mask = %b (not all clusters busy)", probe_vif.observed_cluster_busy_mask), UVM_NONE)
 

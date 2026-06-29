@@ -16,7 +16,7 @@ Added 5 new UVM structural tests covering cluster array, mode/mask, performance 
 | # | Test | Result | Output Compare | Key Check |
 |---|------|--------|---------------|-----------|
 | 1 | `npu_fc_16x16_full_array_test` | **PASS** | 64 bytes matched | cluster0 enabled, perf counters non-zero |
-| 2 | `npu_fc_full_cluster_96out_test` | **PASS** | 384 bytes (96 INT32) matched | 6 clusters enabled, write≥12 beats |
+| 2 | `npu_fc_full_cluster_96out_test` | **PASS** | 384 bytes (96 INT32) matched | single-clusters enabled, write≥12 beats |
 | 3 | `npu_cluster_mask_sweep_test` | **PASS** | 4/4 modes: 64 bytes each | cluster_enable matches expected per mode |
 | 4 | `npu_perf_counter_scaling_test` | **PASS** | 3/3 configs: 192 bytes each | counters non-zero, cluster count matches |
 | 5 | `npu_back_to_back_task_test` | **PASS** | Task A 64B + Task B 64B | outputs differ (no stale), both PASS |
@@ -82,10 +82,10 @@ verif/uvm_top/sequences/common/npu_start_poll_seq.sv — single CTRL=1 write (wo
 - **Weight**: 16×96 FC, deterministic pattern
 - **Verification**: 384 bytes (96 INT32) vs DPI-C golden
 - **Sticky probe**: During NPU busy window, observed_cluster_enable_mask=111111,
-  observed_all_clusters_active=1 (all 6 clusters simultaneously active)
+  observed_all_clusters_active=1 (all single-clusters simultaneously active)
 - **Cluster probe**: cluster_enable=111111, cluster_count=6
 - **Perf counters**: cycle=2318, read=49, write=12 beats
-- **Evidence**: All 6 clusters participate, 12 write beats for 96 outputs
+- **Evidence**: All single-clusters participate, 12 write beats for 96 outputs
 
 ### Test 3: npu_cluster_mask_sweep_test
 - **Configs**: single(000001), dual(000011), full(111111), sparse(101010)
@@ -95,7 +95,7 @@ verif/uvm_top/sequences/common/npu_start_poll_seq.sv — single CTRL=1 write (wo
 - **Disabled cluster check**: Disabled clusters report done=0
 
 ### Test 4: npu_perf_counter_scaling_test
-- **Configs**: 1/2/6 clusters, identical 16→48 FC workload
+- **Configs**: 1/2/single-clusters, identical 16→48 FC workload
 - **Verification**: All 3 output compares PASS
 - **Counter report**: All counters non-zero, read via new 0xD0/0xD4 addresses
 - **Scaling**: Counters identical across configs (FC tile-based multi-pass limits speedup)
@@ -143,13 +143,13 @@ The `soc_probe_if` now exposes:
 
 | Signal | Width | Description |
 |--------|-------|-------------|
-| `npu_cluster_busy` | 6 | Per-cluster busy (from compute_core_6cluster) |
+| `npu_cluster_busy` | 6 | Per-cluster busy (from compute_core) |
 | `npu_cluster_valid` | 6 | Per-cluster valid |
 | `npu_cluster_done` | 6 | Per-cluster done |
 | `npu_cluster_enable` | 6 | Which clusters are enabled (from cluster_scheduler) |
 | `npu_cluster_count` | 3 | Number of active clusters |
 | `npu_fsm_state` | 5 | NPU FSM state |
-| `npu_cluster_tile_clk_en_flat` | 1536 | Tile clock enables: 6 clusters × 256 tiles |
+| `npu_cluster_tile_clk_en_flat` | 1536 | Tile clock enables: single-clusters × 256 tiles |
 | `npu_task_type` | 3 | Current task type |
 
 These are read-only hierarchical probes at `u_top.u_npu.*`.
@@ -161,7 +161,7 @@ These are read-only hierarchical probes at `u_top.u_npu.*`.
 | `observed_cluster_busy_mask` | 6 | OR of npu_cluster_busy while npu_busy=1 |
 | `observed_cluster_enable_mask` | 6 | OR of npu_cluster_enable while npu_busy=1 |
 | `observed_tile_enable` | 1 | OR of any tile_clk_en while npu_busy=1 |
-| `observed_all_clusters_active` | 1 | Sticky: all 6 clusters simultaneously busy at any point |
+| `observed_all_clusters_active` | 1 | Sticky: all single-clusters simultaneously busy at any point |
 
 Mechanism: soc_probe_if OR-accumulates the target signals during the NPU busy
 window (npu_busy=1). Cleared before each task. This provides evidence that
@@ -176,7 +176,7 @@ simultaneously sampled. It does not provide cycle-by-cycle real-time tracing.
 |----------------|------|
 | `cluster_mode` | single (0), dual (1), full (2), mask (3) |
 | `cluster_mask` | 000001, 000011, 111111, 101010 |
-| `all_clusters_active` | 6 clusters simultaneously enabled |
+| `all_clusters_active` | single-clusters simultaneously enabled |
 | `single_cluster_16_out` | Single cluster 16-output FC |
 | `back_to_back` | Two tasks without reset |
 
@@ -213,9 +213,9 @@ bash verif/uvm_top/scripts/run_uvm.sh npu_back_to_back_task_test UVM_NONE
 - All 3 existing UVM smoke tests PASS (no regression)
 - Structural closure total: 8/8 PASS
 - Single-cluster 16×16 array: output verified, sticky probe confirms cluster0 activity + tile enable
-- Full-cluster 96-output FC: all 6 clusters simultaneously active (sticky probe verified), output verified
+- Full-cluster 96-output FC: all single-clusters simultaneously active (sticky probe verified), output verified
 - Cluster mask sweep: 4 modes, sticky mask matches expected, all output+counter checks PASS
-- Perf counter scaling: counters non-zero across 1/2/6 cluster configs, reads use 0xD0/0xD4
+- Perf counter scaling: counters non-zero across 1/2/single-cluster configs, reads use 0xD0/0xD4
 - Back-to-back: both tasks verified without workaround (RTL auto-clears done/error)
 - 2 pre-existing RTL issues RESOLVED:
   - done-flag: npu_ctrl.v now auto-clears on CTRL=1 while idle

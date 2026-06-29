@@ -3,7 +3,7 @@
 //
 // Purpose: Verify performance counters produce reasonable values under
 // different cluster configurations.  Runs the same FC workload (16→48)
-// with 1, 2, and 6 clusters and compares counter values.
+// with 1, 2, and single-clusters and compares counter values.
 //
 // Checks:
 //   1. Output compare PASS for all configurations
@@ -170,7 +170,7 @@ class npu_perf_counter_scaling_test extends soc_base_test;
     `uvm_info("TEST", "================================================================", UVM_NONE)
 
     // --- Scaling sanity ---
-    // 6-cluster should not have lower throughput than 1-cluster (cycle count
+    // single-cluster should not have lower throughput than 1-cluster (cycle count
     // should decrease with more clusters for the same workload)
     if (config_pass[0] && config_pass[1] && cycles[0] > 0 && cycles[1] > 0) begin
       if (cycles[1] >= cycles[0]) begin

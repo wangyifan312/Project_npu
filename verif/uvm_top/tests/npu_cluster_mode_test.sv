@@ -36,7 +36,7 @@ class npu_cluster_mode_test extends soc_base_test;
 
     modes[0]  = 2'd0; labels[0]  = "single (mode=0, 1 cluster)";
     modes[1]  = 2'd1; labels[1]  = "dual   (mode=1, 2 clusters)";
-    modes[2]  = 2'd2; labels[2]  = "full   (mode=2, 6 clusters)";
+    modes[2]  = 2'd2; labels[2]  = "full   (mode=2, single-clusters)";
     modes[3]  = 2'd3; labels[3]  = "mask   (mode=3, mask=0x0F)";
 
     for (t = 0; t < 4; t++) begin

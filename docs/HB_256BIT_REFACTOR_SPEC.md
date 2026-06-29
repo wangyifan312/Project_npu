@@ -15,7 +15,7 @@
 
 - top-level LeNet performance replay 是 `single-cluster` 口径，`array_active == cluster_active` 是预期现象
 - multi-cluster 证据来自 util counter 与 compute-core/cluster-mode 运行级覆盖，不等同于完整 LeNet dual/full performance replay
-- 本轮 closure 不改变 LeNet 地址图、requant 算法、6-cluster 计算架构或 arrayized FC 正式路径
+- 本轮 closure 不改变 LeNet 地址图、requant 算法、single-cluster 计算架构或 arrayized FC 正式路径
 
 ## 1. 文档目的
 
@@ -84,9 +84,9 @@
 
 ### 3.2 计算架构
 
-- `6-cluster` 结构
+- `single-cluster` 结构
 - `16x16 PE per cluster`
-- `cluster_scheduler -> compute_core_6cluster -> output_arbiter`
+- `cluster_scheduler -> compute_core -> output_arbiter`
 - Conv / Pool / Requant / FC 的高层功能路径
 - arrayized FC 的正式主路径
 

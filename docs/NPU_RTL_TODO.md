@@ -1,7 +1,7 @@
 # NPU RTL TODO List 与问题跟踪
 
 > 项目：Project_npu  
-> 范围：当前聚焦 `rtl/npu`，尤其是 `npu_top` 控制、存储、DMA、6-cluster 数据流与输出聚合逻辑。  
+> 范围：当前聚焦 `rtl/npu`，尤其是 `npu_top` 控制、存储、DMA、single-cluster 数据流与输出聚合逻辑。  
 > 说明：本文档不再只是问题收集表，而是当前 `rtl/npu` 后续整改的**决策基线**。文中每条 TODO 都已给出是否执行、何时执行、是否允许改 RTL 的明确结论。
 
 ---
@@ -19,7 +19,7 @@ task_checker
     ↓
 npu_top 主 FSM
     ↓
-DMA read / local buffer / compute_core_6cluster / output_arbiter / DMA write
+DMA read / local buffer / compute_core / output_arbiter / DMA write
 ```
 
 当前设计特点：
@@ -28,7 +28,7 @@ DMA read / local buffer / compute_core_6cluster / output_arbiter / DMA write
 - CPU 配置方式：CPU 写完一组 task 寄存器后写 `CTRL.start`，NPU 执行完后 CPU 再配置下一条任务。
 - DMA 数据通路：NPU AXI4 DMA 当前为 256-bit，即 32B/beat。
 - 控制通路：AXI-Lite 控制寄存器仍为 32-bit。
-- 计算核心：6 个 `cluster_16x16` 并列组成 `compute_core_6cluster`。
+- 计算核心：6 个 `pe_cluster` 并列组成 `compute_core`。
 - 多 cluster 供数方式：activation 广播，weight 按 output column / output channel group 切分。
 - cluster 间通信：当前没有 cluster-to-cluster NoC / mesh / psum forwarding，而是集中式供数与输出聚合。
 
@@ -62,12 +62,12 @@ DMA read / local buffer / compute_core_6cluster / output_arbiter / DMA write
 | TODO-3 | 讨论 NPU task 地址对齐策略 | P1 | 架构讨论 | 保留讨论，不改 RTL | 当前继续维持 `64B` 对齐，后续若出现地址压力再单独决策是否放宽到 `32B` |
 | TODO-4 | 讨论是否增加 task queue / descriptor FIFO / shadow config | P2 / P1.5 | 架构增强 | 当前不执行 | 明显扩 scope，会改变控制模型；不作为当前交付线目标 |
 | TODO-5 | 明确 activation DMA 和 weight DMA 共享 AXI read channel 的性能影响 | P1 | 存储/带宽分析 | 已完成分析 | Workstream A 已确认 read channel 严格共享，是当前性能主瓶颈之一 |
-| TODO-6 | 评估 256-bit buffer 到 6-cluster 阵列的供数能力 | P1 | 存储/性能验证 | 已完成分析 | Workstream A 已确认 256-bit buffer/feed path 功能自洽，但不足以喂满 6-cluster 理论峰值 |
+| TODO-6 | 评估 256-bit buffer 到 single-cluster 阵列的供数能力 | P1 | 存储/性能验证 | 已完成分析 | Workstream A 已确认 256-bit buffer/feed path 功能自洽，但不足以喂满 single-cluster 理论峰值 |
 | TODO-7 | 检查 `acc_buffer` 到 DMA writer 的 32-bit → 256-bit packing 逻辑 | P1 | 存储/正确性验证 | 已完成验证 | Workstream B 已补 `tb_store_pack_path`，覆盖 Conv/FC/Requant packing 与 partial-beat `WSTRB` |
 | TODO-8 | 确认 `npu_buffer` 双 bank 是否真正实现 load/compute overlap | P2 | 存储/调度分析 | 已完成分析 | 结构支持 ping-pong，但当前 `npu_top` FSM 对 act/wgt overlap 利用不足 |
 | TODO-9 | 梳理 shared memory 地址映射和 layer memory map | P1 | 存储/文档 | 已完成收口 | Workstream B 已固化 shared memory / layer memory map / store layout 口径 |
-| TODO-10 | 明确 6-cluster 输出聚合语义，重点检查 `output_arbiter` 的 `AGGREGATE_MODE` | P1 | 计算/数据流正确性 | 已完成分析 | 定向测试确认 `AGGREGATE_MODE=1` 在互斥全局输出列路由下安全 |
-| TODO-11 | 深挖 buffer 到 6-cluster 的供数路径 | P1 | 存储/计算数据流 | 已完成分析 | activation broadcast / weight split / global column route / aggregate 数据流自洽 |
+| TODO-10 | 明确 single-cluster 输出聚合语义，重点检查 `output_arbiter` 的 `AGGREGATE_MODE` | P1 | 计算/数据流正确性 | 已完成分析 | 定向测试确认 `AGGREGATE_MODE=1` 在互斥全局输出列路由下安全 |
+| TODO-11 | 深挖 buffer 到 single-cluster 的供数路径 | P1 | 存储/计算数据流 | 已完成分析 | activation broadcast / weight split / global column route / aggregate 数据流自洽 |
 
 ### 2.1 后续工单分组
 
@@ -216,7 +216,7 @@ Performance / bottleneck 结论：
    LOAD_ARRAY=416、COMPUTE=3370、DRAIN=1664、COLLECT=512、STORE=278、
    route_valid=256、act_dma_busy=7、wgt_dma_busy=20、act_wgt_overlap=0。
 
-6. 256-bit buffer/feed path 功能自洽，但它是本地解包与阵列装载通道，不等于能持续喂满 6-cluster 理论峰值。
+6. 256-bit buffer/feed path 功能自洽，但它是本地解包与阵列装载通道，不等于能持续喂满 single-cluster 理论峰值。
 
 7. npu_buffer 双 bank 结构存在，act buffer 在 block 间 ping-pong；
    但当前 FSM 先 load 完 activation 再 compute，weight buffer 的 comp_bank_sel 固定为 0，
@@ -584,7 +584,7 @@ activation 和 weight 不能真正并行从 shared RAM 读取。
 DMA 搬运时间
 计算前等待时间
 带宽利用率
-6-cluster 实际吞吐
+single-cluster 实际吞吐
 ```
 
 #### Workstream A 结论
@@ -611,7 +611,7 @@ DMA 搬运时间
 
 ---
 
-### TODO-6：评估 256-bit buffer 到 6-cluster 阵列的供数能力
+### TODO-6：评估 256-bit buffer 到 single-cluster 阵列的供数能力
 
 #### 当前状态
 
@@ -622,14 +622,14 @@ BUF_DATA_W = 256-bit
 AXI_DMA_DATA_W = 256-bit
 ```
 
-但 6-cluster 满速计算的理论供数需求显著高于 256-bit/cycle。
+但 single-cluster 满速计算的理论供数需求显著高于 256-bit/cycle。
 
 #### 问题
 
 不能直接宣称：
 
 ```text
-256-bit DMA / buffer 能喂满 6-cluster 阵列。
+256-bit DMA / buffer 能喂满 single-cluster 阵列。
 ```
 
 #### Workstream A 结论
@@ -642,7 +642,7 @@ AXI_DMA_DATA_W = 256-bit
 3. 但 LOAD_ARRAY 仍按 byte / beat 将 weight 装入 wgt_load_reg；
 4. tiny stage event probe 中 LOAD_ARRAY=27、COMPUTE=69、COLLECT=2、STORE=9；
 5. layer-like event probe 中 LOAD_ARRAY=416、COMPUTE=3370、COLLECT=512、STORE=278；
-6. 256-bit buffer 宽度不能等同于 6-cluster 满速供数；
+6. 256-bit buffer 宽度不能等同于 single-cluster 满速供数；
 7. full-cluster 性能提升受 read/load/collect/store 串行阶段限制。
 ```
 
@@ -817,7 +817,7 @@ Final logits                     0x000F_5000  INT32 logits
 
 ---
 
-### TODO-10：明确 6-cluster 输出聚合语义
+### TODO-10：明确 single-cluster 输出聚合语义
 
 #### 当前状态
 
@@ -866,7 +866,7 @@ tb/unit/tb_npu_top_layer_event_probe.v
 
 ---
 
-### TODO-11：深挖 buffer 到 6-cluster 的供数路径
+### TODO-11：深挖 buffer 到 single-cluster 的供数路径
 
 #### 当前阶段结论
 
@@ -978,7 +978,7 @@ TODO-10
 TODO-11
 ```
 
-原因：这直接关系到 6-cluster 是否真的输出正确的并行计算结果。
+原因：这直接关系到 single-cluster 是否真的输出正确的并行计算结果。
 
 ---
 
@@ -993,7 +993,7 @@ TODO-8
 TODO-11
 ```
 
-原因：DMA/buffer 是 256-bit，但 6-cluster 满速供数需求更高，需要通过性能计数和实际网络测试证明。
+原因：DMA/buffer 是 256-bit，但 single-cluster 满速供数需求更高，需要通过性能计数和实际网络测试证明。
 
 ---
 
@@ -1031,8 +1031,8 @@ TODO-9
 1. npu_top.v 中 act_rd_addr / wgt_rd_addr 生成逻辑
 2. npu_top.v 中 array_act_in / wgt_load_reg 形成逻辑
 3. npu_top.v 中 cluster_*_all_flat 分发逻辑
-4. compute_core_6cluster.v 的切片方式
-5. cluster_16x16.v 到 array_top.v 的连接
+4. compute_core.v 的切片方式
+5. pe_cluster.v 到 array_top.v 的连接
 6. output_arbiter.v 的 aggregate / round-robin 行为
 7. npu_top.v 中 store packing 与 DMA writer 连接
 8. shared_ram.v 中 32-bit CPU port 与 256-bit NPU port 的地址映射
@@ -1042,7 +1042,7 @@ TODO-9
 
 ## 8. 当前简明结论
 
-当前 NPU RTL 的存储与 6-cluster 供数模式可以概括为：
+当前 NPU RTL 的存储与 single-cluster 供数模式可以概括为：
 
 ```text
 shared RAM 通过 256-bit AXI4 DMA 将 activation / weight 搬入本地 buffer；
@@ -1057,5 +1057,5 @@ weight 按 output column / output channel group 切分给不同 cluster；
 当前正式决策可以再压缩成一句话：
 
 ```text
-先证明并归因当前 6-cluster 路径，再决定是否重构；先把 shared memory/layout/store packing 语义收清楚，再讨论地址契约调整；当前控制面增强里只保留 cluster mode/mask 运行时可配置这一条。
+先证明并归因当前 single-cluster 路径，再决定是否重构；先把 shared memory/layout/store packing 语义收清楚，再讨论地址契约调整；当前控制面增强里只保留 cluster mode/mask 运行时可配置这一条。
 ```

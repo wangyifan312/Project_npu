@@ -62,7 +62,7 @@ interface soc_probe_if(input logic clk, input logic rst_n);
   // Cluster / tile activity probes (passive, read-only hierarchical observation)
   // ---------------------------------------------------------------------------
 
-  // Per-cluster busy/valid/done (6 clusters)
+  // Per-cluster busy/valid/done (single-clusters)
   logic [5:0]   npu_cluster_busy;
   logic [5:0]   npu_cluster_valid;
   logic [5:0]   npu_cluster_done;
@@ -77,7 +77,7 @@ interface soc_probe_if(input logic clk, input logic rst_n);
   // Tile clock enables: flat vector [CLUSTER_COUNT*N_TILES-1:0]
   // For parameterization, use a large max width. Actual width depends on
   // TILE_ROWS/TILE_COLS; probes outside the valid range read as 0.
-  logic [1535:0] npu_cluster_tile_clk_en_flat;  // max: 6 clusters * 256 tiles
+  logic [1535:0] npu_cluster_tile_clk_en_flat;  // max: single-clusters * 256 tiles
 
   // NPU task type for context (0=Conv,1=FC,2=Pool,3=Requant,4=GAP,5=ADD)
   logic [2:0]   npu_task_type;

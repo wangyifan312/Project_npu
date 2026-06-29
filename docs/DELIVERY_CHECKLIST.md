@@ -302,7 +302,7 @@
 - AXI-Lite
 - shared memory
 - NPU orchestration
-- 6-cluster compute core
+- single-cluster compute core
 - postproc
 - perf counter
 

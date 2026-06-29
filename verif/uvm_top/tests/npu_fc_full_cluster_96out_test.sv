@@ -1,13 +1,13 @@
 //=============================================================================
 // npu_fc_full_cluster_96out_test.sv — Full Cluster 96-Output FC Test
 //
-// Purpose: Prove all 6 clusters participate in FC computation simultaneously.
-// Uses FC task with 96 output channels (6 clusters × 16 outputs/cluster),
+// Purpose: Prove all single-clusters participate in FC computation simultaneously.
+// Uses FC task with 96 output channels (single-clusters × 16 outputs/cluster),
 // deterministic pattern, and verifies output correctness + cluster activity.
 //
 // Checks:
 //   1. Output compare: 96 INT32 outputs matched golden
-//   2. All 6 clusters have busy/valid/done observed via probe
+//   2. All single-clusters have busy/valid/done observed via probe
 //   3. Full-cluster active window: cluster_enable = 6'b111111
 //   4. Output writeback covers multiple 256-bit beats (96×4=384 bytes → 12 beats)
 //   5. No error
@@ -73,7 +73,7 @@ class npu_fc_full_cluster_96out_test extends soc_base_test;
     fc_seq.input_c                = 16'd16;
     fc_seq.output_c               = 16'd96;
     fc_seq.expected_output_bytes  = expected_bytes.size();
-    fc_seq.cluster_mode           = 2'd2;     // full cluster (6 clusters)
+    fc_seq.cluster_mode           = 2'd2;     // full cluster (single-clusters)
     fc_seq.input_base             = 32'h0000_0100;
     fc_seq.weight_base            = 32'h0000_0200;
     fc_seq.output_base            = 32'h0000_1000;  // avoid overlap with weight region (0x200+1536=0x800)

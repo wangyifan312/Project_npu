@@ -62,7 +62,7 @@ AXI 标准化整改中，下列内容不得改变：
 - shared memory 正式组织仍为 `32768 x 256-bit beat`
 - `LeNet` 地址图不变
 - `requant` 算法不变
-- `6-cluster / 16x16 / arrayized FC` 主功能架构不变
+- `single-cluster / 16x16 / arrayized FC` 主功能架构不变
 
 ---
 

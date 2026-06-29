@@ -31,7 +31,7 @@
 当前不可引用结论：
 
 - 不能宣称完整 top-level LeNet dual/full-cluster performance replay 已完成
-- 不能用 legacy 小阵列测试推导正式 `16x16 x 6-cluster` 网络级性能
+- 不能用 legacy 小阵列测试推导正式 `16x16 x single-cluster` 网络级性能
 
 ---
 
@@ -39,7 +39,7 @@
 
 固定硬件目标：
 
-- `6-cluster` 动态可调脉动阵列
+- `single-cluster` 动态可调脉动阵列
 - 每个 cluster = `16x16 PE`
 - 总计 `1536 PE`
 - `200MHz`
@@ -68,8 +68,8 @@
 
 ```bash
 iverilog -g2012 -o /tmp/tb_cluster_perf_modes_stage3.vvp \
-  rtl/npu/array_top.v rtl/npu/cluster_16x16.v rtl/npu/cluster_scheduler.v \
-  rtl/npu/compute_core_6cluster.v rtl/npu/mac_pe.v rtl/npu/mac_tile_4x4.v \
+  rtl/npu/array_top.v rtl/npu/pe_cluster.v rtl/npu/cluster_scheduler.v \
+  rtl/npu/compute_core.v rtl/npu/mac_pe.v rtl/npu/mac_tile_4x4.v \
   tb/unit/tb_cluster_perf_modes.v && \
 timeout 120s vvp /tmp/tb_cluster_perf_modes_stage3.vvp
 ```
@@ -127,7 +127,7 @@ timeout 120s vvp /tmp/tb_top_cluster_modes_fix2.vvp
 说明：
 
 - 这组结果属于 **SoC `top` 层真实 non-single-cluster 证据**
-- P0-2 后，`top` 级 dual 模式 Conv 走 `cluster_scheduler -> compute_core_6cluster -> output_arbiter` 正式主路径，证明的是：
+- P0-2 后，`top` 级 dual 模式 Conv 走 `cluster_scheduler -> compute_core -> output_arbiter` 正式主路径，证明的是：
   - `top` 层寄存器链路 / shared memory / AXI-Lite / perf counter 在 non-single 配置下可运行
   - output arbiter 已在正式 Conv 路径上产生结果
   - 功能结果正确
@@ -164,7 +164,7 @@ bash sim/run_top_lenet.sh sample
 
 强制说明：
 
-- 当前 `top` 级 LeNet Conv / FC 层来自正式 6-cluster 主路径；完整小批量真实样本闭环仍属于 P0-4 范围
+- 当前 `top` 级 LeNet Conv / FC 层来自正式 single-cluster 主路径；完整小批量真实样本闭环仍属于 P0-4 范围
 - 因此这张表用于证明：
   - `top` 层完整 LeNet 地址图与真实权重闭环
   - `top` 层可读取正式性能寄存器
@@ -293,8 +293,8 @@ vvp /tmp/tb_hb2_cluster_util_counter.vvp
 
 ```bash
 iverilog -g2012 -I rtl/npu -o /tmp/tb_cluster_perf_modes.vvp \
-  rtl/npu/cluster_scheduler.v rtl/npu/compute_core_6cluster.v \
-  rtl/npu/cluster_16x16.v rtl/npu/array_top.v \
+  rtl/npu/cluster_scheduler.v rtl/npu/compute_core.v \
+  rtl/npu/pe_cluster.v rtl/npu/array_top.v \
   rtl/npu/mac_tile_4x4.v rtl/npu/mac_pe.v \
   tb/unit/tb_cluster_perf_modes.v && \
 timeout 60s vvp /tmp/tb_cluster_perf_modes.vvp
@@ -312,7 +312,7 @@ timeout 60s vvp /tmp/tb_cluster_perf_modes.vvp
 说明：
 
 - 该覆盖证明 perf counter 的 `cluster_active` 按 enabled cluster 数缩放，不会在 multi-cluster 下机械等于 `array_active`
-- `tb_cluster_perf_modes` 同时证明 `cluster_scheduler + compute_core_6cluster` 在 single/dual/full/masked 模式下可运行
+- `tb_cluster_perf_modes` 同时证明 `cluster_scheduler + compute_core` 在 single/dual/full/masked 模式下可运行
 - 该覆盖属于 cluster/perf 运行级证据，不等同于 top-level LeNet multi-cluster 性能结论
 
 ### 3.6 HB2 256-bit Top32 Performance Replay
@@ -376,8 +376,8 @@ bash sim/run_top_lenet.sh batch
 
 可以直接成立的结论：
 
-1. `6-cluster / 1536 PE / 0.6144 TOPS @ 200MHz` 的理论硬件目标已在文档、RTL hierarchy 和正式 Conv 主路径中统一
-2. Conv / FC 已从 `npu_top` 正式接入 `cluster_scheduler / compute_core_6cluster / output_arbiter`
+1. `single-cluster / 1536 PE / 0.6144 TOPS @ 200MHz` 的理论硬件目标已在文档、RTL hierarchy 和正式 Conv 主路径中统一
+2. Conv / FC 已从 `npu_top` 正式接入 `cluster_scheduler / compute_core / output_arbiter`
 3. `top` 层已经补到一组真实 `dual-cluster` Conv 证据，能给出 `cluster_cfg / cycles / mac / utilization / 功能结果`
 4. `top` 层完整 LeNet 已通过真实权重样本闭环，并能输出分层性能日志
 5. HB2 256-bit 口径下，top32 与 subsystem8 均可输出非零且线性自洽的 read/write beat、bandwidth utilization、array/cluster utilization summary
