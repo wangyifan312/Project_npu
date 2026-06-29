@@ -14,7 +14,7 @@ module npu_top #(
     parameter TILE_ROWS   = 16,
     parameter TILE_COLS   = 16,
     parameter [1:0] CLUSTER_MODE = 2'd0,
-    parameter [5:0] CLUSTER_MASK_REQ = 6'b11_1111
+    parameter [5:0] CLUSTER_MASK_REQ = 6'b00_0001
 ) (
     input  wire        clk,
     input  wire        rst_n,

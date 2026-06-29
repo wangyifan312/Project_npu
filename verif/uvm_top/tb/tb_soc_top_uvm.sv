@@ -26,7 +26,7 @@ module tb_soc_top_uvm;
     .NPU_TILE_ROWS(16),
     .NPU_TILE_COLS(16),
     .NPU_CLUSTER_MODE(2'd0),
-    .NPU_CLUSTER_MASK_REQ(6'b111111)
+    .NPU_CLUSTER_MASK_REQ(6'b000001)
   ) u_top (
     .clk            (clk),
     .rst_n          (rst_n),

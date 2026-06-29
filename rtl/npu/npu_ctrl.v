@@ -6,7 +6,7 @@ module npu_ctrl #(
     parameter AXI_ADDR_WIDTH = 32,
     parameter AXI_DATA_WIDTH = 32,
     parameter [1:0] DEFAULT_CLUSTER_MODE = 2'd0,
-    parameter [5:0] DEFAULT_CLUSTER_MASK = 6'b11_1111
+    parameter [5:0] DEFAULT_CLUSTER_MASK = 6'b00_0001
 ) (
     input  wire        clk,
     input  wire        rst_n,

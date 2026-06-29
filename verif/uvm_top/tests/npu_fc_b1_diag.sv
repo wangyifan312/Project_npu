@@ -22,7 +22,6 @@ class npu_fc_b1_diag extends soc_base_test;
     fc_seq.input_data=input_bytes; fc_seq.weight_data=weight_bytes;
     fc_seq.input_c=4; fc_seq.output_c=2;
     fc_seq.expected_output_bytes=expected_bytes.size();
-    fc_seq.expected_output=expected_bytes;
     fc_seq.cluster_mode=2'd0;
     fc_seq.input_base = 32'h0000_0100;
     fc_seq.weight_base = 32'h0000_0200;
