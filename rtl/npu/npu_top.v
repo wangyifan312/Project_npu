@@ -165,7 +165,6 @@ module npu_top #(
     localparam CP_NEXT     = 3'd4;
 
     reg [5:0]  fsm_state;
-    reg [5:0]  prev_fsm_for_debug;
 
     // P3: helper — compute FSM active in either FSM_COMPUTE or FSM_PIPE_RUN
     wire compute_fsm_active = (fsm_state == FSM_COMPUTE) || (fsm_state == FSM_PIPE_RUN);
@@ -1217,12 +1216,6 @@ module npu_top #(
                 assign conv_row_feed_val = 8'd0;
             end
             wire [7:0] row_feed_val = fc_or_gemm ? cf_act_data : conv_row_feed_val;
-            // Quick debug
-            always @(posedge clk) begin
-                if (fc_or_gemm && act_feed_en)
-                    $display("[ACT_FEED] row=%0d act=0x%02x active_rows=%0d cycle=%0d",
-                      comp_feed_cnt, row_feed_val, array_active_rows, $time/5);
-            end
             wire array_act_drive = (comp_sub_state == CP_FEED_ACT) || (comp_sub_state == CP_DRAIN);
             assign array_act_in[ai*8 +: 8] =
                 row_active && (is_conv_mode || is_fc_mode || is_gemm_mode) && array_act_drive ?
@@ -1294,33 +1287,6 @@ module npu_top #(
                          ? rq_acc_wr_addr_r
                          : acc_wr_ptr;
     wire array_first_accum = fc_or_gemm ? (fc_in_base == 16'd0) : (cin_idx == 16'd0);
-    // Quick debug: X-source trace for GEMM
-    always @(posedge clk) begin
-        if (is_gemm_mode && compute_fsm_active) begin
-            if ($isunknown(array_act_in[7:0]))
-                $display("[X_SRC] array_act_in[0] X at cycle=%0d", $time/5);
-            if ($isunknown(array_weight[7:0]))
-                $display("[X_SRC] array_weight[0] X at cycle=%0d", $time/5);
-            if ($isunknown(array_sum_out[31:0]))
-                $display("[X_SRC] array_sum_out[0] X at cycle=%0d drain_cnt=%0d", $time/5, comp_drain_cnt);
-            if ($isunknown(col_results[0]) && comp_drain_cnt >= array_drain_offset)
-                $display("[X_SRC] col_results[0] X at cycle=%0d drain=%0d off=%0d", $time/5, comp_drain_cnt, array_drain_offset);
-            // Check cluster_weight_all_flat directly
-            if ($isunknown(cluster_weight_all_flat[7:0]))
-                $display("[X_SRC] cluster_weight_all_flat[0] X at cycle=%0d", $time/5);
-            if ($isunknown(cluster_sum_out_all_flat[31:0]))
-                $display("[X_SRC] cluster_sum_out[0] X at cycle=%0d", $time/5);
-        end
-        // Check wgt_load_reg before compute and cluster enable
-        if (is_gemm_mode && fsm_state == FSM_WGT_LD) begin
-            if ($isunknown(wgt_load_reg[7:0]))
-                $display("[X_SRC] wgt_load_reg[0] X at WGT_LD cycle=%0d", $time/5);
-            if ($isunknown(array_weight[7:0]))
-                $display("[X_SRC] array_weight[0] X at WGT_LD cycle=%0d", $time/5);
-            $display("[X_CHK] WGT_LD: cluster_enable=%0d weight_ld=%0d cycle=%0d",
-              perf_cluster_enable[0], array_weight_ld, $time/5);
-        end
-    end
     wire array_final_accum = fc_or_gemm ? (fc_in_base + fc_chunk_inputs >= input_c) :
                                          (cin_idx + 16'd1 >= cin_total);
     wire [31:0] array_acc_sum =
@@ -2386,8 +2352,6 @@ module npu_top #(
 
                 FSM_WGT_LD: begin
                     // weight_ld pulsed → weights now in array PEs
-                    if (fc_or_gemm) $display("[WGT_LD] fc_in_base=%0d chunk=%0d tile=%0d wgt_reg[0]=%0d cycle=%0d",
-                      fc_in_base, fc_chunk_inputs, fc_tile_outputs, wgt_load_reg[7:0], $time/5);
                     comp_feed_cnt <= 7'd0;
                     comp_drain_cnt <= 16'd0;
                     comp_sub_state <= fc_or_gemm ? CP_FEED_ACT : CP_WAIT_WIN;
@@ -2512,8 +2476,6 @@ module npu_top #(
                         end
 
                         CP_FEED_ACT: begin
-                            if (fc_or_gemm) $display("[CP_FEED_ACT] row=%0d active_rows=%0d fsm=%0d cycle=%0d",
-                              comp_feed_cnt, array_active_rows, fsm_state, $time/5);
                             if ({9'd0, comp_feed_cnt} < array_active_rows) begin
                                 comp_feed_cnt <= comp_feed_cnt + 7'd1;
                             end else begin
@@ -2825,8 +2787,6 @@ module npu_top #(
                                     is_requant_mode ? rq_store_bytes :
                                                       blk_out_bytes;
                     if (!dma_wr_started) begin
-                        if (is_gemm_mode) $display("[GEMM_STORE_START] addr=0x%08h bytes=%0d words=%0d acc_rd=%0d cycle=%0d",
-                          dma_wr_addr, dma_wr_bytes, store_words_active, acc_rd_data, $time/5);
                         dma_wr_start <= 1'b1;
                         dma_wr_started <= 1'b1;
                         dma_rd_ptr <= 0;
@@ -2999,8 +2959,6 @@ module npu_top #(
                 end
 
                 FSM_ERROR: begin
-                    $display("[ERR_TRACE] cycle=%0d fsm=ERROR prev_state=%0d error_code=0x%02x wgt_dma_err=%0d act_dma_err=%0d dma_wr_err=%0d gemm_row=%0d",
-                      $time/5, prev_fsm_for_debug, task_error_code_r, wgt_dma_error, act_dma_error, dma_wr_error, gemm_row_idx);
                     task_active_r <= 1'b0;
                     if (!ctrl_busy && !ctrl_error) begin
                         task_error_r <= 1'b0;
@@ -3010,10 +2968,6 @@ module npu_top #(
 
                 default: fsm_state <= FSM_IDLE;
             endcase
-
-            // Debug: track previous FSM state for error trace
-            if (fsm_state != prev_fsm_for_debug)
-                prev_fsm_for_debug <= fsm_state;
 
             // ================================================================
             // P5: pipelined shared store_pack state machine — runs during FSM_STORE
@@ -3137,8 +3091,6 @@ module npu_top #(
                         store_word_idx <= 32'd0;
                         store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
                         if (is_gemm_mode) begin
-                            $display("[GEMM_STORE_DONE] row=%0d next=%0d M=%0d cycle=%0d",
-                              gemm_row_idx, gemm_row_idx+1, gemm_M_val, $time/5);
                             // GEMM row-by-row: store current row, advance to next
                             if (gemm_row_idx + 16'd1 < gemm_M_val) begin
                                 gemm_row_idx <= gemm_row_idx + 16'd1;
