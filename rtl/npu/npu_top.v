@@ -121,6 +121,8 @@ module npu_top #(
     localparam FSM_GAP_COMPUTE   = 5'd29;
     localparam FSM_ADD_DRAIN     = 5'd31;
     localparam FSM_VEC_RELU_PROC = 5'd20;
+    localparam FSM_PIPE_RUN    = 6'd32;
+    localparam FSM_PIPE_DONE   = 6'd33;
     localparam FSM_DONE        = 5'd15;
 
     function [7:0] hb_beat_byte;
@@ -162,7 +164,11 @@ module npu_top #(
     localparam CP_COLLECT  = 3'd3;
     localparam CP_NEXT     = 3'd4;
 
-    reg [4:0]  fsm_state;
+    reg [5:0]  fsm_state;
+
+    // P3: helper — compute FSM active in either FSM_COMPUTE or FSM_PIPE_RUN
+    wire compute_fsm_active = (fsm_state == FSM_COMPUTE) || (fsm_state == FSM_PIPE_RUN);
+
     reg [2:0]  comp_sub_state;
     reg [15:0] comp_total_wins;
     reg [15:0] comp_win_idx;
@@ -397,6 +403,8 @@ module npu_top #(
     reg         next_blk_prep;        // P3: step1: blk_done pulsed
     reg         next_blk_wait;        // P3: step2: waiting for scheduler update
     reg         next_dma_launched;    // P3: next block DMA launched during STORE
+    reg         pipe_mode;            // P3: full pipeline overlap active
+    reg         pipe_store_done;      // P3: store finished during pipe mode
     reg  [31:0] dma_wr_addr, dma_wr_bytes;
     wire        dma_wr_done, dma_wr_error, dma_wr_busy, dma_wr_txn_active;
     wire [7:0]  dma_wr_error_code;
@@ -701,7 +709,7 @@ module npu_top #(
         arb_route_col_i = 0;
         cluster_route_col_i = 0;
 
-        if ((fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_DRAIN) &&
+        if (compute_fsm_active && (comp_sub_state == CP_DRAIN) &&
             (comp_drain_cnt >= array_drain_offset)) begin
             arb_route_col_i = comp_drain_cnt - array_drain_offset;
             cluster_route_col_i = arb_route_col_i;
@@ -871,19 +879,19 @@ module npu_top #(
     wire perf_freeze, perf_task_active;
     assign perf_conv_array_active =
         is_conv_mode &&
-        (fsm_state == FSM_COMPUTE) &&
+        compute_fsm_active &&
         ((comp_sub_state == CP_FEED_ACT) ||
          (comp_sub_state == CP_DRAIN) ||
          (comp_sub_state == CP_COLLECT));
     assign perf_conv_array_stall =
         is_conv_mode &&
-        (fsm_state == FSM_COMPUTE) &&
+        compute_fsm_active &&
         (comp_sub_state == CP_WAIT_WIN) &&
         !cf_new_window &&
         !cf_done;
     assign perf_fc_array_active =
         is_fc_mode &&
-        (fsm_state == FSM_COMPUTE) &&
+        compute_fsm_active &&
         ((comp_sub_state == CP_FEED_ACT) ||
          (comp_sub_state == CP_DRAIN) ||
          (comp_sub_state == CP_COLLECT));
@@ -1137,7 +1145,7 @@ module npu_top #(
     // During the feeding cycle for row r: drive cf_window[r] directly (combinational)
     // After feeding: drive held value (registered) for column propagation
     // ============================================================
-    wire act_feed_en = (fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_FEED_ACT);
+    wire act_feed_en = compute_fsm_active && (comp_sub_state == CP_FEED_ACT);
     genvar ai;
     generate
         for (ai = 0; ai < PE_ROWS; ai = ai + 1) begin : act_map
@@ -1190,7 +1198,7 @@ module npu_top #(
     assign pp_data_valid = is_conv_mode ? 1'b0 :
                            is_pool_mode ? ((fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_WAIT_WIN) &&
                                            !act_feed_wait && !pp_start && (act_feed_done_cnt < blk_in_bytes[15:0])) :
-                           ((fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_COLLECT));
+                           (compute_fsm_active && (comp_sub_state == CP_COLLECT));
     assign pp_data_ready = 1'b1;
     // pp_start: pulse at start of compute (PRE_COMP for Conv/FC, COMPUTE entry for Pool)
     reg pp_start_r;
@@ -1209,7 +1217,7 @@ module npu_top #(
     reg [BUF_ADDR_W-1:0] acc_wr_ptr;
     reg [BUF_ADDR_W-1:0] acc_partial_addr;  // partial sum address during COLLECT
     reg [31:0]           conv_collect_base_next;
-    assign acc_wr_addr = ((fsm_state == FSM_COMPUTE) &&
+    assign acc_wr_addr = (compute_fsm_active &&
                          ((comp_sub_state == CP_COLLECT) || (comp_sub_state == CP_DRAIN)))
                          ? acc_partial_addr
                          : add_write_phase
@@ -1236,7 +1244,7 @@ module npu_top #(
         gap_acc_wr_en_r ? gap_acc_wr_en_r :
         rq_internal_write_phase ? rq_acc_wr_en_r :
         (is_conv_mode || is_fc_mode)
-        ? ((fsm_state == FSM_COMPUTE) &&
+        ? (compute_fsm_active &&
            ((comp_sub_state == CP_COLLECT) || (comp_sub_state == CP_DRAIN)) &&
            !acc_collect_wait && !acc_collect_skip_write &&
            (!is_conv_mode || ((comp_win_idx < comp_total_wins) &&
@@ -1298,15 +1306,23 @@ module npu_top #(
     reg [AXI_DMA_DATA_W-1:0] dma_wr_data_r;
     reg dma_wr_valid_r;
 
+    // P3: COLLECT acc read during FSM_PIPE_RUN — reads from load_bank (new compute)
+    // while store reads from comp_bank (old compute results).
+    wire pipe_coll_acc_rd = (fsm_state == FSM_PIPE_RUN) &&
+        ((comp_sub_state == CP_DRAIN && comp_drain_cnt > array_drain_offset && acc_collect_wait) ||
+         (comp_sub_state == CP_COLLECT && acc_collect_wait));
+
     assign acc_rd_addr = ((fsm_state == FSM_REQUANT_COMPUTE) && rq_mode_internal)
                          ? rq_acc_rd_addr
-                         : ((fsm_state == FSM_COMPUTE) &&
+                         : (compute_fsm_active &&
                             ((comp_sub_state == CP_COLLECT) || (comp_sub_state == CP_DRAIN)))
                          ? acc_partial_addr
                          : dma_rd_ptr;
-    // P3: during COMPUTE (COLLECT/DRAIN), acc reads from load_bank (same as writes).
-    // During STORE, acc reads from comp_bank (previous compute's results).
-    assign acc_rd_bank = (fsm_state == FSM_STORE) ? acc_comp_bank : acc_load_bank;
+    // P3: During COMPUTE (COLLECT/DRAIN) including PIPE_RUN, COLLECT reads from load_bank.
+    // During STORE (and PIPE_RUN store), reads from comp_bank (previous compute's results).
+    assign acc_rd_bank = pipe_coll_acc_rd ? acc_load_bank :
+                         (fsm_state == FSM_STORE || fsm_state == FSM_PIPE_RUN) ? acc_comp_bank :
+                         acc_load_bank;
     assign dma_wr_data  = wf_rd_data;
     assign dma_wr_valid = wf_rd_valid;
     assign wf_rd_en     = dma_wr_ready && wf_rd_valid;
@@ -1329,7 +1345,7 @@ module npu_top #(
     // current phase. The DMA writer uses this to avoid hanging in S_WAIT_DATA
     // when the remaining FIFO data is less than the calculated burst size.
     // Covered: store_pack (all task types), vec_relu streaming path.
-    assign dma_producer_done = ((fsm_state == FSM_STORE) &&
+    assign dma_producer_done = (((fsm_state == FSM_STORE) || (fsm_state == FSM_PIPE_RUN) || pipe_mode) &&
                                  (store_pack_state == STORE_PACK_IDLE) &&
                                  dma_wr_started &&
                                  (store_word_idx >= store_words_active)) ||
@@ -1435,6 +1451,7 @@ module npu_top #(
             acc_load_bank <= 1'b0; acc_comp_bank <= 1'b0;
             blk_done <= 1'b0;
             next_blk_prep <= 1'b0; next_blk_wait <= 1'b0; next_dma_launched <= 1'b0;
+            pipe_mode <= 1'b0; pipe_store_done <= 1'b0;
             cf_last_row <= 16'hFFFF; cf_last_col <= 16'hFFFF;
             cf_channel_sel <= 6'd0;
             cin_idx <= 16'd0; cin_total <= 16'd0;
@@ -1520,6 +1537,7 @@ module npu_top #(
                         wgt_preload_active <= 1'b0; wgt_preload_done <= 1'b0;
                         wgt_load_reg <= 0; blk_done <= 1'b0;
                         next_blk_prep <= 1'b0; next_blk_wait <= 1'b0; next_dma_launched <= 1'b0;
+            pipe_mode <= 1'b0; pipe_store_done <= 1'b0;
                         fc_preload_active <= 1'b0; fc_preload_done <= 1'b0;
                         fsm_state <= FSM_TASK_SETUP;
                     end
@@ -2269,9 +2287,15 @@ module npu_top #(
                                     act_feed_done_cnt <= act_feed_done_cnt + 16'd4;
                                 end
                                 if (!pp_start && pp_done) begin
-                                    acc_load_start <= 1'b1;
                                     act_comp_done <= 1'b1;
-                                    fsm_state <= FSM_STORE;
+                                    if (pipe_mode) begin
+                                        // P3: pipe mode — store already running
+                                        if (pipe_store_done) fsm_state <= FSM_BLK_DONE;
+                                        else fsm_state <= FSM_PIPE_DONE;
+                                    end else begin
+                                        acc_load_start <= 1'b1;
+                                        fsm_state <= FSM_STORE;
+                                    end
                                 end
                             end else begin
                                 // Conv: feed activations to conv_frontend
@@ -2546,6 +2570,14 @@ module npu_top #(
                                               : blk_conv_output_elements;
                             acc_load_start <= 1'b1;
                             fsm_state <= FSM_REQUANT_COMPUTE;
+                        end else if (pipe_mode) begin
+                            // P3: pipe mode — store already running
+                            act_comp_done <= 1'b1;
+                            if (pipe_store_done) begin
+                                fsm_state <= FSM_BLK_DONE;
+                            end else begin
+                                fsm_state <= FSM_PIPE_DONE;
+                            end
                         end else begin
                             acc_load_start <= 1'b1;
                             fsm_state <= FSM_STORE;
@@ -2565,6 +2597,7 @@ module npu_top #(
 
                 // ============================================================
                 // FSM_STORE: DMA write acc_buffer to memory
+                // Store-pack state machine moved to shared block (below).
                 // ============================================================
                 FSM_STORE: begin
                     // P3: lock compute bank at STORE entry so reads come from
@@ -2594,7 +2627,7 @@ module npu_top #(
                         dma_wr_valid_r <= 1'b0;
                     end
 
-                    // P3: start next block's act DMA during current block STORE.
+                    // P3: start next block's act+wgt DMA during current block STORE.
                     // 3-cycle sequence: (1) pulse blk_done, (2) wait for
                     // block_scheduler update, (3) check blk_all_done & launch.
                     // Gated for Conv/Pool; skipped for FC/requant/add/gap.
@@ -2614,73 +2647,71 @@ module npu_top #(
                             act_dma_bytes <= blk_in_bytes;
                             act_load_start <= 1'b1;
                             act_load_bank <= ~block_bank;
+                            // P3: also launch wgt DMA for next block's first cin
+                            wgt_dma_start <= 1'b1;
+                            wgt_dma_addr <= {blk_wgt_addr[31:5], 5'b0};
+                            wgt_dma_byte_offset <= blk_wgt_addr[4:0];
+                            wgt_dma_bytes <= blk_wgt_bytes + {27'd0, blk_wgt_addr[4:0]};
+                            wgt_load_start <= 1'b1;
+                            wgt_load_bank <= ~block_bank;
                         end
                         // Set launched regardless to prevent re-firing
                         next_dma_launched <= 1'b1;
                     end
 
-                    case (store_pack_state)
-                        STORE_PACK_IDLE: begin
-                            dma_wr_valid_r <= 1'b0;
-                            // Reset only on NEW store phase entry
-                            if (!dma_wr_started) begin
-                                dma_rd_ptr <= 0; store_pack_lane <= 3'd0;
-                                store_word_idx <= 32'd0;
-                                store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
-                            end else if (store_word_idx < store_words_active) begin
-                                // Phase B: skip WAIT, go directly to CAPTURE.
-                                // dma_rd_ptr=0 set in FSM_STORE; 1-cycle IDLE pre-fetches first word.
-                                store_pack_state <= STORE_PACK_CAPTURE;
-                            end
-                        end
+                    // P3: enter full pipeline — store continues (shared block),
+                    // compute starts for next block.
+                    if (next_dma_launched && act_dma_done && wgt_dma_done && !pipe_mode &&
+                        blk_valid && !is_fc_mode && !is_requant_mode &&
+                        !is_add_mode && !is_gap_mode && !is_vec_relu_mode) begin
+                        pipe_mode <= 1'b1;
+                        pipe_store_done <= 1'b0;
+                        next_dma_launched <= 1'b0;
+                        block_bank <= ~block_bank;
+                        act_comp_bank <= ~block_bank;
+                        acc_load_bank <= ~block_bank;
+                        wgt_consume_bank <= ~block_bank;
+                        wgt_load_done <= 1'b1;
+                        wgt_preload_done <= 1'b1;
+                        wgt_preload_bank <= ~block_bank;
+                        wgt_preload_cin <= 16'd0;
+                        act_feed_ptr <= 0;
+                        act_feed_wait <= 1'b1;
+                        act_feed_done_cnt <= 16'd0;
+                        cin_idx <= 16'd0;
+                        cin_total <= blk_cin_total;
+                        wgt_per_cin <= blk_wgt_per_cin;
+                        fsm_state <= FSM_PIPE_RUN;
+                    end
+                end
 
-                        STORE_PACK_WAIT: begin
-                            if (store_word_idx < store_words_active)
-                                store_pack_state <= STORE_PACK_CAPTURE;
-                        end
+                // ============================================================
+                // FSM_PIPE_RUN: P3 full pipeline — wait for next-block wgt DMA,
+                // then launch compute while store runs in background.
+                // ============================================================
+                FSM_PIPE_RUN: begin
+                    // Both DMAs already done (guaranteed by entry condition).
+                    // Set up compute for next block and start conv_frontend.
+                    comp_win_idx <= 16'd0;
+                    comp_total_wins <= blk_out_rows * conv_total_out_cols;
+                    comp_sub_state <= CP_WAIT_WIN;
+                    cf_last_row <= 16'hFFFF;
+                    cf_last_col <= 16'hFFFF;
+                    cf_channel_sel <= 6'd0;
+                    fsm_state <= FSM_CF_START;
+                end
 
-                        STORE_PACK_CAPTURE: begin
-                            if (store_word_idx < store_words_active) begin
-                                if ((store_pack_lane == 3'd7) ||
-                                    (store_word_idx + 32'd1 >= store_words_active)) begin
-                                    dma_wr_data_r <= store_pack_data_next;
-                                    dma_wr_valid_r <= 1'b1;
-                                    store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
-                                    store_pack_lane <= 3'd0;
-                                    store_word_idx <= store_word_idx + 32'd1;
-                                    store_pack_state <= STORE_PACK_SEND;
-                                end else begin
-                                    store_pack_data <= store_pack_data_next;
-                                    store_pack_lane <= store_pack_lane + 3'd1;
-                                    store_word_idx <= store_word_idx + 32'd1;
-                                    dma_rd_ptr <= dma_rd_ptr + 1;
-                                    store_pack_state <= STORE_PACK_WAIT;
-                                end
-                            end else begin
-                                store_pack_state <= STORE_PACK_IDLE;
-                            end
-                        end
-
-                        STORE_PACK_SEND: begin
-                            if (!dma_wr_started) begin
-                                store_pack_state <= STORE_PACK_IDLE;
-                            end else if (!wf_wr_full) begin
-                                dma_wr_valid_r <= 1'b0;
-                                if (store_word_idx < store_words_active) begin
-                                    dma_rd_ptr <= dma_rd_ptr + 1;
-                                    store_pack_state <= STORE_PACK_WAIT;
-                                end else begin
-                                    store_pack_state <= STORE_PACK_IDLE;
-                                end
-                            end
-                        end
-
-                        default: store_pack_state <= STORE_PACK_IDLE;
-                    endcase
-
-                    if (dma_wr_done) begin
-                        rq_mode_internal <= 1'b0;
-                        rq_word_store_mode <= 1'b0;
+                // ============================================================
+                // FSM_PIPE_DONE: compute finished, waiting for store to complete
+                // ============================================================
+                FSM_PIPE_DONE: begin
+                    if (pipe_store_done || dma_wr_done) begin
+                        pipe_mode <= 1'b0;
+                        pipe_store_done <= 1'b0;
+                        wgt_preload_done <= 1'b0;
+                        wgt_load_done_r <= 1'b0;
+                        wgt_load_phase <= 32'd0;
+                        // Clean up old store state
                         dma_wr_valid_r <= 1'b0;
                         dma_wr_started <= 1'b0;
                         dma_rd_ptr <= 0;
@@ -2688,29 +2719,12 @@ module npu_top #(
                         store_pack_lane <= 3'd0;
                         store_word_idx <= 32'd0;
                         store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
-                        if (is_fc_mode) begin
-                            if (fc_out_start + fc_tile_outputs < output_c) begin
-                                fc_out_start <= fc_out_start + fc_tile_outputs;
-                                fsm_state <= FSM_FC_TILE_PREP;
-                            end else begin
-                                act_comp_done <= 1'b1;
-                                blk_done <= 1'b1;
-                                fsm_state <= FSM_BLK_DONE;
-                            end
-                        end else if (is_requant_mode || is_add_mode || is_gap_mode) begin
-                            act_comp_done <= 1'b1;
-                            blk_done <= 1'b1;
-                            fsm_state <= FSM_BLK_DONE;
-                        end else begin
-                            acc_comp_start <= 1'b1;
-                            acc_comp_bank <= acc_load_bank;
-                            // P3: skip blk_done if already advanced during STORE overlap
-                            if (!next_dma_launched) blk_done <= 1'b1;
-                            fsm_state <= FSM_BLK_DONE;
-                        end
-                    end else if (dma_wr_error) begin
-                        task_error_r <= 1'b1; task_error_code_r <= dma_wr_error_code;
-                        fsm_state <= FSM_ERROR;
+                        next_dma_launched <= 1'b0;
+                        next_blk_prep <= 1'b0;
+                        next_blk_wait <= 1'b0;
+                        // Enter STORE for the just-computed next block
+                        acc_load_start <= 1'b1;
+                        fsm_state <= FSM_STORE;
                     end
                 end
 
@@ -2782,6 +2796,110 @@ module npu_top #(
 
                 default: fsm_state <= FSM_IDLE;
             endcase
+
+            // ================================================================
+            // P3: shared store_pack state machine — runs during FSM_STORE or
+            // pipe_mode.  Placed AFTER the fsm_state case so store overrides
+            // signals set in FSM_STORE init on the same cycle.
+            // ================================================================
+            if (fsm_state == FSM_STORE || pipe_mode) begin
+                case (store_pack_state)
+                    STORE_PACK_IDLE: begin
+                        dma_wr_valid_r <= 1'b0;
+                        if (!dma_wr_started) begin
+                            dma_rd_ptr <= 0; store_pack_lane <= 3'd0;
+                            store_word_idx <= 32'd0;
+                            store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
+                        end else if (store_word_idx < store_words_active) begin
+                            store_pack_state <= STORE_PACK_CAPTURE;
+                        end
+                    end
+
+                    STORE_PACK_WAIT: begin
+                        if (store_word_idx < store_words_active)
+                            store_pack_state <= STORE_PACK_CAPTURE;
+                    end
+
+                    STORE_PACK_CAPTURE: begin
+                        if (store_word_idx < store_words_active) begin
+                            if ((store_pack_lane == 3'd7) ||
+                                (store_word_idx + 32'd1 >= store_words_active)) begin
+                                dma_wr_data_r <= store_pack_data_next;
+                                dma_wr_valid_r <= 1'b1;
+                                store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
+                                store_pack_lane <= 3'd0;
+                                store_word_idx <= store_word_idx + 32'd1;
+                                store_pack_state <= STORE_PACK_SEND;
+                            end else begin
+                                store_pack_data <= store_pack_data_next;
+                                store_pack_lane <= store_pack_lane + 3'd1;
+                                store_word_idx <= store_word_idx + 32'd1;
+                                dma_rd_ptr <= dma_rd_ptr + 1;
+                                store_pack_state <= STORE_PACK_WAIT;
+                            end
+                        end else begin
+                            store_pack_state <= STORE_PACK_IDLE;
+                        end
+                    end
+
+                    STORE_PACK_SEND: begin
+                        if (!dma_wr_started) begin
+                            store_pack_state <= STORE_PACK_IDLE;
+                        end else if (!wf_wr_full) begin
+                            dma_wr_valid_r <= 1'b0;
+                            if (store_word_idx < store_words_active) begin
+                                dma_rd_ptr <= dma_rd_ptr + 1;
+                                store_pack_state <= STORE_PACK_WAIT;
+                            end else begin
+                                store_pack_state <= STORE_PACK_IDLE;
+                            end
+                        end
+                    end
+
+                    default: store_pack_state <= STORE_PACK_IDLE;
+                endcase
+
+                // --- dma_wr_done / error handling ---
+                if (dma_wr_done) begin
+                    if (pipe_mode && fsm_state != FSM_PIPE_DONE) begin
+                        // P3: store finished during pipe mode — flag completion
+                        pipe_store_done <= 1'b1;
+                    end else if (fsm_state == FSM_STORE) begin
+                        // Normal STORE completion
+                        rq_mode_internal <= 1'b0;
+                        rq_word_store_mode <= 1'b0;
+                        dma_wr_valid_r <= 1'b0;
+                        dma_wr_started <= 1'b0;
+                        dma_rd_ptr <= 0;
+                        store_pack_state <= STORE_PACK_IDLE;
+                        store_pack_lane <= 3'd0;
+                        store_word_idx <= 32'd0;
+                        store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
+                        if (is_fc_mode) begin
+                            if (fc_out_start + fc_tile_outputs < output_c) begin
+                                fc_out_start <= fc_out_start + fc_tile_outputs;
+                                fsm_state <= FSM_FC_TILE_PREP;
+                            end else begin
+                                act_comp_done <= 1'b1;
+                                blk_done <= 1'b1;
+                                fsm_state <= FSM_BLK_DONE;
+                            end
+                        end else if (is_requant_mode || is_add_mode || is_gap_mode) begin
+                            act_comp_done <= 1'b1;
+                            blk_done <= 1'b1;
+                            fsm_state <= FSM_BLK_DONE;
+                        end else begin
+                            acc_comp_start <= 1'b1;
+                            acc_comp_bank <= acc_load_bank;
+                            if (!next_dma_launched) blk_done <= 1'b1;
+                            fsm_state <= FSM_BLK_DONE;
+                        end
+                    end
+                end else if (dma_wr_error) begin
+                    task_error_r <= 1'b1; task_error_code_r <= dma_wr_error_code;
+                    fsm_state <= FSM_ERROR;
+                end
+            end
         end
     end
 
