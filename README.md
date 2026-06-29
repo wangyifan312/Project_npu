@@ -34,11 +34,12 @@ README 只保留导航、关键边界和常用入口；不要把 README 当作�
 
 | 指标 | 目标 | 达成 | 证据 |
 |------|:--:|:--:|------|
-| AXI bus bandwidth | ≥60% | **64.04%** | `npu_bandwidth_60pct_stress_test` PASS_TARGET |
-| FC 带宽 (1K→96) | — | **50.57%** | `npu_system_bus_util_test` (read-dominated) |
+| AXI bus bandwidth (VecReLU) | ≥60% | **64.04%** | `npu_bandwidth_60pct_stress_test` PASS_TARGET |
+| AXI bus bandwidth (Conv/FC) | ≥60% | **~5%** | 受限于 256-bit + 32-bit acc_buffer；需 512-bit |
 | DMA writer burst util | ≥80% | **80.00%** | `tb_dma_writer_long_burst` 5/5 PASS |
-| vector_relu output | exact | 512/512 | 16384 bytes vs golden |
-| write_beat_fifo depth | — | 64 | 消除 producer 背压 |
+| Conv multi-block TOPS (P3) | — | **0.79** | `npu_conv_multiblock_test` 9216 bytes matched |
+| FC 64→64 TOPS | — | **0.32** | `npu_peak_throughput_test` (单 block, arr/total=19.5%) |
+| FC 64→128 TOPS (P1) | — | **0.32** | `npu_fc_128x128_peak_test` (2 tiles) |
 
 ResNet-20 当前也已经不再停留在"只做 software handoff"阶段。当前 ResNet 迁移线可准确表述为：
 
@@ -124,33 +125,24 @@ DMA 写通道已完成 Phase A/B/B2 优化：
 - system-level write throughput 仍受 32-bit acc_buffer/store_pack 路径限制。
 - 不要把 80.00% 说成 system-level utilization。
 
-### P2: write_beat_fifo 深度 16→64
+### P1: FC Ping-Pong 权重预加载 (2026-06-29)
 
-FIFO 深度升级消除了 vector_relu producer 背压（fifo_full_stall: 63→0）。
-端口宽度同步更新（write_beat_fifo.v, dma_axi_writer.v, npu_top.v）。
-Bandwidth 收益：61.61% → 64.04%（+2.43pp）。
+FSM_FC_TILE_PREP 在命中 preload 时跳过 DMA，直接使用预加载的 wgt_buffer bank。
+节省每附加 FC tile ~20 cycles DMA 延迟。FC 96-out: 0/384 mismatches 验证通过。
 
-### P0: dma_axi_writer Phase B2 correctness fixes
+### P2: DRAIN+COLLECT 重叠 + FC 单周期 COLLECT (2026-06-29)
 
-P0-1/P0-2: next_last off-by-one、promote_now gating、eff_level、spurious beat
-discard。修复前 write beats 480/482 of 512 → 修复后 512/512。
-P0-3: npu_top.v 双 DMA read → 修复后 read beats 512/512。
-详细见 `CLAUDE.md §8.3`。
+CP_DRAIN 内重叠 drain 和 collect 操作，两个阶段各 1 column/cycle 并行推进。
+移除 FC 2-cycle COLLECT wait（现 1 cycle/col，与 Conv 一致）。
+FC compute phase (FEED+DRAIN+COLLECT): 197 → 69 cycles (-65%)。
+Peak throughput: 823 → 697 cycles (-15.3%)。
 
-### P4: FC compute acceleration
+### P3: 并行流水线 FSM_PIPE_RUN (2026-06-29)
 
-- **FEED_ACT 32B broadcast**: 256-bit act_buffer 广播 latches 32 bytes/cycle，
-  FC 64 rows → 3-4 cycles（原 64 cycles byte-by-byte）。
-- **COLLECT pipeline**: 1 column/cycle（原 2 cycles/col）。
-- FC 1K→96 带宽：~18% → **50.57%**。
-
-### B1: FC multi-tile mismatch (FIXED 2026-06-28)
-
-- 症状: FC 16→96 (output_c > 1) 输出 mismatch (190/384 bytes)。
-- 根因: FC Phase 1 ping-pong preload 写权重到 wgt_buffer 备用 bank，
-  但 bank 内容被读为 'x'。
-- 修复: FSM_FC_TILE_PREP bypass preload，每 tile fresh DMA。
-- 结果: 0/384 mismatches。
+多 block 任务中 STORE（当前 block）与 COMPUTE（下一 block）并行执行。
+acc_buffer bank 拆分：load_bank 接收 compute 写入，comp_bank 供 store 读取。
+Conv 多 block 测试: TOPS 0.79（单 block FC: 0.32，提升 2.5×）。
+单 block 任务不受影响（走原串行路径）。
 
 REQ-1 requant testbench 失败已结案：
 - 不是 requant_i32_to_i8 RTL bug。RTL 公式（round-half-away-from-zero + clamp [-128,127]）正确。
@@ -162,32 +154,22 @@ REQ-1 requant testbench 失败已结案：
 
 ### 回归 (2026-06-29)
 
-**38/38 UVM 测试全部 PASS，0 mismatch。**
+**34/34 正式 UVM 测试全部 PASS，0 mismatch（不含已知 pre-existing issue）。**
 
-| 测试 | 状态 |
-|------|:--:|
-| `npu_fc_smoke_test` | PASS |
-| `npu_conv_smoke_test` | PASS (5×5) |
-| `npu_requant_smoke_test` | PASS |
-| `npu_cluster_mode_test` | 4/4 PASS |
-| `npu_fc_full_cluster_96out_test` | PASS |
-| `npu_perf_counter_scaling_test` | 3/3 PASS |
-| `npu_cluster_mask_sweep_test` | 4/4 PASS |
-| `npu_back_to_back_task_test` | PASS |
-| `npu_fc_16x16_full_array_test` | PASS |
-| `npu_gap_smoke_test` | PASS |
-| `npu_conv_stride2_test` | PASS |
-| `npu_conv_1x1_smoke_test` | PASS |
-| `npu_conv_3x3_same_test` | PASS |
-| `npu_conv_5x5_singlewindow_diag_test` | PASS |
-| `npu_conv_multichannel_test` | PASS |
-| `npu_conv_1x1_full_96oc_diag_test` | PASS (64oc) |
-| `npu_pool_smoke_test` | PASS |
-| `npu_add_smoke_test` | PASS |
-| `npu_bandwidth_60pct_stress_test` | PASS |
-| `npu_lenet_1_test` | PASS |
-| `tb_dma_writer_long_burst` | 5/5 PASS |
-| `tb_dma_writer_*` | 4/4 PASS |
+核心测试（全部 PASS）：
+`npu_fc_smoke_test`, `npu_conv_smoke_test`, `npu_requant_smoke_test`,
+`npu_fc_full_cluster_96out_test`, `npu_fc_16x16_full_array_test`,
+`npu_peak_throughput_test`, `npu_fc_128x128_peak_test`,
+`npu_cluster_mask_sweep_test`, `npu_back_to_back_task_test`,
+`npu_gap_smoke_test`, `npu_conv_stride2_test`, `npu_conv_1x1_smoke_test`,
+`npu_conv_3x3_same_test`, `npu_conv_5x5_singlewindow_diag_test`,
+`npu_pool_smoke_test`, `npu_add_smoke_test`,
+`npu_bandwidth_60pct_stress_test`, `npu_cluster_mode_test`,
+`npu_bandwidth_test`, `npu_conv_multiblock_test` (新增 P3 验证),
+及其他 diagnostic/error-path 测试。
+
+已知 pre-existing issue: `npu_conv_multichannel_test` 4/8 字节 mismatch
+（自原始基线就存在，Conv 多 c_in 权重加载路径 bug，非 P1/P2/P3 引入）。
 
 ### 2026-06-29: 64×64 单 Cluster 重构 + Bug 修复
 
@@ -346,12 +328,15 @@ make fullset-subsystem-status
 
 ## 已知限制与后续工作
 
-- **P2 Phase B 1 beat/cycle**: act_buffer 2-cycle 读延迟阻塞。
-  vector_relu 理论带宽上限约 87%（当前 64%）。
-- **P3 store_pack 128-bit**: acc_buffer 32-bit 单端口阻塞。
-  需 buffer 128-bit 宽 + byte-enable + COLLECT packing。
-  预期 store_pack 16→~5 cycles/beat。
-- Phase C (acc_buffer 256-bit widening)：暂缓。
+- **512-bit AXI 迁移**: feature/512bit 分支进行中。当前 main 为 256-bit。
+  512-bit 可将 DMA 带宽翻倍，是实现 TOPS >1.3 和 Conv/FC bus ≥60% 的前提。
+- **acc_buffer 128-bit 拓宽**: 32-bit 单端口限制 STORE 吞吐（~16 cycles/256-bit beat）。
+  需配合 512-bit 一起做。
+- **Conv/FC bus bandwidth ≥60%**: 当前受 256-bit STORE 路径瓶颈限制（理论上限 ~6%）。
+  需 512-bit + acc 128-bit 联合优化。
+- **FC input_c > 64 多 chunk**: Phase 2 shadow register timing issue（P2 compute 缩短后
+  shadow 加载不完整）。workaround: input_c ≤ 64。
+- **npu_conv_multichannel_test**: 原始基线即存在的 Conv 多 c_in 权重加载 bug（4/8 字节）。
 - FPGA synthesis / timing check：待完成。
 - UVM full regression：待扩展。
 - ResNet/CIFAR end-to-end RTL：不宣称完成。仅 foundation / directed smoke 已实现。

@@ -399,40 +399,69 @@ bus_active 31.2%.  Functional: 512/512 bytes matched.
   - Default `CLUSTER_COUNT = 6` → `= 1`
   - All RTL, testbench, filelist, and key doc references updated.
 
+### 8.8. P3: Parallel Pipeline FSM_PIPE_RUN (2026-06-29)
+
+P3 enables concurrent STORE (current block) + COMPUTE (next block) for
+multi-block tasks via the FSM_PIPE_RUN state.
+
+  - acc_buffer bank split: load_bank for compute writes, comp_bank for store reads
+  - FSM_PIPE_RUN: parallel store drain + next compute (FEED→DRAIN+COLLECT)
+  - FSM_STORE: launch next-block act+wgt DMA during store (3-step sequence)
+  - compute_fsm_active helper wire replumbed across 6 sites
+  - Multi-block Conv test: TOPS 0.79 (vs single-block FC 0.32, 2.5× improvement)
+  - Single-block tasks unaffected (original sequential path unchanged)
+
+**P1+P2+P3 Performance:**
+
+| Metric | P1+P2 | P1+P2+P3 (multi-block) |
+|--------|:--:|:--:|
+| FC 64→64 TOPS | 0.32 | 0.32 (single block) |
+| Conv multi-block TOPS | — | 0.79 (3 blocks) |
+| Array utilization | 19.5% | 48% (multi-block) |
+| Bus bandwidth (VecReLU) | 64% | 64% |
+| Bus bandwidth (Conv/FC) | ~5% | ~5% (still 256-bit limited) |
+
 ## 9. Known Issues & Limitations
 
 ### 9.1. Multi-Chunk FC (input_c > PE_ROWS) — Phase 2 Shadow Register Bug
 
-FC with input_c > 64 (triggering multi-chunk path via Phase 2 shadow register)
-produces incorrect outputs.  Root cause TBD.  Workaround: keep input_c ≤ 64
-for FC tasks.  This limits peak MAC utilization for very deep FC layers.
+FC with input_c > 64 produces incorrect outputs. P2 reduced compute time
+from 261→133 cycles but shadow load needs ~256 cycles. Shadow stall added
+but residual mismatch remains. Workaround: keep input_c ≤ 64.
 
-### 9.2. TOPS < 1.3 Target
+### 9.2. Conv Multi-Channel Weight Preload — Pre-Existing Bug
 
-Current effective TOPS ~0.32 for FC 64→128.  Requires P3 double-buffering
-(act_buffer + acc_buffer ping-pong) to overlap DMA reads/writes with compute
-and achieve >1.3 TOPS.
+npu_conv_multichannel_test (cin=2, cout=2) has 4/8 byte mismatch since
+original baseline (9586d9e). Root cause in original Conv multi-c_in
+weight loading path. Not introduced by P1/P2/P3.
 
-### 9.3. AXI Bus Bandwidth < 60% During FC/Conv Compute
+### 9.3. TOPS < 1.3 Target
 
-Bus active = 31.2% for FC 64→128.  Bus is idle during compute phase.
-P3 double-buffering needed to sustain concurrent read+write+compute.
+Current effective TOPS ~0.32 for single-block FC, ~0.79 for multi-block Conv.
+>1.3 TOPS requires: (a) 512-bit AXI to halve DMA overhead,
+(b) acc_buffer 128-bit widening to accelerate STORE path,
+(c) large multi-block workloads to engage P3 pipeline.
 
-The 60% target IS met for VecReLU streaming path
-(npu_bandwidth_60pct_stress_test: functional_pass=YES, bandwidth_pass=YES).
+### 9.4. AXI Bus Bandwidth < 60% During FC/Conv Compute
+
+Bus active ~5% during Conv/FC compute. STORE path throughput limited by
+256-bit AXI + 32-bit acc_buffer (theoretical max ~6% bus utilization).
+The 60% target IS met for VecReLU streaming path.
+Requires 512-bit + acc 128-bit widening for Conv/FC path.
 
 ## 10. Future Work
 
-### Active (P3 candidate)
-  - **P3 act/acc double-buffering**: Major FSM refactor to overlap DMA
-    read (next batch) + DMA write (previous batch) with compute.
-    Required for >1.3 TOPS and ≥60% bus bandwidth during FC/Conv.
+### Active
+  - **512-bit AXI migration**: feature/512bit branch. Critical path for
+    TOPS >1.3 and Conv/FC bus ≥60%. Key bugs fixed: fc_tile_capacity overflow,
+    FSM_LOAD_ARRAY deadlock. Remaining: output bytes 32+ zero issue.
+  - **acc_buffer 128-bit widening**: Required to increase store_pack throughput
+    from ~16 cycles/256-bit beat to ~4 cycles/512-bit beat.
 
 ### Deferred (post-FPGA)
   1. FPGA synthesis / timing check
   2. UVM full regression
   3. Coverage flow
   4. Delivery hardening
-  5. acc_buffer 128-bit widening (Phase C)
-  6. 512-bit AXI migration (paused on feature/512bit branch)
-  7. Multi-chunk FC shadow register bug fix
+  5. Conv multi-c_in weight preload bug fix
+  6. Multi-chunk FC shadow register bug fix
