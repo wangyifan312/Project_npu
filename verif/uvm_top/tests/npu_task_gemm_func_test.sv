@@ -16,7 +16,7 @@ class npu_task_gemm_func_test extends soc_base_test;
     int M_v, K_v, N_v, lvl;
     int i, j, total_errs;
     int exp_val;
-    int M_arr[4], K_arr[4], N_arr[4];
+    int M_arr[6], K_arr[6], N_arr[6];
     int levels_run;
 
     phase.raise_objection(this);
@@ -24,19 +24,23 @@ class npu_task_gemm_func_test extends soc_base_test;
     m_seq.start(env.axil_ag.seqr);
     #200;
 
-    // GEMM func levels: G0a(M=1), G0b(M=2), G0(M=4). All K=4, N=4, expected=4.
-    M_arr[0]=1;  K_arr[0]=4;  N_arr[0]=4;  // G0a: single row
-    M_arr[1]=2;  K_arr[1]=4;  N_arr[1]=4;  // G0b: two rows
-    M_arr[2]=4;  K_arr[2]=4;  N_arr[2]=4;  // G0: four rows
-    M_arr[3]=1;  K_arr[3]=1;  N_arr[3]=1;  // unused
+    // GEMM func levels: G0a,G0b,G0 + G1,G2,G3
+    M_arr[0]=1;  K_arr[0]=4;   N_arr[0]=4;   // G0a
+    M_arr[1]=2;  K_arr[1]=4;   N_arr[1]=4;   // G0b
+    M_arr[2]=4;  K_arr[2]=4;   N_arr[2]=4;   // G0
+    M_arr[3]=8;  K_arr[3]=64;  N_arr[3]=8;   // G1
+    M_arr[4]=16; K_arr[4]=128; N_arr[4]=16;  // G2
+    M_arr[5]=32; K_arr[5]=512; N_arr[5]=32;  // G3
 
-    `uvm_info("TEST","=== TASK_GEMM_FUNC (G0a,G0b,G0) ===",UVM_NONE)
+    `uvm_info("TEST","=== TASK_GEMM_FUNC ===",UVM_NONE)
 
-    for(lvl=0; lvl<3; lvl++) begin
+    for(lvl=0; lvl<6; lvl++) begin
       M_v=M_arr[lvl]; K_v=K_arr[lvl]; N_v=N_arr[lvl];
       exp_val=K_v; total_errs=0;
-      `uvm_info("TEST",$sformatf("-- G0%0s: M=%0d K=%0d N=%0d expected=%0d --",
+      if(lvl<3) `uvm_info("TEST",$sformatf("-- G0%0s: M=%0d K=%0d N=%0d expected=%0d --",
         lvl==0?"a":lvl==1?"b":"", M_v,K_v,N_v,exp_val),UVM_NONE)
+      else `uvm_info("TEST",$sformatf("-- G%d: M=%0d K=%0d N=%0d expected=%0d --",
+        lvl-2, M_v,K_v,N_v,exp_val),UVM_NONE)
 
       // Preload A[M×K] all-1
       for(i=0; i<M_v*K_v; i=i+4) m_seq.axil_write32(32'h0000_0100+i, 32'h01010101);
@@ -83,20 +87,25 @@ class npu_task_gemm_func_test extends soc_base_test;
           for(j=0; j<N_v; j++) begin
             m_seq.axil_read32(32'h0002_0000 + i*row_stride + j*4, rdata);
           if($signed(rdata) != exp_val) begin
-            if(total_errs<5) `uvm_error("TEST",$sformatf("G%d C[%0d][%0d]=%0d expected %0d",lvl,i,j,$signed(rdata),exp_val))
+            if(total_errs<5) `uvm_error("TEST",$sformatf("G%0s C[%0d][%0d]=%0d expected %0d",
+              lvl<3?(lvl==0?"0a":lvl==1?"0b":"0"):$sformatf("%0d",lvl-2), i,j,$signed(rdata),exp_val))
             total_errs++;
           end
           end
         end
       end
 
-      `uvm_info("TEST",$sformatf("G0%0s: M=%0d K=%0d N=%0d cycles=%0d errors=%0d/%0d %s",
-        lvl==0?"a":lvl==1?"b":"", M_v,K_v,N_v,cycle_lo,total_errs,M_v*N_v, (total_errs==0)?"PASS":"FAIL"),UVM_NONE)
+      if(lvl<3)
+        `uvm_info("TEST",$sformatf("G0%0s: M=%0d K=%0d N=%0d cycles=%0d errors=%0d/%0d %s",
+          lvl==0?"a":lvl==1?"b":"", M_v,K_v,N_v,cycle_lo,total_errs,M_v*N_v, (total_errs==0)?"PASS":"FAIL"),UVM_NONE)
+      else
+        `uvm_info("TEST",$sformatf("G%d: M=%0d K=%0d N=%0d cycles=%0d errors=%0d/%0d %s",
+          lvl-2, M_v,K_v,N_v,cycle_lo,total_errs,M_v*N_v, (total_errs==0)?"PASS":"FAIL"),UVM_NONE)
 
       if(total_errs>0) break;
       levels_run=lvl+1;
     end
-    `uvm_info("TEST",$sformatf("GEMM_FUNC: %0d/3 levels PASS (G0a,G0b,G0)",levels_run),UVM_NONE)
+    `uvm_info("TEST",$sformatf("GEMM_FUNC: %0d/6 levels PASS",levels_run),UVM_NONE)
     phase.drop_objection(this);
   endtask
 endclass
