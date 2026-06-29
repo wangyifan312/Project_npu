@@ -487,6 +487,8 @@ module npu_top #(
     reg        fc_preload_bank;
     reg [15:0] fc_preload_out_start;
     reg [15:0] fc_preload_tile_outputs;
+    reg [4:0]  fc_preload_byte_offset;  // P1: sub-beat offset for preload DMA
+    reg        fc_use_preload;           // P1: set when consuming preloaded weights
     npu_buffer #(.DATA_WIDTH(BUF_DATA_W), .ENTRIES(BUF_ENTRIES), .ADDR_WIDTH(BUF_ADDR_W))
     u_wgt_buffer (
         .clk(clk), .rst_n(rst_n),
@@ -1068,6 +1070,12 @@ module npu_top #(
     // Weight buffer read
     wire [BUF_ADDR_W-1:0] wgt_mac_addr;
     wire [31:0] fc_wgt_dma_base = blk_wgt_addr + fc_out_start * input_c;
+    // P1: preload next-tile weight base with correct byte alignment
+    wire [31:0] fc_preload_wgt_base = blk_wgt_addr + (fc_out_start + fc_tile_outputs) * input_c;
+    // P1: combinational preload tile outputs (must be wire — used in same cycle as trigger)
+    wire [15:0] fc_preload_out_remaining = output_c - (fc_out_start + fc_tile_outputs);
+    wire [15:0] fc_preload_tile_outputs_next = (fc_preload_out_remaining > fc_tile_capacity) ?
+                                                fc_tile_capacity : fc_preload_out_remaining;
     wire [31:0] conv_wgt_dma_base = blk_wgt_addr + cin_idx * wgt_per_cin;
     wire [31:0] conv_next_wgt_dma_base = blk_wgt_addr + (cin_idx + 16'd1) * wgt_per_cin;
     wire [31:0] conv_wgt_valid_bytes = {16'd0, conv_kernel_area} * output_c;
@@ -1412,6 +1420,8 @@ module npu_top #(
             wgt_preload_cin <= 16'd0; wgt_preload_byte_offset <= 5'd0;
             fc_preload_active <= 1'b0; fc_preload_done <= 1'b0; fc_preload_bank <= 1'b0;
             fc_preload_out_start <= 16'd0; fc_preload_tile_outputs <= 16'd0;
+            fc_preload_byte_offset <= 5'd0;
+            fc_use_preload <= 1'b0;
             acc_load_start <= 1'b0; acc_load_done <= 1'b0;
             acc_comp_start <= 1'b0; acc_comp_done <= 1'b0;
             acc_load_bank <= 1'b0; acc_comp_bank <= 1'b0;
@@ -1591,6 +1601,9 @@ module npu_top #(
                                 act_load_bank <= block_bank;
                                 fsm_state <= FSM_LOAD_ACT;
                             end else begin
+                                // P1: restore preload bank after bias extraction
+                                if (fc_use_preload)
+                                    wgt_consume_bank <= fc_preload_bank;
                                 fsm_state <= bias_return_state;
                             end
                         end else begin
@@ -1882,14 +1895,38 @@ module npu_top #(
                     fc_in_base <= 16'd0;
                     fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
                     dma_rd_ptr <= 0;
-                    // Phase 1: do fresh DMA every tile (preload bypassed pending fix)
-                    wgt_buf_flush <= 1'b1;
-                    if (bias_enabled) begin
-                        bias_load_words <= {16'd0, fc_tile_outputs_next};
-                        bias_return_state <= FSM_FC_LOAD_WGT;
-                        fsm_state <= FSM_LOAD_BIAS;
+                    // P1: check if ping-pong preload completed for this tile
+                    if (fc_preload_done && (fc_preload_out_start == fc_out_start)) begin
+                        // Use preloaded weights — skip DMA, go directly to LOAD_ARRAY
+                        // P1: preload hit — use preloaded weights
+                        fc_preload_done <= 1'b0;
+                        fc_use_preload <= 1'b1;
+                        wgt_consume_bank <= fc_preload_bank;
+                        wgt_dma_byte_offset <= fc_preload_byte_offset;
+                        wgt_load_phase <= 32'd0;
+                        wgt_load_wait <= 1'b1;
+                        wgt_load_reg <= 0;
+                        if (bias_enabled) begin
+                            bias_load_words <= {16'd0, fc_tile_outputs_next};
+                            bias_return_state <= FSM_LOAD_ARRAY;
+                            fsm_state <= FSM_LOAD_BIAS;
+                        end else begin
+                            fsm_state <= FSM_LOAD_ARRAY;
+                        end
                     end else begin
-                        fsm_state <= FSM_FC_LOAD_WGT;
+                        // Fresh DMA (first tile or preload not ready)
+                        // P1: preload not ready — use fresh DMA
+                        fc_use_preload <= 1'b0;
+                        fc_preload_active <= 1'b0;
+                        fc_preload_done  <= 1'b0;
+                        wgt_buf_flush <= 1'b1;
+                        if (bias_enabled) begin
+                            bias_load_words <= {16'd0, fc_tile_outputs_next};
+                            bias_return_state <= FSM_FC_LOAD_WGT;
+                            fsm_state <= FSM_LOAD_BIAS;
+                        end else begin
+                            fsm_state <= FSM_FC_LOAD_WGT;
+                        end
                     end
                 end
 
@@ -2134,6 +2171,7 @@ module npu_top #(
                     comp_feed_cnt <= 7'd0;
                     comp_drain_cnt <= 16'd0;
                     comp_sub_state <= is_fc_mode ? CP_FEED_ACT : CP_WAIT_WIN;
+                    fc_use_preload <= 1'b0;  // P1: preload consumed, clear flag
                     // Phase 2: trigger shadow load for next FC chunk
                     if (is_fc_mode && (fc_in_base + fc_chunk_inputs < input_c)) begin
                         fc_shadow_active  <= 1'b1;
@@ -2162,6 +2200,7 @@ module npu_top #(
                         fsm_state <= FSM_ERROR;
                     // FC Phase 1: check FC preload DMA completion
                     end else if (fc_preload_active && wgt_dma_done) begin
+                        // P1: FC preload DMA complete
                         wgt_load_done <= 1'b1;
                         fc_preload_active <= 1'b0;
                         fc_preload_done  <= 1'b1;
@@ -2183,21 +2222,24 @@ module npu_top #(
                         wgt_dma_byte_offset <= conv_next_wgt_dma_base[4:0];
                         wgt_dma_bytes <= conv_wgt_valid_bytes + {27'd0, conv_next_wgt_dma_base[4:0]};
                         wgt_load_start <= 1'b1;
-                    // Phase 1: FC tile preload trigger — start DMA for next tile
-                    // during early compute of current tile
+                    // P1: FC tile preload trigger — start DMA for next tile
+                    // during early compute of current tile.
+                    // Uses correct byte_offset (was hardcoded to 0, causing
+                    // misaligned preloads when next_tile * input_c not 32B-aligned).
                     end else if (is_fc_mode &&
                                  !fc_preload_active && !fc_preload_done &&
                                  (fc_out_start + fc_tile_outputs < output_c)) begin
                         fc_preload_active  <= 1'b1;
                         fc_preload_bank    <= ~wgt_consume_bank;
                         fc_preload_out_start <= fc_out_start + fc_tile_outputs;
-                        fc_preload_tile_outputs <= ((output_c - (fc_out_start + fc_tile_outputs)) > fc_tile_capacity) ?
-                                                    fc_tile_capacity : (output_c - (fc_out_start + fc_tile_outputs));
+                        fc_preload_tile_outputs <= fc_preload_tile_outputs_next;
+                        fc_preload_byte_offset <= fc_preload_wgt_base[4:0];
                         wgt_load_bank <= ~wgt_consume_bank;
                         wgt_dma_start <= 1'b1;
-                        wgt_dma_addr <= {((blk_wgt_addr + (fc_out_start + fc_tile_outputs) * input_c) >> 5), 5'b0};
-                        wgt_dma_byte_offset <= 5'd0;
-                        wgt_dma_bytes <= fc_preload_tile_outputs * input_c;
+                        wgt_dma_addr <= {fc_preload_wgt_base[31:5], 5'b0};
+                        wgt_dma_byte_offset <= fc_preload_wgt_base[4:0];
+                        wgt_dma_bytes <= fc_preload_tile_outputs_next * input_c +
+                                         {27'd0, fc_preload_wgt_base[4:0]};
                         wgt_load_start <= 1'b1;
                     end
                     case (comp_sub_state)
