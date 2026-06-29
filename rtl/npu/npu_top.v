@@ -2237,8 +2237,10 @@ module npu_top #(
                         fc_preload_active <= 1'b0;
                         fsm_state <= FSM_ERROR;
                     end else begin
-                    if (is_conv_mode && (comp_sub_state == CP_COLLECT) && !acc_collect_wait &&
-                        !wgt_preload_active && !wgt_preload_done &&
+                    // P2 fix: COLLECT merged into CP_DRAIN (DRAIN+COLLECT overlap).
+                    // conv preload must trigger during CP_DRAIN collect phase.
+                    if (is_conv_mode && !wgt_preload_active && !wgt_preload_done &&
+                        (comp_drain_cnt > array_drain_offset) && !acc_collect_wait &&
                         (cin_idx + 16'd1 < cin_total)) begin
                         wgt_preload_active <= 1'b1;
                         wgt_preload_bank <= ~wgt_consume_bank;

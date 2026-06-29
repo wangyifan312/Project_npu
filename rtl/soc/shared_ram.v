@@ -5,8 +5,8 @@
 module shared_ram #(
     parameter AXI_ADDR_W     = 32,
     parameter CPU_AXI_DATA_W = 32,
-    parameter NPU_AXI_DATA_W = 512,
-    parameter RAM_DEPTH      = 16384   // 1 MB @ 512-bit beats
+    parameter NPU_AXI_DATA_W = 256,
+    parameter RAM_DEPTH      = 32768   // 1 MB @ 512-bit beats
 ) (
     input  wire        clk,
     input  wire        rst_n,
@@ -61,27 +61,27 @@ module shared_ram #(
     localparam NPU_STRB_W = NPU_AXI_DATA_W / 8;
     localparam ADDR_BITS  = $clog2(RAM_DEPTH);
     localparam NPU_BEAT_BYTES = NPU_AXI_DATA_W / 8;
-    localparam NPU_BEAT_ADDR_LSB = 6;
-    localparam [2:0] AXI_SIZE_BEAT = 3'd6;
+    localparam NPU_BEAT_ADDR_LSB = 5;
+    localparam [2:0] AXI_SIZE_BEAT = 3'd5;
     localparam [1:0] AXI_RESP_OKAY = 2'b00;
     localparam [1:0] AXI_RESP_SLVERR = 2'b10;
     localparam [1:0] AXI_BURST_INCR = 2'b01;
     localparam integer MEM_BYTES = RAM_DEPTH * NPU_BEAT_BYTES;
 
-    // Address split for 512-bit: beat_addr=addr[19:6], word_in_beat=addr[5:2]
+    // Address split: beat_addr=addr[19:5], word_in_beat=addr[4:2]
     reg [NPU_AXI_DATA_W-1:0] ram [0:RAM_DEPTH-1];
 
     function [ADDR_BITS-1:0] beat_index;
         input [AXI_ADDR_W-1:0] addr;
         begin
-            beat_index = addr[ADDR_BITS+5:6];
+            beat_index = addr[ADDR_BITS+4:5];
         end
     endfunction
 
     function npu_addr_aligned;
         input [AXI_ADDR_W-1:0] addr;
         begin
-            npu_addr_aligned = (addr[5:0] == 6'b0);
+            npu_addr_aligned = (addr[4:0] == 5'b0);
         end
     endfunction
 
@@ -111,25 +111,17 @@ module shared_ram #(
 
     function [CPU_AXI_DATA_W-1:0] extract_cpu_word;
         input [NPU_AXI_DATA_W-1:0] beat;
-        input [3:0] word_sel;
+        input [2:0] word_sel;
         begin
             case (word_sel)
-                4'd0:  extract_cpu_word = beat[ 31:  0];
-                4'd1:  extract_cpu_word = beat[ 63: 32];
-                4'd2:  extract_cpu_word = beat[ 95: 64];
-                4'd3:  extract_cpu_word = beat[127: 96];
-                4'd4:  extract_cpu_word = beat[159:128];
-                4'd5:  extract_cpu_word = beat[191:160];
-                4'd6:  extract_cpu_word = beat[223:192];
-                4'd7:  extract_cpu_word = beat[255:224];
-                4'd8:  extract_cpu_word = beat[287:256];
-                4'd9:  extract_cpu_word = beat[319:288];
-                4'd10: extract_cpu_word = beat[351:320];
-                4'd11: extract_cpu_word = beat[383:352];
-                4'd12: extract_cpu_word = beat[415:384];
-                4'd13: extract_cpu_word = beat[447:416];
-                4'd14: extract_cpu_word = beat[479:448];
-                default: extract_cpu_word = beat[511:480];
+                3'd0: extract_cpu_word = beat[ 31:  0];
+                3'd1: extract_cpu_word = beat[ 63: 32];
+                3'd2: extract_cpu_word = beat[ 95: 64];
+                3'd3: extract_cpu_word = beat[127: 96];
+                3'd4: extract_cpu_word = beat[159:128];
+                3'd5: extract_cpu_word = beat[191:160];
+                3'd6: extract_cpu_word = beat[223:192];
+                default: extract_cpu_word = beat[255:224];
             endcase
         end
     endfunction
@@ -183,7 +175,7 @@ module shared_ram #(
             if (cpu_wr_fire) begin
                 for (cpu_byte_i = 0; cpu_byte_i < 4; cpu_byte_i = cpu_byte_i + 1) begin
                     if (cpu_wr_strb[cpu_byte_i]) begin
-                        cpu_byte_lane = ({28'h0, cpu_wr_addr[5:2]} << 2) + cpu_byte_i;
+                        cpu_byte_lane = ({29'h0, cpu_wr_addr[4:2]} << 2) + cpu_byte_i;
                         ram[beat_index(cpu_wr_addr)][cpu_byte_lane*8 +: 8] <= cpu_wr_data[cpu_byte_i*8 +: 8];
                     end
                 end
@@ -222,7 +214,7 @@ module shared_ram #(
             cpu_rresp_r  <= 2'b00;
         end else begin
             if (cpu_ar_hs) begin
-                cpu_rdata_r  <= extract_cpu_word(ram[beat_index(cpu_araddr)], cpu_araddr[5:2]);
+                cpu_rdata_r  <= extract_cpu_word(ram[beat_index(cpu_araddr)], cpu_araddr[4:2]);
                 cpu_rresp_r  <= 2'b00;
                 cpu_rvalid_r <= 1'b1;
             end else if (cpu_rvalid_r && cpu_rready) begin
