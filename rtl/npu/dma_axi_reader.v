@@ -47,7 +47,8 @@ module dma_axi_reader #(
     localparam BEAT_BYTES_LOG2 = (AXI_DATA_WIDTH == 32)  ? 2 :
                                  (AXI_DATA_WIDTH == 64)  ? 3 :
                                  (AXI_DATA_WIDTH == 128) ? 4 :
-                                 (AXI_DATA_WIDTH == 256) ? 5 : 5;
+                                 (AXI_DATA_WIDTH == 256) ? 5 :
+                                 (AXI_DATA_WIDTH == 512) ? 6 : 6;
 
     // ============================================================
     // Error codes

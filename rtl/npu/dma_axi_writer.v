@@ -56,7 +56,8 @@ module dma_axi_writer #(
     localparam BEAT_BYTES_LOG2 = (AXI_DATA_WIDTH == 32)  ? 2 :
                                  (AXI_DATA_WIDTH == 64)  ? 3 :
                                  (AXI_DATA_WIDTH == 128) ? 4 :
-                                 (AXI_DATA_WIDTH == 256) ? 5 : 5;
+                                 (AXI_DATA_WIDTH == 256) ? 5 :
+                                 (AXI_DATA_WIDTH == 512) ? 6 : 6;
 
     localparam ERR_NONE      = 8'h00;
     localparam ERR_BRESP     = 8'h30;

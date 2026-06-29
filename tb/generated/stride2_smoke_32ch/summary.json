@@ -1,0 +1,26 @@
+{
+  "kernel": [
+    3,
+    3
+  ],
+  "stride": 1,
+  "padding": "same",
+  "input_shape": [
+    32,
+    16,
+    16
+  ],
+  "output_shape": [
+    32,
+    16,
+    16
+  ],
+  "input_bytes": 8192,
+  "weight_bytes": 9216,
+  "bias_bytes": 128,
+  "output_bytes": 8192,
+  "mult": 1234567,
+  "shift": 27,
+  "conv_cfg": "0x1A",
+  "expected_checksum": "0x653428fd"
+}

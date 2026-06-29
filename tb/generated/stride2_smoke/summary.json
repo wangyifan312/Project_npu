@@ -1,0 +1,114 @@
+{
+  "arch": "stride2_3x3_smoke",
+  "bias_addr": 528384,
+  "bias_bytes": 64,
+  "conv_cfg": "0x1E",
+  "expected_checksum": "0x1002919e",
+  "expected_file": "tb/generated/stride2_smoke/expected.memh",
+  "input_addr": 64,
+  "input_bytes": 16384,
+  "input_shape": [
+    16,
+    32,
+    32
+  ],
+  "kernel": [
+    3,
+    3
+  ],
+  "multiplier_int": 1234567,
+  "output_addr": 3136,
+  "output_bytes": 4096,
+  "output_shape": [
+    16,
+    16,
+    16
+  ],
+  "padding": "same",
+  "per_channel_debug": [
+    {
+      "bias_i32": -800,
+      "first_pixel_expected": 0,
+      "oc": 0
+    },
+    {
+      "bias_i32": -700,
+      "first_pixel_expected": 0,
+      "oc": 1
+    },
+    {
+      "bias_i32": -600,
+      "first_pixel_expected": 0,
+      "oc": 2
+    },
+    {
+      "bias_i32": -500,
+      "first_pixel_expected": 0,
+      "oc": 3
+    },
+    {
+      "bias_i32": -400,
+      "first_pixel_expected": 0,
+      "oc": 4
+    },
+    {
+      "bias_i32": -300,
+      "first_pixel_expected": 0,
+      "oc": 5
+    },
+    {
+      "bias_i32": -200,
+      "first_pixel_expected": 0,
+      "oc": 6
+    },
+    {
+      "bias_i32": -100,
+      "first_pixel_expected": 127,
+      "oc": 7
+    },
+    {
+      "bias_i32": 0,
+      "first_pixel_expected": 127,
+      "oc": 8
+    },
+    {
+      "bias_i32": 100,
+      "first_pixel_expected": 127,
+      "oc": 9
+    },
+    {
+      "bias_i32": 200,
+      "first_pixel_expected": 127,
+      "oc": 10
+    },
+    {
+      "bias_i32": 300,
+      "first_pixel_expected": 127,
+      "oc": 11
+    },
+    {
+      "bias_i32": 400,
+      "first_pixel_expected": 127,
+      "oc": 12
+    },
+    {
+      "bias_i32": 500,
+      "first_pixel_expected": 122,
+      "oc": 13
+    },
+    {
+      "bias_i32": 600,
+      "first_pixel_expected": 51,
+      "oc": 14
+    },
+    {
+      "bias_i32": 700,
+      "first_pixel_expected": 0,
+      "oc": 15
+    }
+  ],
+  "shift": 27,
+  "stride": 2,
+  "weight_addr": 524288,
+  "weight_bytes": 2304
+}

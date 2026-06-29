@@ -98,8 +98,8 @@ class axi4_dma_monitor extends uvm_monitor;
         rd_expected_beats = rd_arlen + 1;
 
         // Protocol checks
-        if (rd_arsize != 3'd5) begin
-          `uvm_warning("DMA_MON", $sformatf("Read ARSIZE=%0d expected 5 (32-byte beats)", rd_arsize))
+        if (rd_arsize != 3'd5 && rd_arsize != 3'd6) begin
+          `uvm_warning("DMA_MON", $sformatf("Read ARSIZE=%0d expected 5/6 (32/64-byte beats)", rd_arsize))
           read_protocol_errors++;
         end
         if (rd_arburst != 2'b01) begin
@@ -168,8 +168,8 @@ class axi4_dma_monitor extends uvm_monitor;
         wr_expected_beats = wr_awlen + 1;
 
         // Protocol checks
-        if (wr_awsize != 3'd5) begin
-          `uvm_warning("DMA_MON", $sformatf("Write AWSIZE=%0d expected 5 (32-byte beats)", wr_awsize))
+        if (wr_awsize != 3'd5 && wr_awsize != 3'd6) begin
+          `uvm_warning("DMA_MON", $sformatf("Write AWSIZE=%0d expected 5/6 (32/64-byte beats)", wr_awsize))
           write_protocol_errors++;
         end
         if (wr_awburst != 2'b01) begin

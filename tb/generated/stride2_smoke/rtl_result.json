@@ -1,0 +1,15 @@
+{
+  "scope": "stride2_3x3_same_smoke",
+  "kernel": [3,3], "stride": 2, "padding": "same",
+  "input_shape": [16,32,32], "output_shape": [16,16,16],
+  "cluster_mode": "SINGLE",
+  "compared_bytes": 4096,
+  "mismatch_count": 1992,
+  "unknown_count": 0,
+  "first_mismatch_idx": 523,
+  "first_unknown_idx": -1,
+  "expected_checksum": "0x1002919e",
+  "actual_masked_checksum": "0x07b671a5",
+  "x_propagates": 0,
+  "verdict": "arithmetic_mismatch"
+}

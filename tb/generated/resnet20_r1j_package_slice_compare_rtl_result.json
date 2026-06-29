@@ -1,0 +1,18 @@
+{
+  "scope": "R1j package-faithful npu_top layer2.0 downsample block compare",
+  "slice": ["layer2.0.conv1", "layer2.0.conv2", "layer2.0.shortcut.projection", "layer2.0.add"],
+  "full_resnet20": false,
+  "package_faithful": true,
+  "compact_alias": false,
+  "compared_bytes": 32768,
+  "mismatch_count": 22007,
+  "unknown_bytes": 0,
+  "stages": [
+    {"idx": 0, "name": "layer2.0.conv1", "compared_bytes": 8192, "mismatch_count": 4629, "unknown_bytes": 0, "first_mismatch_idx": 1, "first_expected": "0x00", "first_actual": "0x05", "first_actual_unknown": 0, "checksum": "0x0e69d807"},
+    {"idx": 1, "name": "layer2.0.conv2", "compared_bytes": 8192, "mismatch_count": 7328, "unknown_bytes": 0, "first_mismatch_idx": 2, "first_expected": "0xf5", "first_actual": "0xf4", "first_actual_unknown": 0, "checksum": "0xf3f9131e"},
+    {"idx": 2, "name": "layer2.0.shortcut.projection", "compared_bytes": 8192, "mismatch_count": 5095, "unknown_bytes": 0, "first_mismatch_idx": 1536, "first_expected": "0x42", "first_actual": "0x13", "first_actual_unknown": 0, "checksum": "0x06c0d078"},
+    {"idx": 3, "name": "layer2.0.add", "compared_bytes": 8192, "mismatch_count": 4955, "unknown_bytes": 0, "first_mismatch_idx": 8, "first_expected": "0x17", "first_actual": "0x18", "first_actual_unknown": 0, "checksum": "0x131e4203"}
+  ],
+  "final_checksum": "0x131e4203",
+  "status": "mismatch"
+}

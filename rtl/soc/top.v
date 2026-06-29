@@ -6,8 +6,8 @@
 module top #(
     parameter AXI_ADDR_W = 32,
     parameter AXI_DATA_W = 32,
-    parameter AXI_DMA_DATA_W = 256,
-    parameter SHARED_RAM_DEPTH = 32768,  // 1 MB shared memory: 32768 x 256-bit beats
+    parameter AXI_DMA_DATA_W = 512,
+    parameter SHARED_RAM_DEPTH = 16384,  // 1 MB shared memory: 16384 x 512-bit beats
     parameter NPU_BUF_ENTRIES = 16384,
     parameter NPU_BUF_ADDR_W = 14,
     parameter NPU_TILE_ROWS = 16,

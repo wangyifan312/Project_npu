@@ -6,7 +6,7 @@
 module axi_interconnect #(
     parameter AXI_ADDR_W      = 32,
     parameter CPU_AXI_DATA_W  = 32,
-    parameter DMA_AXI_DATA_W  = 256,
+    parameter DMA_AXI_DATA_W  = 512,
     parameter NPU_BASE   = 32'h1000_0000,
     parameter NPU_MASK   = 32'hFFFF_FF00  // 256B NPU register space
 ) (

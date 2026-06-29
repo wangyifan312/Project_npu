@@ -1,18 +1,20 @@
-// write_beat_fifo.v — 256-bit Write Beat FIFO
+// write_beat_fifo.v — Parameterized Write Beat FIFO
 // Combinational read: rd_data always shows front of queue when not empty.
-// Used between store_packer (producer) and dma_axi_writer (consumer).
 `timescale 1ns / 1ps
 
-module write_beat_fifo #(parameter DEPTH = 16) (
+module write_beat_fifo #(
+    parameter DEPTH      = 16,
+    parameter DATA_WIDTH = 512
+) (
     input  wire        clk,
     input  wire        rst_n,
-    input  wire [255:0] wr_data,
-    input  wire [31:0]  wr_strb,
+    input  wire [DATA_WIDTH-1:0] wr_data,
+    input  wire [(DATA_WIDTH/8)-1:0] wr_strb,
     input  wire         wr_last,
     input  wire         wr_en,
     output wire         wr_full,
-    output wire [255:0] rd_data,
-    output wire [31:0]  rd_strb,
+    output wire [DATA_WIDTH-1:0] rd_data,
+    output wire [(DATA_WIDTH/8)-1:0] rd_strb,
     output wire         rd_last,
     output wire         rd_valid,
     input  wire         rd_en,
@@ -20,8 +22,8 @@ module write_beat_fifo #(parameter DEPTH = 16) (
     output wire [5:0]   rd_level
 );
     localparam AW = 6;
-    reg [255:0] mem_d [0:DEPTH-1];
-    reg [31:0]  mem_s [0:DEPTH-1];
+    reg [DATA_WIDTH-1:0] mem_d [0:DEPTH-1];
+    reg [(DATA_WIDTH/8)-1:0] mem_s [0:DEPTH-1];
     reg         mem_l [0:DEPTH-1];
     reg [AW-1:0] wp, rp;
     reg [AW:0]   cnt;

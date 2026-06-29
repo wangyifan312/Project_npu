@@ -6,8 +6,8 @@
 module npu_top #(
     parameter AXI_ADDR_W = 32,
     parameter AXI_DATA_W = 32,
-    parameter AXI_DMA_DATA_W = 256,
-    parameter BUF_DATA_W  = 256,
+    parameter AXI_DMA_DATA_W = 512,
+    parameter BUF_DATA_W  = 512,
     parameter ACC_DATA_W  = 32,
     parameter BUF_ENTRIES = 1024,
     parameter BUF_ADDR_W  = 10,
@@ -85,7 +85,7 @@ module npu_top #(
     localparam CLUSTER_TILE_EN_W = N_TILES;
     localparam WGT_REG_BITS = PE_ROWS * PE_COLS * 8;
     localparam HB_BEAT_BYTES = BUF_DATA_W / 8;
-    localparam HB_BEAT_BYTE_BITS = 5; // 256-bit beat = 32 byte lanes
+    localparam HB_BEAT_BYTE_BITS = 6; // 512-bit beat = 64 byte lanes
     localparam [15:0] PE_ROWS_16 = PE_ROWS;
     localparam [15:0] PE_COLS_16 = PE_COLS;
     localparam [15:0] KERNEL_SPATIAL_16 = KERNEL_SPATIAL;
@@ -359,7 +359,7 @@ module npu_top #(
     reg         wgt_dma_start;
     reg  [31:0] wgt_dma_addr;
     reg  [31:0] wgt_dma_bytes;
-    reg  [4:0]  wgt_dma_byte_offset;
+    reg  [HB_BEAT_BYTE_BITS-1:0] wgt_dma_byte_offset;
     wire        wgt_dma_done, wgt_dma_error, wgt_dma_busy;
     wire [7:0]  wgt_dma_error_code;
     wire [BUF_ADDR_W-1:0] wgt_buf_wr_addr;
@@ -419,7 +419,7 @@ module npu_top #(
     reg         vec_relu_rd_wait;      // 1-cycle buffer read latency wait
     reg         vec_wr_done_latch;     // latch for dma_wr_done 1-cycle pulse
     reg         vec_relu_proc_done;    // Phase B completed; waiting for writer
-    wire [255:0] vec_relu_result;      // 32-lane INT8 ReLU result (combinational)
+    wire [BUF_DATA_W-1:0] vec_relu_result;      // 32-lane INT8 ReLU result (combinational)
 
     // === DEBUG counters for vec_relu multi-burst correctness ===
     reg [31:0] dbg_vec_push_count;     // successful FIFO pushes from Phase B
@@ -479,7 +479,7 @@ module npu_top #(
     reg  wgt_consume_bank;
     reg  wgt_preload_active, wgt_preload_done, wgt_preload_bank;
     reg  [15:0] wgt_preload_cin;
-    reg  [4:0]  wgt_preload_byte_offset;
+    reg  [HB_BEAT_BYTE_BITS-1:0] wgt_preload_byte_offset;
     reg wgt_buf_flush;
     // FC ping-pong weight DMA preload (Phase 1)
     reg        fc_preload_active;
@@ -934,36 +934,36 @@ module npu_top #(
     wire [31:0] fc_load_out_idx = (fc_chunk_inputs == 16'd0) ? 32'd0 : (fc_load_byte_idx / {16'd0, fc_chunk_inputs});
     wire [31:0] fc_load_row_idx = (fc_chunk_inputs == 16'd0) ? 32'd0 : (fc_load_byte_idx % {16'd0, fc_chunk_inputs});
     wire [31:0] fc_load_buf_byte_idx = fc_load_out_idx * input_c + fc_in_base + fc_load_row_idx;
-    wire [31:0] fc_weight_dma_byte_idx = fc_load_buf_byte_idx + {27'd0, wgt_dma_byte_offset};
+    wire [31:0] fc_weight_dma_byte_idx = fc_load_buf_byte_idx + {26'd0, wgt_dma_byte_offset};
     wire [31:0] fc_next_load_byte_idx = wgt_load_phase + 32'd1;
     wire [31:0] fc_next_load_out_idx = (fc_chunk_inputs == 16'd0) ? 32'd0 : (fc_next_load_byte_idx / {16'd0, fc_chunk_inputs});
     wire [31:0] fc_next_load_row_idx = (fc_chunk_inputs == 16'd0) ? 32'd0 : (fc_next_load_byte_idx % {16'd0, fc_chunk_inputs});
     wire [31:0] fc_next_load_buf_byte_idx = fc_next_load_out_idx * input_c + fc_in_base + fc_next_load_row_idx;
-    wire [31:0] fc_next_weight_dma_byte_idx = fc_next_load_buf_byte_idx + {27'd0, wgt_dma_byte_offset};
-    wire [BUF_ADDR_W-1:0] fc_weight_beat_addr = fc_weight_dma_byte_idx[BUF_ADDR_W+4:5];
-    wire [BUF_ADDR_W-1:0] fc_next_weight_beat_addr = fc_next_weight_dma_byte_idx[BUF_ADDR_W+4:5];
-    wire [HB_BEAT_BYTE_BITS-1:0] fc_weight_byte_sel = fc_weight_dma_byte_idx[4:0];
+    wire [31:0] fc_next_weight_dma_byte_idx = fc_next_load_buf_byte_idx + {26'd0, wgt_dma_byte_offset};
+    wire [BUF_ADDR_W-1:0] fc_weight_beat_addr = fc_weight_dma_byte_idx[BUF_ADDR_W+5:6];
+    wire [BUF_ADDR_W-1:0] fc_next_weight_beat_addr = fc_next_weight_dma_byte_idx[BUF_ADDR_W+5:6];
+    wire [HB_BEAT_BYTE_BITS-1:0] fc_weight_byte_sel = fc_weight_dma_byte_idx[HB_BEAT_BYTE_BITS-1:0];
     wire [31:0] fc_act_byte_idx = fc_in_base + comp_feed_cnt;
     wire [31:0] fc_act_rd_byte_idx =
         (is_fc_mode && (fsm_state == FSM_WGT_LD)) ? {16'd0, fc_in_base} :
         (is_fc_mode && (fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_FEED_ACT)) ?
         (fc_act_byte_idx + 32'd1) : fc_act_byte_idx;
-    wire [BUF_ADDR_W-1:0] fc_act_beat_addr = fc_act_rd_byte_idx[BUF_ADDR_W+4:5];
-    wire [HB_BEAT_BYTE_BITS-1:0] fc_act_byte_sel = fc_act_byte_idx[4:0];
+    wire [BUF_ADDR_W-1:0] fc_act_beat_addr = fc_act_rd_byte_idx[BUF_ADDR_W+5:6];
+    wire [HB_BEAT_BYTE_BITS-1:0] fc_act_byte_sel = fc_act_byte_idx[HB_BEAT_BYTE_BITS-1:0];
     wire [7:0] fc_weight_byte = hb_beat_byte(wgt_rd_data, fc_weight_byte_sel);
-    wire [31:0] conv_weight_dma_byte_idx = wgt_load_phase + {27'd0, wgt_dma_byte_offset};
+    wire [31:0] conv_weight_dma_byte_idx = wgt_load_phase + {26'd0, wgt_dma_byte_offset};
     wire [31:0] add_byte_idx = add_src_idx;
     wire [31:0] add_next_byte_idx = add_src_idx + 32'd1;
-    wire [BUF_ADDR_W-1:0] add_src_beat_addr = add_byte_idx[BUF_ADDR_W+4:5];
-    wire [BUF_ADDR_W-1:0] add_next_beat_addr = add_next_byte_idx[BUF_ADDR_W+4:5];
-    wire [HB_BEAT_BYTE_BITS-1:0] add_byte_sel = add_byte_idx[4:0];
+    wire [BUF_ADDR_W-1:0] add_src_beat_addr = add_byte_idx[BUF_ADDR_W+5:6];
+    wire [BUF_ADDR_W-1:0] add_next_beat_addr = add_next_byte_idx[BUF_ADDR_W+5:6];
+    wire [HB_BEAT_BYTE_BITS-1:0] add_byte_sel = add_byte_idx[HB_BEAT_BYTE_BITS-1:0];
     wire [31:0] gap_byte_idx = ({16'd0, gap_sp_idx} * {16'd0, input_c}) + {16'd0, gap_channel_idx};
     wire [31:0] gap_next_sp_idx = {26'd0, gap_sp_idx} + 32'd1;
     wire [31:0] gap_next_byte_idx =
         (gap_next_sp_idx * {16'd0, input_c}) + {16'd0, gap_channel_idx};
-    wire [BUF_ADDR_W-1:0] gap_src_beat_addr = gap_byte_idx[BUF_ADDR_W+4:5];
-    wire [BUF_ADDR_W-1:0] gap_next_beat_addr = gap_next_byte_idx[BUF_ADDR_W+4:5];
-    wire [HB_BEAT_BYTE_BITS-1:0] gap_byte_sel = gap_byte_idx[4:0];
+    wire [BUF_ADDR_W-1:0] gap_src_beat_addr = gap_byte_idx[BUF_ADDR_W+5:6];
+    wire [BUF_ADDR_W-1:0] gap_next_beat_addr = gap_next_byte_idx[BUF_ADDR_W+5:6];
+    wire [HB_BEAT_BYTE_BITS-1:0] gap_byte_sel = gap_byte_idx[HB_BEAT_BYTE_BITS-1:0];
     wire [BUF_ADDR_W-1:0] rq_src_beat_addr = rq_src_idx[BUF_ADDR_W+2:3];
     wire [2:0] rq_src_word_sel = rq_src_idx[2:0];
     wire [31:0] rq_src_word = hb_beat_word(act_rd_data, rq_src_word_sel);
@@ -1044,11 +1044,11 @@ module npu_top #(
     reg [1:0]            act_feed_byte;
     reg                  act_feed_wait;
     reg [15:0]           act_feed_done_cnt;
-    wire [BUF_ADDR_W-1:0] act_feed_beat_addr = act_feed_ptr[BUF_ADDR_W+4:5];
+    wire [BUF_ADDR_W-1:0] act_feed_beat_addr = act_feed_ptr[BUF_ADDR_W+5:6];
     wire [BUF_ADDR_W-1:0] act_pool_beat_addr = act_feed_ptr[BUF_ADDR_W+2:3];
     wire [2:0] act_pool_word_sel = act_feed_ptr[2:0];
     wire [31:0] act_pool_word = hb_beat_word(act_rd_data, act_pool_word_sel);
-    wire [HB_BEAT_BYTE_BITS-1:0] act_byte_sel = is_fc_mode ? fc_act_byte_sel : act_feed_ptr[4:0];
+    wire [HB_BEAT_BYTE_BITS-1:0] act_byte_sel = is_fc_mode ? fc_act_byte_sel : act_feed_ptr[HB_BEAT_BYTE_BITS-1:0];
 
     assign cf_act_data  = hb_beat_byte(act_rd_data, act_byte_sel);
     assign act_rd_bank  = act_comp_bank;
@@ -1072,10 +1072,10 @@ module npu_top #(
     wire [31:0] conv_next_wgt_dma_base = blk_wgt_addr + (cin_idx + 16'd1) * wgt_per_cin;
     wire [31:0] conv_wgt_valid_bytes = {16'd0, conv_kernel_area} * output_c;
     wire [31:0] bias_dma_base = is_fc_mode ? (bias_addr + fc_out_start * 32'd4) : bias_addr;
-    wire [31:0] bias_byte_idx = (bias_load_phase << 2) + {27'd0, wgt_dma_byte_offset};
+    wire [31:0] bias_byte_idx = (bias_load_phase << 2) + {26'd0, wgt_dma_byte_offset};
     wire [31:0] bias_next_byte_idx = bias_byte_idx + 32'd4;
-    wire [BUF_ADDR_W-1:0] bias_beat_addr = bias_byte_idx[BUF_ADDR_W+4:5];
-    wire [BUF_ADDR_W-1:0] bias_next_beat_addr = bias_next_byte_idx[BUF_ADDR_W+4:5];
+    wire [BUF_ADDR_W-1:0] bias_beat_addr = bias_byte_idx[BUF_ADDR_W+5:6];
+    wire [BUF_ADDR_W-1:0] bias_next_beat_addr = bias_next_byte_idx[BUF_ADDR_W+5:6];
     wire [2:0] bias_word_sel = bias_byte_idx[4:2];
     wire [31:0] bias_word = hb_beat_word(wgt_rd_data, bias_word_sel);
     wire [BUF_ADDR_W-1:0] rq_acc_rd_addr = rq_src_idx[BUF_ADDR_W-1:0];
@@ -1087,8 +1087,8 @@ module npu_top #(
                                        (fc_shadow_phase % {16'd0, fc_shadow_chunk_inputs});
     wire [31:0] fc_shadow_buf_byte_idx = fc_shadow_out_idx_w * {16'd0, input_c} +
                                           {16'd0, fc_shadow_in_base} + fc_shadow_row_idx_w;
-    wire [31:0] fc_shadow_dma_byte_idx = fc_shadow_buf_byte_idx + {27'd0, wgt_dma_byte_offset};
-    wire [BUF_ADDR_W-1:0] fc_shadow_beat_addr = fc_shadow_dma_byte_idx[BUF_ADDR_W+4:5];
+    wire [31:0] fc_shadow_dma_byte_idx = fc_shadow_buf_byte_idx + {26'd0, wgt_dma_byte_offset};
+    wire [BUF_ADDR_W-1:0] fc_shadow_beat_addr = fc_shadow_dma_byte_idx[BUF_ADDR_W+5:6];
 
     assign wgt_rd_addr  = (fsm_state == FSM_BIAS_EXTRACT) ? bias_beat_addr :
                           (fsm_state == FSM_ADD_COMPUTE) ? add_src_beat_addr :
@@ -1294,8 +1294,8 @@ module npu_top #(
     assign dma_wr_data  = wf_rd_data;
     assign dma_wr_valid = wf_rd_valid;
     assign wf_rd_en     = dma_wr_ready && wf_rd_valid;
-    write_beat_fifo #(64) u_wfifo (
-        .clk,.rst_n,.wr_data(dma_wr_data_r),.wr_strb({32{1'b1}}),.wr_last(1'b0),
+    write_beat_fifo #(.DEPTH(64), .DATA_WIDTH(AXI_DMA_DATA_W)) u_wfifo (
+        .clk,.rst_n,.wr_data(dma_wr_data_r),.wr_strb({(AXI_DMA_DATA_W/8){1'b1}}),.wr_last(1'b0),
         .wr_en(dma_wr_valid_r),.wr_full(wf_wr_full),
         .rd_data(wf_rd_data),.rd_strb(wf_rd_strb),.rd_last(wf_rd_last),
         .rd_valid(wf_rd_valid),.rd_en(wf_rd_en),.rd_empty(wf_rd_empty),
@@ -1327,9 +1327,10 @@ module npu_top #(
     // For each byte lane: if signed bit[7]=1 (negative), output 0; else pass through
     // Input: act_rd_data (256-bit beat from act_buffer, Phase B read)
     // ============================================================
+    localparam VEC_RELU_LANES = BUF_DATA_W / 8;
     genvar vl;
     generate
-        for (vl = 0; vl < 32; vl = vl + 1) begin : gen_vec_relu
+        for (vl = 0; vl < VEC_RELU_LANES; vl = vl + 1) begin : gen_vec_relu
             wire signed [7:0] vl_in = act_rd_data[vl*8 +: 8];
             assign vec_relu_result[vl*8 +: 8] = vl_in[7] ? 8'h00 : vl_in;
         end
@@ -1529,7 +1530,7 @@ module npu_top #(
                             act_load_bank <= block_bank;
                             act_comp_bank <= block_bank;
                             vec_relu_beat_idx <= 32'd0;
-                            vec_relu_total_beats <= (blk_in_bytes + 32'd31) >> 5;
+                            vec_relu_total_beats <= (blk_in_bytes + 32'd63) >> 6;
                             vec_relu_out_wr_valid <= 1'b0;
                             vec_relu_read_done <= 1'b0;
                             vec_relu_proc_active <= 1'b0;
@@ -1553,10 +1554,10 @@ module npu_top #(
 
                 FSM_LOAD_BIAS: begin
                     wgt_dma_start <= 1'b1;
-                    wgt_dma_addr <= {bias_dma_base[31:5], 5'b0};
-                    wgt_dma_byte_offset <= bias_dma_base[4:0];
+                    wgt_dma_addr <= {bias_dma_base[31:6], 6'b0};
+                    wgt_dma_byte_offset <= bias_dma_base[HB_BEAT_BYTE_BITS-1:0];
                     wgt_dma_bytes <= (bias_load_words << 2) +
-                                     {27'd0, bias_dma_base[4:0]};
+                                     {26'd0, bias_dma_base[HB_BEAT_BYTE_BITS-1:0]};
                     wgt_load_start <= 1'b1;
                     wgt_load_bank <= block_bank;
                     fsm_state <= FSM_BIAS_WAIT;
@@ -1667,9 +1668,9 @@ module npu_top #(
 
                 FSM_LOAD_ADD_SRC1: begin
                     wgt_dma_start <= 1'b1;
-                    wgt_dma_addr <= {src1_addr[31:5], 5'b0};
+                    wgt_dma_addr <= {src1_addr[31:6], 6'b0};
                     wgt_dma_byte_offset <= src1_addr[4:0];
-                    wgt_dma_bytes <= src1_bytes + {27'd0, src1_addr[4:0]};
+                    wgt_dma_bytes <= src1_bytes + {26'd0, src1_addr[4:0]};
                     wgt_load_start <= 1'b1;
                     wgt_load_bank <= block_bank;
                     fsm_state <= FSM_ADD_SRC1_WAIT;
@@ -1895,9 +1896,9 @@ module npu_top #(
 
                 FSM_FC_LOAD_WGT: begin
                     wgt_dma_start <= 1'b1;
-                    wgt_dma_addr <= {fc_wgt_dma_base[31:5], 5'b0};
-                    wgt_dma_byte_offset <= fc_wgt_dma_base[4:0];
-                    wgt_dma_bytes <= (fc_tile_outputs * input_c) + {27'd0, fc_wgt_dma_base[4:0]};
+                    wgt_dma_addr <= {fc_wgt_dma_base[31:6], 6'b0};
+                    wgt_dma_byte_offset <= fc_wgt_dma_base[HB_BEAT_BYTE_BITS-1:0];
+                    wgt_dma_bytes <= (fc_tile_outputs * input_c) + {26'd0, fc_wgt_dma_base[HB_BEAT_BYTE_BITS-1:0]};
                     wgt_load_start <= 1'b1;
                     wgt_load_bank <= block_bank;
                     fsm_state <= FSM_FC_LOAD_WAIT;
@@ -2010,9 +2011,9 @@ module npu_top #(
                             end
                         end else begin
                             wgt_dma_start <= 1'b1;
-                            wgt_dma_addr <= {conv_wgt_dma_base[31:5], 5'b0};
-                            wgt_dma_byte_offset <= conv_wgt_dma_base[4:0];
-                            wgt_dma_bytes <= conv_wgt_valid_bytes + {27'd0, conv_wgt_dma_base[4:0]};
+                            wgt_dma_addr <= {conv_wgt_dma_base[31:6], 6'b0};
+                            wgt_dma_byte_offset <= conv_wgt_dma_base[HB_BEAT_BYTE_BITS-1:0];
+                            wgt_dma_bytes <= conv_wgt_valid_bytes + {26'd0, conv_wgt_dma_base[HB_BEAT_BYTE_BITS-1:0]};
                             wgt_load_start <= 1'b1;
                             wgt_load_bank <= block_bank;
                             wgt_load_phase <= 32'd0;
@@ -2060,16 +2061,16 @@ module npu_top #(
                             reg [31:0] fc_load_count;
                             integer fc_load_lane;
                             fc_load_remaining = (fc_tile_outputs * fc_chunk_inputs) - wgt_load_phase;
-                            fc_bytes_in_beat  = 32'd32 - {27'd0, fc_weight_dma_byte_idx[4:0]};
-                            fc_load_count     = (fc_load_remaining > 32'd32) ? 32'd32 : fc_load_remaining;
+                            fc_bytes_in_beat  = 32'd32 - {27'd0, fc_weight_dma_byte_idx[HB_BEAT_BYTE_BITS-1:0]};
+                            fc_load_count     = (fc_load_remaining > 32'd64) ? 32'd64 : fc_load_remaining;
                             if (fc_bytes_in_beat < fc_load_count)
                                 fc_load_count = fc_bytes_in_beat;
-                            for (fc_load_lane = 0; fc_load_lane < 32; fc_load_lane = fc_load_lane + 1) begin
+                            for (fc_load_lane = 0; fc_load_lane < 64; fc_load_lane = fc_load_lane + 1) begin
                                 if (fc_load_lane < fc_load_count) begin
                                     reg [31:0] fc_lane_idx;
                                     reg [31:0] fc_lane_out_idx;
                                     reg [31:0] fc_lane_row_idx;
-                                    reg [4:0]  fc_lane_byte_sel;
+                                    reg [HB_BEAT_BYTE_BITS-1:0] fc_lane_byte_sel;
                                     fc_lane_idx      = wgt_load_phase + fc_load_lane;
                                     fc_lane_out_idx  = fc_lane_idx / {16'd0, fc_chunk_inputs};
                                     fc_lane_row_idx  = fc_lane_idx % {16'd0, fc_chunk_inputs};
@@ -2098,12 +2099,12 @@ module npu_top #(
                         reg [31:0] load_count;
                         reg [31:0] load_remaining;
                         reg [31:0] bytes_left_in_beat;
-                        reg [4:0]  load_byte_sel;
+                        reg [HB_BEAT_BYTE_BITS-1:0] load_byte_sel;
                         reg [15:0] sp0;
                         reg [5:0]  oc0;
                         integer load_lane;
                         load_remaining = conv_wgt_valid_bytes - wgt_load_phase;
-                        bytes_left_in_beat = 32'd32 - {27'd0, conv_weight_dma_byte_idx[4:0]};
+                        bytes_left_in_beat = 32'd32 - {27'd0, conv_weight_dma_byte_idx[HB_BEAT_BYTE_BITS-1:0]};
                         load_count = (load_remaining > 32'd4) ? 32'd4 : load_remaining;
                         if (bytes_left_in_beat < load_count)
                             load_count = bytes_left_in_beat;
@@ -2111,14 +2112,14 @@ module npu_top #(
                             if (load_lane < load_count) begin
                                 load_idx = wgt_load_phase + load_lane;
                                 load_abs_idx = conv_weight_dma_byte_idx + load_lane;
-                                load_byte_sel = load_abs_idx[4:0];
+                                load_byte_sel = load_abs_idx[HB_BEAT_BYTE_BITS-1:0];
                                 sp0 = load_idx / {16'd0, output_c};
                                 oc0 = load_idx % {16'd0, output_c};
                                 wgt_load_reg[(sp0 * PE_COLS + oc0)*8 +: 8] <=
                                     hb_beat_byte(wgt_rd_data, load_byte_sel);
                             end
                         end
-                        if ((((conv_weight_dma_byte_idx[4:0] + load_count) >= 32'd32) ||
+                        if ((((conv_weight_dma_byte_idx[HB_BEAT_BYTE_BITS-1:0] + load_count) >= 32'd32) ||
                              (load_count < 32'd4)) &&
                             (wgt_load_phase + load_count < conv_wgt_valid_bytes))
                             wgt_load_wait <= 1'b1;
@@ -2176,12 +2177,12 @@ module npu_top #(
                         wgt_preload_active <= 1'b1;
                         wgt_preload_bank <= ~wgt_consume_bank;
                         wgt_preload_cin <= cin_idx + 16'd1;
-                        wgt_preload_byte_offset <= conv_next_wgt_dma_base[4:0];
+                        wgt_preload_byte_offset <= conv_next_wgt_dma_base[HB_BEAT_BYTE_BITS-1:0];
                         wgt_load_bank <= ~wgt_consume_bank;
                         wgt_dma_start <= 1'b1;
-                        wgt_dma_addr <= {conv_next_wgt_dma_base[31:5], 5'b0};
-                        wgt_dma_byte_offset <= conv_next_wgt_dma_base[4:0];
-                        wgt_dma_bytes <= conv_wgt_valid_bytes + {27'd0, conv_next_wgt_dma_base[4:0]};
+                        wgt_dma_addr <= {conv_next_wgt_dma_base[31:6], 6'b0};
+                        wgt_dma_byte_offset <= conv_next_wgt_dma_base[HB_BEAT_BYTE_BITS-1:0];
+                        wgt_dma_bytes <= conv_wgt_valid_bytes + {26'd0, conv_next_wgt_dma_base[HB_BEAT_BYTE_BITS-1:0]};
                         wgt_load_start <= 1'b1;
                     // Phase 1: FC tile preload trigger — start DMA for next tile
                     // during early compute of current tile
@@ -2195,7 +2196,7 @@ module npu_top #(
                                                     fc_tile_capacity : (output_c - (fc_out_start + fc_tile_outputs));
                         wgt_load_bank <= ~wgt_consume_bank;
                         wgt_dma_start <= 1'b1;
-                        wgt_dma_addr <= {((blk_wgt_addr + (fc_out_start + fc_tile_outputs) * input_c) >> 5), 5'b0};
+                        wgt_dma_addr <= {((blk_wgt_addr + (fc_out_start + fc_tile_outputs) * input_c) >> 6), 6'b0};
                         wgt_dma_byte_offset <= 5'd0;
                         wgt_dma_bytes <= fc_preload_tile_outputs * input_c;
                         wgt_load_start <= 1'b1;
@@ -2226,7 +2227,7 @@ module npu_top #(
                                 if (act_feed_wait) begin
                                     act_feed_wait <= 1'b0;
                                 end else if (conv_act_ready && (act_feed_done_cnt < blk_in_bytes[15:0])) begin
-                                    if ((act_feed_ptr[4:0] == 5'd31) &&
+                                    if ((act_feed_ptr[HB_BEAT_BYTE_BITS-1:0] == 5'd31) &&
                                         (act_feed_done_cnt + 16'd1 < blk_in_bytes[15:0]))
                                         act_feed_wait <= 1'b1;
                                     act_feed_ptr <= act_feed_ptr + 1;
@@ -2628,7 +2629,7 @@ module npu_top #(
     assign task_error_code_fb = task_error_code_r;
 
     // weight_mac_addr
-    assign wgt_mac_addr = conv_weight_dma_byte_idx[BUF_ADDR_W+4:5];
+    assign wgt_mac_addr = conv_weight_dma_byte_idx[BUF_ADDR_W+5:6];
 
     // ============================================================
     // Phase 2: FC Shadow Weight Load — loads next chunk's weights
@@ -2649,7 +2650,7 @@ module npu_top #(
                 reg [31:0] sh_load_count;
                 integer sh_lane;
                 sh_remaining  = (fc_shadow_chunk_inputs * fc_tile_outputs) - fc_shadow_phase;
-                sh_bytes_in_beat = 32'd32 - fc_shadow_dma_byte_idx[4:0];
+                sh_bytes_in_beat = 32'd32 - fc_shadow_dma_byte_idx[HB_BEAT_BYTE_BITS-1:0];
                 sh_load_count = (sh_remaining > 32'd32) ? 32'd32 : sh_remaining;
                 if (sh_bytes_in_beat < sh_load_count)
                     sh_load_count = sh_bytes_in_beat;
@@ -2658,11 +2659,11 @@ module npu_top #(
                         reg [31:0] sh_lane_idx;
                         reg [31:0] sh_lane_out_idx;
                         reg [31:0] sh_lane_row_idx;
-                        reg [4:0]  sh_lane_byte_sel;
+                        reg [HB_BEAT_BYTE_BITS-1:0] sh_lane_byte_sel;
                         sh_lane_idx      = fc_shadow_phase + sh_lane;
                         sh_lane_out_idx  = sh_lane_idx / {16'd0, fc_shadow_chunk_inputs};
                         sh_lane_row_idx  = sh_lane_idx % {16'd0, fc_shadow_chunk_inputs};
-                        sh_lane_byte_sel = fc_shadow_dma_byte_idx[4:0] + sh_lane[4:0];
+                        sh_lane_byte_sel = fc_shadow_dma_byte_idx[HB_BEAT_BYTE_BITS-1:0] + sh_lane[HB_BEAT_BYTE_BITS-1:0];
                         wgt_load_reg_shadow[(sh_lane_row_idx * PE_COLS + sh_lane_out_idx)*8 +: 8] <=
                             hb_beat_byte(wgt_rd_data, sh_lane_byte_sel);
                     end
