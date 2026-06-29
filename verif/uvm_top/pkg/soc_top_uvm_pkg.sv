@@ -184,6 +184,7 @@ package soc_top_uvm_pkg;
   //---------------------------------------------------------------------------
   `include "npu_fc_16x16_full_array_test.sv"
   `include "npu_fc_full_cluster_96out_test.sv"
+  `include "npu_fc_b1_diag.sv"
   `include "npu_cluster_mask_sweep_test.sv"
   `include "npu_perf_counter_scaling_test.sv"
   `include "npu_back_to_back_task_test.sv"

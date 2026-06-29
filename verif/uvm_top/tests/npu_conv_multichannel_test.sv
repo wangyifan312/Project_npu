@@ -26,34 +26,38 @@ class npu_conv_multichannel_test extends soc_base_test;
 
   task run_phase(uvm_phase phase);
     npu_conv_task_seq conv_seq;
+    // wgt_per_cin = (9*2 + 3) & ~3 = 20 bytes (4B aligned).
+    // NPU preload needs padded weights; DPI-C golden needs unpadded.
+    localparam WGT_PER_CIN = 20;
     byte unsigned input_bytes[18];
-    byte unsigned weight_bytes[36];
+    byte unsigned weight_golden[36];   // unpadded: 2×18 bytes for DPI-C
+    byte unsigned weight_preload[40];  // padded: 2×20 bytes for NPU
     byte unsigned expected_bytes[];
     int i;
 
     phase.raise_objection(this);
     #200;
 
-    // Build input data: NHWC, 3x3 spatial, Cin=2
-    // Channel 0 = all 1s, Channel 1 = all 2s
-    // At each of 9 positions: [ch0=1, ch1=2]
     for (i = 0; i < 9; i++) begin
       input_bytes[i*2 + 0] = 8'h01;
       input_bytes[i*2 + 1] = 8'h02;
     end
 
-    // Build weight data: HWIO, 3x3x2x2 = 36 bytes, all 1s
-    for (i = 0; i < 36; i++) begin
-      weight_bytes[i] = 8'h01;
-    end
+    // Golden: unpadded weights (36 bytes, all 0x01)
+    for (i = 0; i < 36; i++) weight_golden[i] = 8'h01;
 
-    // --- Use DPI-C reference model to compute golden output ---
+    // NPU preload: padded to wgt_per_cin per input channel
+    for (i = 0; i < 18; i++) weight_preload[i] = 8'h01;
+    for (i = 18; i < WGT_PER_CIN; i++) weight_preload[i] = 8'h0;
+    for (i = 0; i < 18; i++) weight_preload[WGT_PER_CIN + i] = 8'h01;
+    for (i = 18; i < WGT_PER_CIN; i++) weight_preload[WGT_PER_CIN + i] = 8'h0;
+
+    // --- DPI-C golden with unpadded weights ---
     `uvm_info("TEST", "Computing golden reference via DPI-C model (multi-channel 3x3 valid)...", UVM_NONE)
-    env.golden.compute_conv(input_bytes, weight_bytes,
-                            3, 3,          // H=3, W=3
-                            2, 2,          // Cin=2, Cout=2
+    env.golden.compute_conv(input_bytes, weight_golden,
+                            3, 3, 2, 2,   // H=3,W=3 Cin=2,Cout=2
                             3, 3,          // kernel 3x3
-                            1, 0);         // stride=1, padding=0 (valid)
+                            1, 0);         // stride=1, valid
     expected_bytes = env.golden.output_bytes;
 
     `uvm_info("TEST", $sformatf("Golden model computed: %0d output bytes (first 8 = [%02x %02x %02x %02x %02x %02x %02x %02x])",
@@ -68,7 +72,7 @@ class npu_conv_multichannel_test extends soc_base_test;
     // Configure and run NPU task
     conv_seq = npu_conv_task_seq::type_id::create("conv_seq");
     conv_seq.input_data            = input_bytes;
-    conv_seq.weight_data           = weight_bytes;
+    conv_seq.weight_data           = weight_preload;  // padded for NPU wgt_per_cin
     conv_seq.input_h               = 16'd3;
     conv_seq.input_w               = 16'd3;
     conv_seq.input_c               = 16'd2;

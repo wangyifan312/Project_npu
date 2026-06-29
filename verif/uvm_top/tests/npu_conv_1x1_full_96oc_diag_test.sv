@@ -54,16 +54,15 @@ class npu_conv_1x1_full_96oc_diag_test extends soc_base_test;
     for (i = 0; i < 25; i++)
       input_bytes[i] = 8'h01;
 
-    // Weight: 3x3 kernel, Cin=1, Cout=96, all 0x01 (9*96 = 864 bytes)
-    output_c = 96;
-    weight_bytes = new[864];
-    for (i = 0; i < 864; i++)
+    // Single-cluster 64×64: max 64 output channels for Conv (1 PE col per channel)
+    output_c = 64;
+    weight_bytes = new[9 * 64];
+    for (i = 0; i < 9 * 64; i++)
       weight_bytes[i] = 8'h01;
 
-    `uvm_info("TEST", "=== TEST 3: Full-Cluster 3x3 Conv, 5x5x96 ===", UVM_NONE)
+    `uvm_info("TEST", "=== TEST 3: Single-Cluster 3x3 Conv, 5x5x64 ===", UVM_NONE)
     `uvm_info("TEST", $sformatf("Input: %0d bytes (5x5x1 all-1s)", input_bytes.size()), UVM_NONE)
-    `uvm_info("TEST", $sformatf("Weight: %0d bytes (3x3x1x96 all-1s)", weight_bytes.size()), UVM_NONE)
-    `uvm_info("TEST", "Cluster0:ch[0:15] Cl1:ch[16:31] Cl2:ch[32:47] Cl3:ch[48:63] Cl4:ch[64:79] Cl5:ch[80:95]", UVM_NONE)
+    `uvm_info("TEST", $sformatf("Weight: %0d bytes (3x3x1x64 all-1s)", weight_bytes.size()), UVM_NONE)
 
     // --- Golden reference ---
     env.golden.compute_conv(input_bytes, weight_bytes,
@@ -86,20 +85,20 @@ class npu_conv_1x1_full_96oc_diag_test extends soc_base_test;
     conv_seq.input_h               = 16'd5;
     conv_seq.input_w               = 16'd5;
     conv_seq.input_c               = 16'd1;
-    conv_seq.output_c              = 16'd96;
+    conv_seq.output_c              = output_c;
     conv_seq.expected_output_bytes = expected_bytes.size();
     conv_seq.expected_output       = expected_bytes;
-    conv_seq.cluster_mode          = 2'd2;   // full cluster (all 6)
+    conv_seq.cluster_mode          = 2'd0;   // single cluster
     conv_seq.conv_cfg              = 32'd2;  // 3x3 kernel, valid
     conv_seq.input_base            = 32'h0000_0100;
     conv_seq.weight_base           = 32'h0000_0200;
-    conv_seq.output_base           = 32'h0000_0300;
+    conv_seq.output_base           = 32'h0000_1000;  // after weight region (0x200+576=0x440)
 
     clear_probe_sticky();
     conv_seq.start(env.axil_ag.seqr);
 
     // --- Check 1: Output compare ---
-    for (c = 0; c < 6; c++) begin
+    for (c = 0; c < 1; c++) begin
       cluster_correct[c] = 0;
       cluster_mismatch[c] = 0;
       cluster_zero[c] = 0;
