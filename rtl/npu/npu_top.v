@@ -2585,7 +2585,7 @@ module npu_top #(
                             if (comp_drain_cnt == array_drain_offset) begin
                                 // First valid column captured; init collect
                                 acc_col_idx <= 16'd0;
-                                if (is_fc_mode)
+                                if (fc_or_gemm)
                                     acc_partial_addr <= {BUF_ADDR_W{1'b0}};
                                 acc_collect_wait <= 1'b1;
                                 acc_collect_skip_write <= 1'b0;
