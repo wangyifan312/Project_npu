@@ -356,16 +356,77 @@ Peak: 1.6384 TOPS @ 200MHz. Supports native 5×5 Conv for LeNet-5.
   - conv_frontend stride2 row transition shift count fix
   - FC total_global_cols reverted to output_c (correct for PE_COLS=64, single cluster)
 
-## 9. Future Work & Known Blockers
+### 8.5. P1: FC Ping-Pong Weight Preload Rewrite (2026-06-29)
 
-### Active
-  - **P2 Phase B 1 beat/cycle**: blocked by act_buffer 2-cycle read latency.
-    Requires registered pipeline (vec_relu_pipe + vec_relu_pipe2) or dual-port
-    buffer.  vector_relu bandwidth theoretical cap ~87% (current: 64%).
-  - **P3 store_pack 128-bit**: blocked by acc_buffer 32-bit single-port.
-    Requires buffer DATA_WIDTH 32→128 + byte-enable writes + COLLECT column
-    packing.  ~150 lines across npu_buffer.v + npu_top.v (6 writer paths).
-    Expected: store_pack 16→~5 cycles/beat.
+**P1**: B1 bypass removed. FSM_FC_TILE_PREP checks fc_preload_done for current tile.
+Preload hit: skips DMA, uses preloaded wgt_buffer bank.  Saves ~20 cycles DMA
+latency per additional FC tile.
+
+  - Added fc_use_preload flag, fc_preload_byte_offset register
+  - Fixed preload wgt_dma_bytes: was using stale registered fc_preload_tile_outputs=0.
+    Now uses combinational wire fc_preload_tile_outputs_next.
+  - Fixed preload byte_offset: was hardcoded to 0, now uses fc_preload_wgt_base[4:0].
+  - Bias path: FSM_BIAS_EXTRACT restores wgt_consume_bank to fc_preload_bank.
+  - FC 96-out test: 63/384 → 0/384 mismatches (2-tile FC verified).
+
+### 8.6. P2: DRAIN+COLLECT Overlap + FC Single-Cycle Collect (2026-06-29)
+
+**P2**: Removed FC 2-cycle COLLECT wait (now 1 cycle/column for both FC and Conv).
+Overlapped DRAIN and COLLECT within CP_DRAIN state: after first valid column,
+collect starts in parallel while drain continues.  Both advance 1 column/cycle.
+
+  - acc_rd_addr/acc_wr logic updated to support CP_DRAIN writes.
+  - FC compute phase (FEED+DRAIN+COLLECT): 197 → 69 cycles (-65%).
+
+**P1+P2 Performance (FC 64→64 peak throughput):**
+
+| Metric | Before | After | Change |
+|--------|:--:|:--:|:--:|
+| Total cycles | 823 | 697 | -15.3% |
+| Array active cycles | 262 | 136 | -48.1% |
+| Effective TOPS | 0.52 | 0.32 | — |
+
+TOPS decreases because array_active/total ratio drops (fixed DMA overhead
+dominates).  >1.3 TOPS requires P3 double-buffering to overlap bus with compute.
+
+**FC 64→128 (2-tile):** 1,386 total cycles, 272 arr_active, 0.32 TOPS,
+bus_active 31.2%.  Functional: 512/512 bytes matched.
+
+### 8.7. Naming Cleanup (2026-06-29)
+
+  - `compute_core_6cluster.v` → `compute_core.v` (module: `compute_core`)
+  - `cluster_16x16.v` → `pe_cluster.v` (module: `pe_cluster`)
+  - Default `CLUSTER_COUNT = 6` → `= 1`
+  - All RTL, testbench, filelist, and key doc references updated.
+
+## 9. Known Issues & Limitations
+
+### 9.1. Multi-Chunk FC (input_c > PE_ROWS) — Phase 2 Shadow Register Bug
+
+FC with input_c > 64 (triggering multi-chunk path via Phase 2 shadow register)
+produces incorrect outputs.  Root cause TBD.  Workaround: keep input_c ≤ 64
+for FC tasks.  This limits peak MAC utilization for very deep FC layers.
+
+### 9.2. TOPS < 1.3 Target
+
+Current effective TOPS ~0.32 for FC 64→128.  Requires P3 double-buffering
+(act_buffer + acc_buffer ping-pong) to overlap DMA reads/writes with compute
+and achieve >1.3 TOPS.
+
+### 9.3. AXI Bus Bandwidth < 60% During FC/Conv Compute
+
+Bus active = 31.2% for FC 64→128.  Bus is idle during compute phase.
+P3 double-buffering needed to sustain concurrent read+write+compute.
+
+The 60% target IS met for VecReLU streaming path
+(npu_bandwidth_60pct_stress_test: functional_pass=YES, bandwidth_pass=YES).
+
+## 10. Future Work
+
+### Active (P3 candidate)
+  - **P3 act/acc double-buffering**: Major FSM refactor to overlap DMA
+    read (next batch) + DMA write (previous batch) with compute.
+    Required for >1.3 TOPS and ≥60% bus bandwidth during FC/Conv.
 
 ### Deferred (post-FPGA)
   1. FPGA synthesis / timing check
@@ -373,4 +434,5 @@ Peak: 1.6384 TOPS @ 200MHz. Supports native 5×5 Conv for LeNet-5.
   3. Coverage flow
   4. Delivery hardening
   5. acc_buffer 128-bit widening (Phase C)
-  6. read/compute/write overlap (ping-pong buffer architecture)
+  6. 512-bit AXI migration (paused on feature/512bit branch)
+  7. Multi-chunk FC shadow register bug fix

@@ -158,6 +158,18 @@
 // Offset 53: Write txn cycles (RO)
 `define NPU_REG_PERF_WRITE_TXN_CYC  (`SOC_NPU_REG_BASE + 32'hD4)
 
+// Offset 54: AXI AR handshake cycles (RO)
+`define NPU_REG_PERF_AR_HANDSHAKE   (`SOC_NPU_REG_BASE + 32'hD8)
+
+// Offset 55: AXI AW handshake cycles (RO)
+`define NPU_REG_PERF_AW_HANDSHAKE   (`SOC_NPU_REG_BASE + 32'hDC)
+
+// Offset 56: AXI B handshake cycles (RO)
+`define NPU_REG_PERF_B_HANDSHAKE    (`SOC_NPU_REG_BASE + 32'hE0)
+
+// Offset 57: AXI bus active cycles (RO) — any AXI channel active
+`define NPU_REG_PERF_BUS_ACTIVE     (`SOC_NPU_REG_BASE + 32'hE4)
+
 //-----------------------------------------------------------------------------
 // Extended task parameters (RW)
 //-----------------------------------------------------------------------------

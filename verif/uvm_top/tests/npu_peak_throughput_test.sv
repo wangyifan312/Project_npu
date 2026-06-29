@@ -106,11 +106,10 @@ class npu_peak_throughput_test extends soc_base_test;
     total_arr_cycles = {32'd0, arr_active};
 
     // Effective MACs: each of 4096 PEs does one MAC per active cycle.
-    // Systolic array for FC 64→64 processes 64 inputs × 64 PEs/col = 4096 MACs/cycle
-    // when pipeline is full.  Report total MACs (weight count) and array occupancy.
-    // Ops  = 4096 PE × 2 ops/MAC × arr_active_cycles
-    // Time = total_cycles / 200 MHz (5 ns period)
-    // Tops = Ops / Time / 1e12
+    // Effective TOPS = arr_active / total_cycles × peak_TOPS.
+    // Each arr_active cycle: all 4,096 PEs compute 1 MAC (2 ops).
+    // P2 DRAIN+COLLECT overlap removes COLLECT from arr_active,
+    // giving a more accurate PE utilization metric (pre-P2: 0.52 inflated).
     effective_tops = (cycle_lo > 0)
       ? (4096.0 * 2.0 * $itor(total_arr_cycles) * 200.0e6) / ($itor(cycle_lo) * 1.0e12)
       : 0.0;
