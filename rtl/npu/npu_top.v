@@ -11,8 +11,8 @@ module npu_top #(
     parameter ACC_DATA_W  = 32,
     parameter BUF_ENTRIES = 1024,
     parameter BUF_ADDR_W  = 10,
-    parameter TILE_ROWS   = 4,
-    parameter TILE_COLS   = 4,
+    parameter TILE_ROWS   = 16,
+    parameter TILE_COLS   = 16,
     parameter [1:0] CLUSTER_MODE = 2'd0,
     parameter [5:0] CLUSTER_MASK_REQ = 6'b11_1111
 ) (
@@ -77,8 +77,8 @@ module npu_top #(
     localparam PE_ROWS = TILE_ROWS * 4;
     localparam PE_COLS = TILE_COLS * 4;
     localparam N_TILES = TILE_ROWS * TILE_COLS;
-    localparam KERNEL_SPATIAL = 16;   // max supported spatial kernel elements (4x4, PE_ROWS limited)
-    localparam CLUSTER_COUNT = 6;
+    localparam KERNEL_SPATIAL = 25;   // 5x5 spatial kernel elements
+    localparam CLUSTER_COUNT = 1;
     localparam CLUSTER_ACT_W = PE_ROWS * 8;
     localparam CLUSTER_SUM_W = PE_COLS * 32;
     localparam CLUSTER_WGT_W = N_TILES * 16 * 8;
@@ -589,7 +589,7 @@ module npu_top #(
     wire [(PE_COLS*32)-1:0]                  cluster_arb_sum_out;
     wire [2:0]                               cluster_arb_cluster_id;
     wire                                     cluster_arb_all_done;
-    wire [5:0]                perf_cluster_enable;
+    wire [CLUSTER_COUNT-1:0]   perf_cluster_enable;
     wire [2:0]                perf_cluster_count;
     wire                      perf_schedule_valid;
     wire is_fc_mode      = (task_type == 3'd1);
@@ -630,7 +630,7 @@ module npu_top #(
     wire [15:0] total_global_cols;
     wire [15:0] cluster_active_cols;
     wire [15:0] collect_total_cols;
-    assign total_global_cols  = is_fc_mode ? fc_tile_outputs : output_c;
+    assign total_global_cols  = output_c;
     assign cluster_active_cols = (cluster_count_i > 1 && output_c > 16'd0) ?
                                   ((output_c + cluster_count_i - 16'd1) / cluster_count_i) : output_c;
     assign array_active_cols = is_fc_mode ? fc_tile_outputs :
@@ -733,9 +733,9 @@ module npu_top #(
         end
     end
 
-    cluster_scheduler u_cluster_scheduler (
+    cluster_scheduler #(.CLUSTER_COUNT(CLUSTER_COUNT)) u_cluster_scheduler (
         .cluster_mode(cluster_mode_cfg),
-        .cluster_mask_req(cluster_mask_cfg),
+        .cluster_mask_req(cluster_mask_cfg[CLUSTER_COUNT-1:0]),
         .cluster_enable(perf_cluster_enable),
         .cluster_count(perf_cluster_count),
         .schedule_valid(perf_schedule_valid)

@@ -44,8 +44,8 @@ module tb_top;
     localparam PERF_CLUSTER_CFG    = NPU_BASE + 32'h60;
 
     top #(
-        .NPU_TILE_ROWS(4),
-        .NPU_TILE_COLS(4)
+        .NPU_TILE_ROWS(16),
+        .NPU_TILE_COLS(16)
     ) u_top (
         .clk(clk),
         .rst_n(rst_n),

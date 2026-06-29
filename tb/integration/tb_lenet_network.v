@@ -96,7 +96,7 @@ module tb_lenet_network;
     reg [63:0] sample_total_cluster_active, sample_total_cluster_stall;
     reg [63:0] sample_total_ar_cyc, sample_total_aw_cyc, sample_total_b_cyc, sample_total_bus_cyc;
 
-    npu_top #(.TILE_ROWS(4), .TILE_COLS(4), .BUF_ENTRIES(16384), .BUF_ADDR_W(14)) u_npu (
+    npu_top #(.TILE_ROWS(16), .TILE_COLS(16), .BUF_ENTRIES(16384), .BUF_ADDR_W(14)) u_npu (
         .clk(clk), .rst_n(rst_n),
         .s_axi_awvalid(s_axi_awvalid), .s_axi_awready(s_axi_awready),
         .s_axi_awaddr(s_axi_awaddr), .s_axi_wvalid(s_axi_wvalid),

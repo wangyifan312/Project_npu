@@ -23,8 +23,8 @@ module tb_soc_top_uvm;
   // DUT instantiation
   //-----------------------------------------------------------------------------
   top #(
-    .NPU_TILE_ROWS(4),
-    .NPU_TILE_COLS(4),
+    .NPU_TILE_ROWS(16),
+    .NPU_TILE_COLS(16),
     .NPU_CLUSTER_MODE(2'd0),
     .NPU_CLUSTER_MASK_REQ(6'b111111)
   ) u_top (
@@ -119,7 +119,7 @@ module tb_soc_top_uvm;
   assign probe_vif.npu_fsm_state      = u_top.u_npu.fsm_state;
   assign probe_vif.npu_task_type      = u_top.u_npu.task_type;
 
-  // Tile clock enables: CLUSTER_COUNT * N_TILES = 6 * 16 = 96
+  // Tile clock enables: CLUSTER_COUNT * N_TILES = 1 * 256 = 256
   assign probe_vif.npu_cluster_tile_clk_en_flat =
     u_top.u_npu.cluster_tile_clk_en_all_flat;
 

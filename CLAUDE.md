@@ -20,9 +20,9 @@
 ## 2. 固定架构基线
 
 - SoC：`PicoRV32 + AXI interconnect + shared_ram + NPU`
-- NPU：`6 x 16x16 PE cluster`
-- 总 PE：`1536`
-- 理论峰值：`0.6144 TOPS @ 200MHz`
+- NPU：`1 x 64x64 PE cluster`
+- 总 PE：`4,096`
+- 理论峰值：`1.6384 TOPS @ 200MHz`
 - shared memory：`1 MB = 32768 x 256-bit beat`
 - CPU 控制面：`32-bit AXI-Lite`
 - NPU DMA 数据面：`256-bit AXI4 INCR burst`
@@ -73,7 +73,7 @@ ResNet-20 不改变当前 LeNet/MNIST formal baseline，但它已经不再停留
 
 - `task_type` 全链路 `3 bit`
 - generalized Conv foundation：
-  - `1x1 / 3x3`（5×5 已移除 — PE_ROWS=16 < KERNEL_SPATIAL=25）
+  - `1x1 / 3x3 / 5x5`
   - `stride1 / stride2`
   - `valid / same`
 - Conv/FC folded INT32 bias + requant
@@ -339,47 +339,23 @@ regression (FC/Conv/Requant smoke, bandwidth 60% stress, DMA writer directed).
   tb_dma_writer_zero_byte:        PASS
   tb_top_lenet (LeNet):           1/1 correct
 
-### 8.4. Architecture Fix & Bug Fixes (2026-06-29)
+### 8.4. Architecture Refactor: 64×64 Single-Cluster + Bug Fixes (2026-06-29)
 
-**Architecture correction**: RTL TILE_ROWS/COLS corrected 16→4, changing each
-cluster from 64×64 PE (4,096 PE) to the intended 16×16 PE (256 PE). Total PE
-count corrected from 24,576 to **1,536**.
+**Architecture refactor**: Reverted to 64×64 PE single-cluster (CLUSTER_COUNT 6→1).
+TILE_ROWS=16, TILE_COLS=16, PE_ROWS=64, PE_COLS=64, total PE=4,096.
+Peak: 1.6384 TOPS @ 200MHz. Supports native 5×5 Conv for LeNet-5.
 
-Concurrent changes:
-- `KERNEL_SPATIAL` 25→16 (5×5 Conv removed — PE_ROWS=16 too small for 25 spatial positions)
-- 6 hardcoded `64` values in npu_top.v parameterized to `PE_COLS`
-- task_checker.v: 5×5 Conv mode removed from supported configs
+- cluster_scheduler.v: parameterized for CLUSTER_COUNT (1..N)
+- output_arbiter.v: CLUSTER_OUT_W default 64*32=2048 for 64 PE columns
+- npu_top.v: CLUSTER_COUNT=1, perf_cluster_enable width auto-scaled
+- Hardcoded 64 values already parameterized to PE_COLS (from previous fix)
+- 5×5 Conv restored: KERNEL_SPATIAL=25, task_checker 5×5 re-enabled
+- Testbenches synced: tb_soc_top_uvm.sv NPU_TILE_ROWS=16, LeNet tb uses 16
 
-**Bug fix 1: FC multi-tile total_global_cols OOB**
-  - Symptom: npu_fc_full_cluster_96out_test FAILED with mismatches starting at byte 64.
-  - Root cause: `total_global_cols = output_c` (96), but wgt_load_reg only has
-    PE_COLS=16 columns. Cluster 1+ accessed wgt_load_reg column 16+ → OOB.
-  - Fix: `total_global_cols = is_fc_mode ? fc_tile_outputs : output_c`
-    (npu_top.v:633). For FC, cluster routing uses per-tile column count.
-  - Also fixed test address overlap: Tile 2 weight DMA (0x200+16*16=0x300)
-    overlapped with Tile 1 output (0x300). Moved output_base to 0x1000.
-
-**Bug fix 2: GAP acc_buffer write lost on fsm_state transition**
-  - Symptom: npu_gap_smoke_test actual=00 expected=0x64.
-    GAP computation correct (gap_sum=6300, gap_q=100), but output was 0.
-    DMA writer completed but WDATA was 'x' — data never reached shared RAM.
-  - Root cause: `acc_wr_en` only selected `gap_acc_wr_en_r` when
-    `fsm_state == FSM_GAP_COMPUTE`. But gap_acc_wr_en_r was asserted on the
-    SAME cycle fsm_state transitioned to FSM_STORE (both non-blocking).
-    Next cycle: fsm_state ≠ GAP_COMPUTE → acc_wr_en bypassed GAP path →
-    acc_buffer write never happened → FIFO data = 'x'.
-  - Fix: Changed `(fsm_state == FSM_GAP_COMPUTE) ? gap_acc_wr_*` to
-    `gap_acc_wr_en_r ? gap_acc_wr_*` in all three assigns (acc_wr_addr,
-    acc_wr_data, acc_wr_en) in npu_top.v.
-
-**Bug fix 3: conv_frontend stride2 row transition shift count**
-  - Symptom: npu_conv_stride2_test FAILED at 2nd output row (actual=12, expected=18).
-  - Root cause: Conv row transition always shifted line buffer by 1 row,
-    but stride=2 requires 2 shifts to cover the 2-row gap between output rows.
-    Only 6/9 MAC positions had valid data for the 2nd output row.
-  - Fix: Added `stride_shift_cnt` and `stride_first_shift` registers to
-    conv_frontend.v. S_COMPUTE→S_SHIFT sets remaining= stride-1;
-    S_SLIDE_AND_COMPUTE loops back to S_SHIFT until remaining=0.
+**Bug fixes retained from 16×16 phase:**
+  - GAP acc_wr_en/data/addr fix (fsm_state timing race)
+  - conv_frontend stride2 row transition shift count fix
+  - FC total_global_cols reverted to output_c (correct for PE_COLS=64, single cluster)
 
 ## 9. Future Work & Known Blockers
 

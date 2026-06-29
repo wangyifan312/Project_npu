@@ -10,8 +10,8 @@ module top #(
     parameter SHARED_RAM_DEPTH = 32768,  // 1 MB shared memory: 32768 x 256-bit beats
     parameter NPU_BUF_ENTRIES = 16384,
     parameter NPU_BUF_ADDR_W = 14,
-    parameter NPU_TILE_ROWS = 4,
-    parameter NPU_TILE_COLS = 4,
+    parameter NPU_TILE_ROWS = 16,
+    parameter NPU_TILE_COLS = 16,
     parameter [1:0] NPU_CLUSTER_MODE = 2'd0,
     parameter [5:0] NPU_CLUSTER_MASK_REQ = 6'b11_1111
 ) (

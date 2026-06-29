@@ -105,52 +105,39 @@ class npu_fc_full_cluster_96out_test extends soc_base_test;
       mismatch_seen = 1'b1;
     end
 
-    // --- Check 2: Full cluster activity probe ---
-    `uvm_info("TEST", "=== Full-Cluster Activity Probe ===", UVM_NONE)
-    `uvm_info("TEST", $sformatf("cluster_enable = %b (expected 111111)",
+    // --- Check 2: Cluster activity probe (single-cluster 64x64) ---
+    `uvm_info("TEST", "=== Cluster Activity Probe (64x64 single-cluster) ===", UVM_NONE)
+    `uvm_info("TEST", $sformatf("cluster_enable = %b (expected 1)",
       probe_vif.npu_cluster_enable), UVM_NONE)
-    `uvm_info("TEST", $sformatf("cluster_count  = %0d (expected 6)",
+    `uvm_info("TEST", $sformatf("cluster_count  = %0d (expected 1)",
       probe_vif.npu_cluster_count), UVM_NONE)
     `uvm_info("TEST", $sformatf("cluster_busy   = %b", probe_vif.npu_cluster_busy), UVM_NONE)
     `uvm_info("TEST", $sformatf("cluster_valid  = %b", probe_vif.npu_cluster_valid), UVM_NONE)
     `uvm_info("TEST", $sformatf("cluster_done   = %b", probe_vif.npu_cluster_done), UVM_NONE)
 
-    // Verify all 6 clusters were enabled and participated
-    if (probe_vif.npu_cluster_enable !== 6'b111111) begin
+    // Verify single cluster is enabled
+    if (probe_vif.npu_cluster_enable[0] !== 1'b1) begin
       `uvm_error("TEST", $sformatf(
-        "FAIL: cluster_enable=%b, expected 111111", probe_vif.npu_cluster_enable))
+        "FAIL: cluster_enable=%b, expected bit0=1", probe_vif.npu_cluster_enable))
       mismatch_seen = 1'b1;
     end else begin
-      `uvm_info("TEST", "PASS: All 6 clusters enabled", UVM_NONE)
+      `uvm_info("TEST", "PASS: cluster 0 enabled", UVM_NONE)
     end
 
-    if (probe_vif.npu_cluster_count !== 3'd6) begin
+    if (probe_vif.npu_cluster_count !== 3'd1) begin
       `uvm_error("TEST", $sformatf(
-        "FAIL: cluster_count=%0d, expected 6", probe_vif.npu_cluster_count))
+        "FAIL: cluster_count=%0d, expected 1", probe_vif.npu_cluster_count))
       mismatch_seen = 1'b1;
     end else begin
-      `uvm_info("TEST", "PASS: cluster_count = 6", UVM_NONE)
+      `uvm_info("TEST", "PASS: cluster_count = 1", UVM_NONE)
     end
 
-    // --- Check 2b: Sticky probe checks (activity window evidence) ---
-    `uvm_info("TEST", "=== Sticky Probe Checks ===", UVM_NONE)
-    `uvm_info("TEST", $sformatf("observed_cluster_enable_mask = %b", probe_vif.observed_cluster_enable_mask), UVM_NONE)
-    `uvm_info("TEST", $sformatf("observed_all_clusters_active = %b", probe_vif.observed_all_clusters_active), UVM_NONE)
-
-    if (probe_vif.observed_cluster_enable_mask !== 6'b111111) begin
-      `uvm_error("TEST", $sformatf(
-        "FAIL: observed_cluster_enable_mask=%b, expected 111111",
-        probe_vif.observed_cluster_enable_mask))
+    // --- Check 2b: Sticky probe (single cluster busy during window) ---
+    if (probe_vif.observed_cluster_enable_mask[0] !== 1'b1) begin
+      `uvm_error("TEST", "FAIL: cluster 0 not observed enabled during busy window")
       mismatch_seen = 1'b1;
     end else begin
-      `uvm_info("TEST", "PASS: observed all 6 clusters enabled during busy window", UVM_NONE)
-    end
-
-    if (!probe_vif.observed_all_clusters_active) begin
-      `uvm_error("TEST", "FAIL: observed_all_clusters_active=0 (not all 6 clusters busy simultaneously)")
-      mismatch_seen = 1'b1;
-    end else begin
-      `uvm_info("TEST", "PASS: all 6 clusters observed active simultaneously", UVM_NONE)
+      `uvm_info("TEST", "PASS: cluster 0 observed enabled during busy window", UVM_NONE)
     end
 
     // --- Check 3: Perf counters ---

@@ -10,9 +10,9 @@ README 只保留导航、关键边界和常用入口；不要把 README 当作�
 
 ## 固定硬件基线
 
-- NPU：`6 x 16x16 PE cluster`
-- 总 PE：`1536`
-- 理论峰值：`0.6144 TOPS @ 200MHz`
+- NPU：`1 x 64x64 PE cluster`
+- 总 PE：`4,096`
+- 理论峰值：`1.6384 TOPS @ 200MHz`
 - shared memory：`1 MB = 32768 x 256-bit beat`
 - CPU 控制面：`32-bit AXI-Lite`
 - NPU DMA 数据面：`256-bit AXI4 INCR burst`
@@ -83,7 +83,7 @@ ResNet-20 当前也已经不再停留在"只做 software handoff"阶段。当前
   - `ADD_CFG / GAP_CFG / POSTPROC_CFG`
   - `ADD_SRC0/SRC1/OUT MULT/SHIFT`
 - generalized Conv foundation 已实现：
-  - kernel: `1x1 / 3x3` (5×5 removed — PE_ROWS=16 insufficient for 25 spatial positions)
+  - kernel: `1x1 / 3x3 / 5x5`
   - stride: `1 / 2`
   - padding: `valid / same`
 - folded INT32 bias + requant integration 已接入 Conv/FC 路径：

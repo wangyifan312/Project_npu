@@ -158,8 +158,8 @@ module tb_top_lenet;
         {TOP_LENET_CLUSTER_MODE_PARAM, TOP_LENET_EXPECT_CLUSTER_ENABLE};
 
     top #(
-        .NPU_TILE_ROWS(4),
-        .NPU_TILE_COLS(4),
+        .NPU_TILE_ROWS(16),
+        .NPU_TILE_COLS(16),
         .NPU_CLUSTER_MODE(TOP_LENET_CLUSTER_MODE_PARAM),
         .NPU_CLUSTER_MASK_REQ(TOP_LENET_CLUSTER_MASK_PARAM)
     ) u_top (
