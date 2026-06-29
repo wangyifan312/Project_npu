@@ -923,8 +923,9 @@ module npu_top #(
         .b_handshake_cycles(perf_b_handshake), .bus_active_cycles(perf_bus_active)
     );
 
-    wire [15:0] fc_tile_capacity_raw = ((BUF_ENTRIES * HB_BEAT_BYTES) / input_c);
-    wire [15:0] fc_tile_capacity_buf = (fc_tile_capacity_raw == 16'd0) ? 16'd1 : fc_tile_capacity_raw;
+    wire [31:0] fc_tile_capacity_raw = ((BUF_ENTRIES * HB_BEAT_BYTES) / input_c);
+    wire [15:0] fc_tile_capacity_buf = (fc_tile_capacity_raw > 32'd65535) ? 16'd65535 :
+                                       (fc_tile_capacity_raw == 32'd0) ? 16'd1 : fc_tile_capacity_raw[15:0];
     wire [15:0] fc_tile_capacity = (fc_tile_capacity_buf > PE_COLS_16) ? PE_COLS_16 : fc_tile_capacity_buf;
     wire [15:0] fc_out_remaining = output_c - fc_out_start;
     wire [15:0] fc_tile_outputs_next = (fc_out_remaining > fc_tile_capacity) ? fc_tile_capacity : fc_out_remaining;
@@ -1068,6 +1069,7 @@ module npu_top #(
     // Weight buffer read
     wire [BUF_ADDR_W-1:0] wgt_mac_addr;
     wire [31:0] fc_wgt_dma_base = blk_wgt_addr + fc_out_start * input_c;
+    wire [31:0] fc_preload_wgt_base = blk_wgt_addr + (fc_out_start + fc_tile_outputs) * input_c;
     wire [31:0] conv_wgt_dma_base = blk_wgt_addr + cin_idx * wgt_per_cin;
     wire [31:0] conv_next_wgt_dma_base = blk_wgt_addr + (cin_idx + 16'd1) * wgt_per_cin;
     wire [31:0] conv_wgt_valid_bytes = {16'd0, conv_kernel_area} * output_c;
@@ -1279,7 +1281,9 @@ module npu_top #(
 
     reg [BUF_ADDR_W-1:0] dma_rd_ptr;
     reg [1:0] store_pack_state;
-    reg [2:0] store_pack_lane;
+    localparam STORE_LANE_W = $clog2(AXI_DMA_DATA_W / ACC_DATA_W);  // 3 for 256b, 4 for 512b
+    localparam STORE_LANE_MAX = (AXI_DMA_DATA_W / ACC_DATA_W) - 1;  // 7 for 256b, 15 for 512b
+    reg [STORE_LANE_W-1:0] store_pack_lane;
     reg [31:0] store_word_idx;
     reg [AXI_DMA_DATA_W-1:0] store_pack_data;
     reg [AXI_DMA_DATA_W-1:0] dma_wr_data_r;
@@ -1387,12 +1391,12 @@ module npu_top #(
             pp_result <= 32'd0; task_active_r <= 1'b0;
             task_done_r <= 1'b0; task_error_r <= 1'b0; task_error_code_r <= 8'h0;
             act_dma_start <= 1'b0; act_dma_addr <= 32'h0; act_dma_bytes <= 32'h0;
-            wgt_dma_start <= 1'b0; wgt_dma_addr <= 32'h0; wgt_dma_bytes <= 32'h0; wgt_dma_byte_offset <= 5'd0;
+            wgt_dma_start <= 1'b0; wgt_dma_addr <= 32'h0; wgt_dma_bytes <= 32'h0; wgt_dma_byte_offset <= {HB_BEAT_BYTE_BITS{1'b0}};
             dma_wr_start <= 1'b0; dma_wr_started <= 1'b0;
             block_bank <= 1'b0; dma_wr_addr <= 32'h0; dma_wr_bytes <= 32'h0;
             dma_rd_ptr <= 0;
             store_pack_state <= STORE_PACK_IDLE;
-            store_pack_lane <= 3'd0;
+            store_pack_lane <= {STORE_LANE_W{1'b0}};
             store_word_idx <= 32'd0;
             store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
             dma_wr_data_r <= {AXI_DMA_DATA_W{1'b0}};
@@ -1669,8 +1673,8 @@ module npu_top #(
                 FSM_LOAD_ADD_SRC1: begin
                     wgt_dma_start <= 1'b1;
                     wgt_dma_addr <= {src1_addr[31:6], 6'b0};
-                    wgt_dma_byte_offset <= src1_addr[4:0];
-                    wgt_dma_bytes <= src1_bytes + {26'd0, src1_addr[4:0]};
+                    wgt_dma_byte_offset <= src1_addr[HB_BEAT_BYTE_BITS-1:0];
+                    wgt_dma_bytes <= src1_bytes + {26'd0, src1_addr[HB_BEAT_BYTE_BITS-1:0]};
                     wgt_load_start <= 1'b1;
                     wgt_load_bank <= block_bank;
                     fsm_state <= FSM_ADD_SRC1_WAIT;
@@ -1895,6 +1899,8 @@ module npu_top #(
                 end
 
                 FSM_FC_LOAD_WGT: begin
+                             $time, fc_tile_outputs, input_c, fc_wgt_dma_base,
+                             (fc_tile_outputs * input_c) + {26'd0, fc_wgt_dma_base[HB_BEAT_BYTE_BITS-1:0]});
                     wgt_dma_start <= 1'b1;
                     wgt_dma_addr <= {fc_wgt_dma_base[31:6], 6'b0};
                     wgt_dma_byte_offset <= fc_wgt_dma_base[HB_BEAT_BYTE_BITS-1:0];
@@ -2197,8 +2203,8 @@ module npu_top #(
                         wgt_load_bank <= ~wgt_consume_bank;
                         wgt_dma_start <= 1'b1;
                         wgt_dma_addr <= {((blk_wgt_addr + (fc_out_start + fc_tile_outputs) * input_c) >> 6), 6'b0};
-                        wgt_dma_byte_offset <= 5'd0;
-                        wgt_dma_bytes <= fc_preload_tile_outputs * input_c;
+                        wgt_dma_byte_offset <= {HB_BEAT_BYTE_BITS{1'b0}};
+                        wgt_dma_bytes <= fc_preload_tile_outputs * input_c + {26'd0, fc_preload_wgt_base[HB_BEAT_BYTE_BITS-1:0]};
                         wgt_load_start <= 1'b1;
                     end
                     case (comp_sub_state)
@@ -2467,7 +2473,7 @@ module npu_top #(
                         dma_wr_started <= 1'b1;
                         dma_rd_ptr <= 0;
                         store_pack_state <= STORE_PACK_IDLE;
-                        store_pack_lane <= 3'd0;
+                        store_pack_lane <= {STORE_LANE_W{1'b0}};
                         store_word_idx <= 32'd0;
                         store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
                         dma_wr_data_r <= {AXI_DMA_DATA_W{1'b0}};
@@ -2479,7 +2485,7 @@ module npu_top #(
                             dma_wr_valid_r <= 1'b0;
                             // Reset only on NEW store phase entry
                             if (!dma_wr_started) begin
-                                dma_rd_ptr <= 0; store_pack_lane <= 3'd0;
+                                dma_rd_ptr <= 0; store_pack_lane <= {STORE_LANE_W{1'b0}};
                                 store_word_idx <= 32'd0;
                                 store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
                             end else if (store_word_idx < store_words_active) begin
@@ -2496,17 +2502,17 @@ module npu_top #(
 
                         STORE_PACK_CAPTURE: begin
                             if (store_word_idx < store_words_active) begin
-                                if ((store_pack_lane == 3'd7) ||
+                                if ((store_pack_lane == STORE_LANE_MAX[STORE_LANE_W-1:0]) ||
                                     (store_word_idx + 32'd1 >= store_words_active)) begin
                                     dma_wr_data_r <= store_pack_data_next;
                                     dma_wr_valid_r <= 1'b1;
                                     store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
-                                    store_pack_lane <= 3'd0;
+                                    store_pack_lane <= {STORE_LANE_W{1'b0}};
                                     store_word_idx <= store_word_idx + 32'd1;
                                     store_pack_state <= STORE_PACK_SEND;
                                 end else begin
                                     store_pack_data <= store_pack_data_next;
-                                    store_pack_lane <= store_pack_lane + 3'd1;
+                                    store_pack_lane <= store_pack_lane + {{(STORE_LANE_W-1){1'b0}}, 1'b1};
                                     store_word_idx <= store_word_idx + 32'd1;
                                     dma_rd_ptr <= dma_rd_ptr + 1;
                                     store_pack_state <= STORE_PACK_WAIT;
@@ -2540,7 +2546,7 @@ module npu_top #(
                         dma_wr_started <= 1'b0;
                         dma_rd_ptr <= 0;
                         store_pack_state <= STORE_PACK_IDLE;
-                        store_pack_lane <= 3'd0;
+                        store_pack_lane <= {STORE_LANE_W{1'b0}};
                         store_word_idx <= 32'd0;
                         store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
                         if (is_fc_mode) begin
