@@ -49,7 +49,7 @@ module tb_cluster_perf_modes;
         .schedule_valid(schedule_valid)
     );
 
-    compute_core_6cluster #(
+    compute_core #(
         .CLUSTER_COUNT(CLUSTER_COUNT),
         .TILE_ROWS(TILE_ROWS),
         .TILE_COLS(TILE_COLS)

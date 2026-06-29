@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 
-module compute_core_6cluster #(
-    parameter CLUSTER_COUNT = 6,
+module compute_core #(
+    parameter CLUSTER_COUNT = 1,
     parameter TILE_ROWS = 4,
     parameter TILE_COLS = 4,
     parameter CLUSTER_ACT_W = TILE_ROWS * 4 * 8,
@@ -29,7 +29,7 @@ module compute_core_6cluster #(
     genvar cluster_idx;
     generate
         for (cluster_idx = 0; cluster_idx < CLUSTER_COUNT; cluster_idx = cluster_idx + 1) begin : gen_cluster
-            cluster_16x16 #(
+            pe_cluster #(
                 .TILE_ROWS(TILE_ROWS),
                 .TILE_COLS(TILE_COLS)
             ) u_cluster (

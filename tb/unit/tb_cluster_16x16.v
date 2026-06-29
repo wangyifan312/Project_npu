@@ -1,6 +1,6 @@
 `timescale 1ns / 1ps
 
-module tb_cluster_16x16;
+module tb_pe_cluster;
 
     localparam TILE_ROWS = 4;
     localparam TILE_COLS = 4;
@@ -28,7 +28,7 @@ module tb_cluster_16x16;
     integer idx;
     integer tile_idx;
 
-    cluster_16x16 #(
+    pe_cluster #(
         .TILE_ROWS(TILE_ROWS),
         .TILE_COLS(TILE_COLS)
     ) u_dut (
@@ -114,7 +114,7 @@ module tb_cluster_16x16;
             $fatal(1, "disabled cluster should not start");
         end
 
-        $display("tb_cluster_16x16 PASS");
+        $display("tb_pe_cluster PASS");
         $finish;
     end
 

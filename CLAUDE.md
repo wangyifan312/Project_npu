@@ -26,7 +26,7 @@
 - shared memory：`1 MB = 32768 x 256-bit beat`
 - CPU 控制面：`32-bit AXI-Lite`
 - NPU DMA 数据面：`256-bit AXI4 INCR burst`
-- 正式计算路径：`cluster_scheduler -> compute_core_6cluster -> output_arbiter`
+- 正式计算路径：`cluster_scheduler -> compute_core -> output_arbiter`
 - FC 正式路径：arrayized FC
 
 正式入口只认 `16x16` 基线：

@@ -2,7 +2,7 @@
 //
 // This test intentionally avoids the old scalar FC frontend/state machine. It
 // drives the same formal path used by FC after P0-3:
-// cluster_scheduler -> compute_core_6cluster -> output_arbiter.
+// cluster_scheduler -> compute_core -> output_arbiter.
 `timescale 1ns / 1ps
 
 module tb_fc_formal_min;
@@ -53,7 +53,7 @@ module tb_fc_formal_min;
         .schedule_valid(schedule_valid)
     );
 
-    compute_core_6cluster #(
+    compute_core #(
         .CLUSTER_COUNT(CLUSTER_COUNT),
         .TILE_ROWS(TILE_ROWS),
         .TILE_COLS(TILE_COLS)

@@ -1,6 +1,6 @@
 // npu_top: NPU accelerator orchestration top for the formal 6-cluster SoC baseline
 // Multi-channel Conv: temporal input-channel iteration with parallel output channels
-// Conv formal path: cluster_scheduler -> compute_core_6cluster -> output_arbiter
+// Conv formal path: cluster_scheduler -> compute_core -> output_arbiter
 `timescale 1ns / 1ps
 
 module npu_top #(
@@ -743,7 +743,7 @@ module npu_top #(
         .schedule_valid(perf_schedule_valid)
     );
 
-    compute_core_6cluster #(
+    compute_core #(
         .CLUSTER_COUNT(CLUSTER_COUNT),
         .TILE_ROWS(TILE_ROWS),
         .TILE_COLS(TILE_COLS)

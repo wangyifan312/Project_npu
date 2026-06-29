@@ -1,6 +1,6 @@
 `timescale 1ns / 1ps
 
-module tb_compute_core_6cluster;
+module tb_compute_core;
 
     localparam CLUSTER_COUNT = 6;
     localparam TILE_ROWS = 4;
@@ -33,7 +33,7 @@ module tb_compute_core_6cluster;
     integer elem_idx;
     integer wgt_idx;
 
-    compute_core_6cluster #(
+    compute_core #(
         .CLUSTER_COUNT(CLUSTER_COUNT),
         .TILE_ROWS(TILE_ROWS),
         .TILE_COLS(TILE_COLS)
@@ -169,7 +169,7 @@ module tb_compute_core_6cluster;
         check_cluster_sum(4, 80);
         check_cluster_sum(5, 96);
 
-        $display("tb_compute_core_6cluster PASS");
+        $display("tb_compute_core PASS");
         $finish;
     end
 

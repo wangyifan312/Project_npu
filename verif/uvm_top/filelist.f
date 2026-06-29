@@ -33,8 +33,8 @@ rtl/soc/shared_ram.v
 rtl/npu/mac_pe.v
 rtl/npu/mac_tile_4x4.v
 rtl/npu/array_top.v
-rtl/npu/cluster_16x16.v
-rtl/npu/compute_core_6cluster.v
+rtl/npu/pe_cluster.v
+rtl/npu/compute_core.v
 
 //-----------------------------------------------------------------------------
 // RTL: NPU control / scheduling

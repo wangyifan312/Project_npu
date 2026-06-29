@@ -1,6 +1,6 @@
 `timescale 1ns / 1ps
 
-module cluster_16x16 #(
+module pe_cluster #(
     parameter TILE_ROWS = 4,
     parameter TILE_COLS = 4,
     parameter PIPELINE_CYCLES = (TILE_ROWS * 4) + (TILE_COLS * 4) + 2
