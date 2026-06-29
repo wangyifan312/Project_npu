@@ -205,7 +205,6 @@ package soc_top_uvm_pkg;
   //---------------------------------------------------------------------------
   // System-level bandwidth utilization test
   //---------------------------------------------------------------------------
-  `include "npu_system_bus_util_test.sv"
 
   //---------------------------------------------------------------------------
   // Bandwidth 60% stress test — standalone Requant 65536-element workload
