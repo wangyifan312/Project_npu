@@ -1206,7 +1206,8 @@ module npu_top #(
     reg [BUF_ADDR_W-1:0] acc_wr_ptr;
     reg [BUF_ADDR_W-1:0] acc_partial_addr;  // partial sum address during COLLECT
     reg [31:0]           conv_collect_base_next;
-    assign acc_wr_addr = ((fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_COLLECT))
+    assign acc_wr_addr = ((fsm_state == FSM_COMPUTE) &&
+                         ((comp_sub_state == CP_COLLECT) || (comp_sub_state == CP_DRAIN)))
                          ? acc_partial_addr
                          : add_write_phase
                          ? add_acc_wr_addr_r
@@ -1232,7 +1233,8 @@ module npu_top #(
         gap_acc_wr_en_r ? gap_acc_wr_en_r :
         rq_internal_write_phase ? rq_acc_wr_en_r :
         (is_conv_mode || is_fc_mode)
-        ? ((fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_COLLECT) &&
+        ? ((fsm_state == FSM_COMPUTE) &&
+           ((comp_sub_state == CP_COLLECT) || (comp_sub_state == CP_DRAIN)) &&
            !acc_collect_wait && !acc_collect_skip_write &&
            (!is_conv_mode || ((comp_win_idx < comp_total_wins) &&
                               (acc_col_idx < collect_total_cols))))
@@ -1295,7 +1297,8 @@ module npu_top #(
 
     assign acc_rd_addr = ((fsm_state == FSM_REQUANT_COMPUTE) && rq_mode_internal)
                          ? rq_acc_rd_addr
-                         : ((fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_COLLECT))
+                         : ((fsm_state == FSM_COMPUTE) &&
+                            ((comp_sub_state == CP_COLLECT) || (comp_sub_state == CP_DRAIN)))
                          ? acc_partial_addr
                          : dma_rd_ptr;
     assign acc_rd_bank = acc_load_bank;
@@ -2299,10 +2302,13 @@ module npu_top #(
                             end
                         end
 
+                        // P2: CP_DRAIN with overlapped collect.
+                        // Drain captures columns into col_results[].
+                        // After first valid column (cnt >= offset), collect starts
+                        // in parallel: reads col_results[], accumulates into acc_buffer.
+                        // Both advance 1 column/cycle; drain leads by ~offset cycles.
                         CP_DRAIN: begin
-                            // The formal 6-cluster path captures one local output column per
-                            // enabled cluster, then output_arbiter aggregates the routed columns
-                            // into the global output-column vector.
+                            // === DRAIN: capture column from PE array ===
                             if (cluster_arb_out_valid) begin
                                 integer drain_cluster_idx;
                                 integer drain_rank_i;
@@ -2339,21 +2345,80 @@ module npu_top #(
                                 end
                             end
 
-                            if (comp_drain_cnt < (array_drain_offset + array_active_cols - 1)) begin
-                                comp_drain_cnt <= comp_drain_cnt + 16'd1;
-                            end else begin
+                            // === COLLECT: start after first valid column ===
+                            if (comp_drain_cnt == array_drain_offset) begin
+                                // First valid column captured; init collect
                                 acc_col_idx <= 16'd0;
-                                // Conv ownership was fixed in CP_FEED_ACT as
-                                // window_index * output_channels. Do not replace
-                                // it with the sequential write pointer here:
-                                // that pointer can lead the logical owner by one
-                                // after the first window. FC always accumulates
-                                // its current output tile from address zero.
                                 if (is_fc_mode)
                                     acc_partial_addr <= {BUF_ADDR_W{1'b0}};
                                 acc_collect_wait <= 1'b1;
                                 acc_collect_skip_write <= 1'b0;
-                                comp_sub_state <= CP_COLLECT;
+                            end else if (comp_drain_cnt > array_drain_offset) begin
+                                // Continue collecting in parallel with drain
+                                if (acc_collect_wait) begin
+                                    acc_collect_wait <= 1'b0;
+                                end else if (acc_col_idx + 16'd1 < collect_total_cols) begin
+                                    acc_col_idx <= acc_col_idx + 16'd1;
+                                    acc_partial_addr <= acc_partial_addr + 1;
+                                    if (is_conv_mode) begin
+                                        acc_collect_skip_write <=
+                                            (comp_total_wins != 16'd1) &&
+                                            (comp_win_idx + 16'd1 >= comp_total_wins) &&
+                                            (acc_col_idx + 16'd2 >= collect_total_cols) &&
+                                            ((acc_partial_addr + {{(BUF_ADDR_W-1){1'b0}}, 1'b1}) == {BUF_ADDR_W{1'b0}});
+                                    end
+                                end
+                            end
+
+                            // === Termination: both drain and collect complete ===
+                            // comp_drain_cnt > offset ensures collect has actually started
+                            // (previously the termination fired on the same cycle as init).
+                            if ((comp_drain_cnt > array_drain_offset) &&
+                                (comp_drain_cnt >= (array_drain_offset + array_active_cols - 1)) &&
+                                (acc_col_idx + 16'd1 >= collect_total_cols) &&
+                                !acc_collect_wait) begin
+                                acc_collect_skip_write <= 1'b0;
+                                if (is_fc_mode) begin
+                                    if (fc_in_base + fc_chunk_inputs < input_c) begin
+                                        fc_in_base <= fc_in_base + fc_chunk_inputs;
+                                        fc_chunk_inputs <= ((input_c - (fc_in_base + fc_chunk_inputs)) > PE_ROWS_16) ?
+                                                           PE_ROWS_16 :
+                                                           (input_c - (fc_in_base + fc_chunk_inputs));
+                                        wgt_load_phase <= 32'd0;
+                                        wgt_load_wait <= 1'b0;
+                                        if (fc_shadow_active) begin
+                                            wgt_load_reg <= wgt_load_reg_shadow;
+                                        end else begin
+                                            wgt_load_reg <= 0;
+                                        end
+                                        fc_shadow_active <= 1'b0;
+                                        fsm_state <= FSM_WGT_LD;
+                                    end else begin
+                                        if (bias_enabled) begin
+                                            rq_mode_internal <= 1'b1;
+                                            rq_word_store_mode <= 1'b0;
+                                            rq_src_idx <= 32'd0;
+                                            rq_src_wait <= 1'b1;
+                                            rq_total_words <= {16'd0, fc_tile_outputs};
+                                            rq_pack_idx <= 2'd0;
+                                            rq_pack_word <= 32'd0;
+                                            rq_store_addr <= blk_out_addr + {16'd0, fc_out_start};
+                                            rq_store_bytes <= {16'd0, fc_tile_outputs};
+                                            acc_load_start <= 1'b1;
+                                            fsm_state <= FSM_REQUANT_COMPUTE;
+                                        end else begin
+                                            fc_store_addr <= blk_out_addr + fc_out_start * 32'd4;
+                                            fc_store_bytes <= fc_tile_outputs * 32'd4;
+                                            acc_load_start <= 1'b1;
+                                            fsm_state <= FSM_STORE;
+                                        end
+                                    end
+                                    comp_sub_state <= CP_WAIT_WIN;
+                                end else begin
+                                    comp_sub_state <= CP_NEXT;
+                                end
+                            end else begin
+                                comp_drain_cnt <= comp_drain_cnt + 16'd1;
                             end
                         end
 
@@ -2363,9 +2428,9 @@ module npu_top #(
                             end else if (acc_col_idx + 16'd1 < collect_total_cols) begin
                                 acc_col_idx <= acc_col_idx + 16'd1;
                                 acc_partial_addr <= acc_partial_addr + 1;
-                                // FC: keep 2-cycle (acc_buffer RAW hazard with multi-tile)
-                                if (!is_conv_mode)
-                                    acc_collect_wait <= 1'b1;
+                                // P2: single-cycle per column for FC (removed 2-cycle wait).
+                                // Conv already runs 1 cycle/column (acc_collect_wait not set).
+                                // Safe because each column writes to different acc_buffer addr.
                                 if (is_conv_mode) begin
                                     acc_collect_skip_write <=
                                         (comp_total_wins != 16'd1) &&
