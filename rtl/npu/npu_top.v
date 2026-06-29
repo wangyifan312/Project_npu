@@ -2490,9 +2490,8 @@ module npu_top #(
                                         ({16'd0, comp_win_idx} * {16'd0, collect_total_cols});
                                     acc_partial_addr <= conv_collect_base_next[BUF_ADDR_W-1:0];
                                 end else if (fc_or_gemm) begin
-                                    // GEMM: offset accumulator by gemm_row_idx * N
-                                    acc_partial_addr <= is_gemm_mode ?
-                                        (gemm_row_idx * gemm_N_val) : {BUF_ADDR_W{1'b0}};
+                                    // GEMM row-by-row: each row stores N outputs to acc[0:N-1]
+                                    acc_partial_addr <= {BUF_ADDR_W{1'b0}};
                                 end
                                 comp_sub_state <= CP_DRAIN;
                             end
@@ -2597,28 +2596,27 @@ module npu_top #(
                                         fc_shadow_active <= 1'b0;
                                         fsm_state <= FSM_LOAD_ARRAY;
                                     end else begin
-                                        if (is_gemm_mode && (gemm_row_idx + 16'd1 < gemm_M_val)) begin
-                                            // GEMM: more rows → next M row, reset K-chunks
-                                            gemm_row_idx <= gemm_row_idx + 16'd1;
-                                            fc_out_start <= 16'd0;
-                                            fc_in_base <= 16'd0;
-                                            fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
-                                            fsm_state <= FSM_FC_TILE_PREP;
+                                        if (is_gemm_mode) begin
+                                            // GEMM row-by-row store: store N outputs immediately
+                                            fc_store_addr <= blk_out_addr + (gemm_row_idx * gemm_N_val * 32'd4);
+                                            fc_store_bytes <= gemm_N_val * 32'd4;
+                                            acc_load_start <= 1'b1;
+                                            fsm_state <= FSM_STORE;
                                         end else if (bias_enabled) begin
                                             rq_mode_internal <= 1'b1;
                                             rq_word_store_mode <= 1'b0;
                                             rq_src_idx <= 32'd0;
                                             rq_src_wait <= 1'b1;
-                                            rq_total_words <= is_gemm_mode ? (gemm_M_val * gemm_N_val) : {16'd0, fc_tile_outputs};
+                                            rq_total_words <= {16'd0, fc_tile_outputs};
                                             rq_pack_idx <= 2'd0;
                                             rq_pack_word <= 32'd0;
                                             rq_store_addr <= blk_out_addr + {16'd0, fc_out_start};
-                                            rq_store_bytes <= is_gemm_mode ? (gemm_M_val * gemm_N_val * 32'd4) : {16'd0, fc_tile_outputs};
+                                            rq_store_bytes <= {16'd0, fc_tile_outputs};
                                             acc_load_start <= 1'b1;
                                             fsm_state <= FSM_REQUANT_COMPUTE;
                                         end else begin
-                                            fc_store_addr <= is_gemm_mode ? blk_out_addr : (blk_out_addr + fc_out_start * 32'd4);
-                                            fc_store_bytes <= is_gemm_mode ? (gemm_M_val * gemm_N_val * 32'd4) : (fc_tile_outputs * 32'd4);
+                                            fc_store_addr <= blk_out_addr + fc_out_start * 32'd4;
+                                            fc_store_bytes <= fc_tile_outputs * 32'd4;
                                             acc_load_start <= 1'b1;
                                             fsm_state <= FSM_STORE;
                                         end
@@ -3086,7 +3084,20 @@ module npu_top #(
                         store_pack_lane <= 3'd0;
                         store_word_idx <= 32'd0;
                         store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
-                        if (is_fc_mode) begin
+                        if (is_gemm_mode) begin
+                            // GEMM row-by-row: store current row, advance to next
+                            if (gemm_row_idx + 16'd1 < gemm_M_val) begin
+                                gemm_row_idx <= gemm_row_idx + 16'd1;
+                                fc_out_start <= 16'd0;
+                                fc_in_base <= 16'd0;
+                                fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
+                                fsm_state <= FSM_FC_TILE_PREP;
+                            end else begin
+                                act_comp_done <= 1'b1;
+                                blk_done <= 1'b1;
+                                fsm_state <= FSM_BLK_DONE;
+                            end
+                        end else if (is_fc_mode) begin
                             if (fc_out_start + fc_tile_outputs < output_c) begin
                                 fc_out_start <= fc_out_start + fc_tile_outputs;
                                 fsm_state <= FSM_FC_TILE_PREP;

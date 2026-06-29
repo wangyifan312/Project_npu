@@ -82,6 +82,7 @@ module block_scheduler #(
     localparam [2:0] TASK_ADD        = 3'd4;
     localparam [2:0] TASK_GAP        = 3'd5;
     localparam [2:0] TASK_VECTOR_RELU = 3'd6;
+    localparam [2:0] TASK_GEMM        = 3'd7;
 
     wire [1:0] conv_kernel_sel = conv_cfg[1:0];
     wire       conv_stride2    = conv_cfg[2];
@@ -111,13 +112,15 @@ module block_scheduler #(
     wire [15:0] next_total_out_rows =
         (task_type == TASK_POOL) ? (input_h >> 1) :
         ((task_type == TASK_FC) || (task_type == TASK_REQUANT) || (task_type == TASK_ADD) ||
-         (task_type == TASK_GAP) || (task_type == TASK_VECTOR_RELU)) ? 16'd1 :
+         (task_type == TASK_GAP) || (task_type == TASK_VECTOR_RELU) ||
+         (task_type == TASK_GEMM)) ? 16'd1 :
                               conv_out_dim(input_h, conv_kernel_size, conv_stride, conv_same_pad);
 
     wire [15:0] next_total_out_cols =
         (task_type == TASK_POOL) ? (input_w >> 1) :
         ((task_type == TASK_FC) || (task_type == TASK_REQUANT) || (task_type == TASK_ADD) ||
-         (task_type == TASK_GAP) || (task_type == TASK_VECTOR_RELU)) ? 16'd1 :
+         (task_type == TASK_GAP) || (task_type == TASK_VECTOR_RELU) ||
+         (task_type == TASK_GEMM)) ? 16'd1 :
                               conv_out_dim(input_w, conv_kernel_size, conv_stride, conv_same_pad);
 
     wire [31:0] next_bytes_per_in_row =
@@ -137,7 +140,8 @@ module block_scheduler #(
 
     wire [15:0] next_rows_per_block =
         ((task_type == TASK_FC) || (task_type == TASK_REQUANT) || (task_type == TASK_ADD) ||
-         (task_type == TASK_GAP) || (task_type == TASK_VECTOR_RELU)) ? 16'd1 :
+         (task_type == TASK_GAP) || (task_type == TASK_VECTOR_RELU) ||
+         (task_type == TASK_GEMM)) ? 16'd1 :
         (task_type == TASK_CONV) ?
             ((conv_rows_per_block_raw < 16'd1) ? 16'd1 :
              (conv_rows_per_block_raw > next_total_out_rows) ? next_total_out_rows :
