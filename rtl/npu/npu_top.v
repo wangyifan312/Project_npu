@@ -156,6 +156,10 @@ module npu_top #(
         end
     endfunction
     localparam FSM_ERROR       = 5'd14;
+    localparam FSM_GEMM_STREAM_PREP   = 6'd34;
+    localparam FSM_GEMM_STREAM_LOAD_A = 6'd35;
+    localparam FSM_GEMM_STREAM_RUN    = 6'd36;
+    localparam FSM_GEMM_STREAM_DONE   = 6'd37;
 
     // COMPUTE sub-states
     localparam CP_WAIT_WIN = 3'd0;
@@ -663,6 +667,19 @@ module npu_top #(
         (gemm_weight_addr_cached == weight_addr);
     wire [15:0] array_active_rows;
     wire [15:0] array_active_cols;
+    // Phase 2b-1: GEMM row-streaming enable (conv_cfg[5])
+    wire gemm_row_streaming_en = is_gemm_mode && conv_cfg[5];
+
+    // Phase 2b-1: local tile buffers for row-streaming
+    reg [7:0]  a_tile [0:7][0:63];
+    reg signed [31:0] c_tile [0:7][0:63];
+    reg        c_tile_valid [0:7][0:63];
+    reg [15:0] stream_cycle;
+    reg [15:0] stream_capture_count;
+    reg        stream_active;
+    reg        stream_a_tile_loaded;
+    localparam GEMM_STREAM_FIXED_DELAY = 1;
+
     wire [15:0] array_drain_offset;
     integer cluster_bus_idx;
     integer cluster_rank_i;
@@ -685,6 +702,8 @@ module npu_top #(
     integer arb_route_col_i;
     // GEMM mode reuses FC array mapping: PE rows = K (input dim), PE cols = N (output dim)
     wire fc_or_gemm = is_fc_mode || is_gemm_mode;
+    wire [15:0] active_k = fc_or_gemm ? fc_chunk_inputs : conv_kernel_area;
+    wire [15:0] stream_pipe_offset = PE_ROWS_16 - active_k + GEMM_STREAM_FIXED_DELAY;
     assign array_active_rows = fc_or_gemm ? fc_chunk_inputs : conv_kernel_area;
     wire [15:0] total_global_cols;
     wire [15:0] cluster_active_cols;
@@ -753,7 +772,19 @@ module npu_top #(
         arb_route_col_i = 0;
         cluster_route_col_i = 0;
 
-        if (compute_fsm_active && (comp_sub_state == CP_DRAIN) &&
+        // Phase 2b-1: streaming output routing
+        if (gemm_row_streaming_en && (fsm_state == FSM_GEMM_STREAM_RUN)) begin
+            if (perf_cluster_enable[0]) begin
+                integer s_col;
+                for (s_col = 0; s_col < PE_COLS; s_col = s_col + 1) begin
+                    if (s_col < array_active_cols) begin
+                        cluster_arb_valid[0] = 1'b1;
+                        cluster_routed_sum_out_all_flat[s_col*32 +: 32] =
+                            cluster_sum_out_all_flat[s_col*32 +: 32];
+                    end
+                end
+            end
+        end else if (compute_fsm_active && (comp_sub_state == CP_DRAIN) &&
             (comp_drain_cnt >= array_drain_offset)) begin
             arb_route_col_i = comp_drain_cnt - array_drain_offset;
             cluster_route_col_i = arb_route_col_i;
@@ -816,7 +847,9 @@ module npu_top #(
         .cluster_valid(cluster_valid),
         .cluster_done(cluster_done),
         .any_cluster_busy(any_cluster_busy),
-        .all_enabled_done(all_enabled_done)
+        .all_enabled_done(all_enabled_done),
+        .continuous_mode(gemm_row_streaming_en && (fsm_state == FSM_GEMM_STREAM_RUN)),
+        .stream_active(gemm_row_streaming_en && stream_active)
     );
 
     output_arbiter #(
@@ -1219,6 +1252,7 @@ module npu_top #(
     // After feeding: drive held value (registered) for column propagation
     // ============================================================
     wire act_feed_en = compute_fsm_active && (comp_sub_state == CP_FEED_ACT);
+    wire stream_drive = gemm_row_streaming_en && (fsm_state == FSM_GEMM_STREAM_RUN);
     genvar ai;
     generate
         for (ai = 0; ai < PE_ROWS; ai = ai + 1) begin : act_map
@@ -1231,7 +1265,11 @@ module npu_top #(
             end
             wire [7:0] row_feed_val = fc_or_gemm ? cf_act_data : conv_row_feed_val;
             wire array_act_drive = (comp_sub_state == CP_FEED_ACT) || (comp_sub_state == CP_DRAIN);
+            // Phase 2b-1: stream skewed activation with row_active gate
+            wire signed [31:0] s_m = $signed({16'd0, stream_cycle}) - $signed({26'd0, ai[5:0]});
+            wire [7:0] s_act = (row_active && !s_m[31] && s_m < gemm_M_val) ? a_tile[s_m[2:0]][ai[5:0]] : 8'd0;
             assign array_act_in[ai*8 +: 8] =
+                stream_drive ? s_act :
                 row_active && (is_conv_mode || is_fc_mode || is_gemm_mode) && array_act_drive ?
                 ((act_feed_en && comp_feed_cnt == ai) ? row_feed_val : act_held[ai]) :
                 8'd0;
@@ -1621,6 +1659,10 @@ module npu_top #(
             fc_in_base <= 16'd0; fc_chunk_inputs <= 16'd0;
             gemm_row_idx <= 16'd0;
             gemm_weight_valid <= 1'b0;
+            stream_cycle <= 16'd0;
+            stream_capture_count <= 16'd0;
+            stream_active <= 1'b0;
+            stream_a_tile_loaded <= 1'b0;
             fc_store_addr <= 32'd0; fc_store_bytes <= 32'd0;
             rq_acc_wr_en_r <= 1'b0; rq_acc_wr_addr_r <= {BUF_ADDR_W{1'b0}}; rq_acc_wr_data_r <= 32'd0;
             rq_src_idx <= 32'd0; rq_src_wait <= 1'b0; rq_total_words <= 32'd0; rq_pack_idx <= 2'd0; rq_pack_word <= 32'd0;
@@ -2375,7 +2417,12 @@ module npu_top #(
                     // weight_ld pulsed → weights now in array PEs
                     comp_feed_cnt <= 7'd0;
                     comp_drain_cnt <= 16'd0;
-                    comp_sub_state <= fc_or_gemm ? CP_FEED_ACT : CP_WAIT_WIN;
+                    if (gemm_row_streaming_en) begin
+                        fsm_state <= FSM_GEMM_STREAM_PREP;
+                    end else begin
+                        comp_sub_state <= fc_or_gemm ? CP_FEED_ACT : CP_WAIT_WIN;
+                        fsm_state <= FSM_COMPUTE;
+                    end
                     fc_use_preload <= 1'b0;  // P1: preload consumed, clear flag
                     if (is_gemm_mode) begin
                         gemm_weight_valid         <= 1'b1;
@@ -2395,7 +2442,8 @@ module npu_top #(
                                                    (input_c - (fc_in_base + fc_chunk_inputs));
                         fc_shadow_wait <= 1'b1;
                     end
-                    fsm_state <= FSM_COMPUTE;
+                    if (!gemm_row_streaming_en)
+                        fsm_state <= FSM_COMPUTE;
                 end
 
                 // ============================================================
@@ -2982,6 +3030,69 @@ module npu_top #(
                         next_dma_launched <= 1'b0;
                         next_blk_wait <= 1'b0;
                     end
+                end
+
+                // ============================================================
+                // Phase 2b-1: GEMM row-streaming states
+                // ============================================================
+                FSM_GEMM_STREAM_PREP: begin
+                    stream_cycle <= 16'd0;
+                    stream_capture_count <= 16'd0;
+                    stream_active <= 1'b0;
+                    stream_a_tile_loaded <= 1'b0;
+                    comp_feed_cnt <= 7'd0;
+                    begin
+                        integer ci, cj;
+                        for (ci = 0; ci < 8; ci = ci + 1)
+                            for (cj = 0; cj < 64; cj = cj + 1) begin
+                                c_tile[ci][cj] <= 32'sd0;
+                                c_tile_valid[ci][cj] <= 1'b0;
+                            end
+                    end
+                    fsm_state <= FSM_GEMM_STREAM_LOAD_A;
+                end
+
+                FSM_GEMM_STREAM_LOAD_A: begin
+                    if (!stream_a_tile_loaded) begin
+                        stream_a_tile_loaded <= 1'b1;
+                        stream_capture_count <= 16'd0;
+                    end else if (stream_capture_count < (gemm_M_val * {16'd0, input_c})) begin
+                        a_tile[stream_capture_count / {16'd0, input_c}][stream_capture_count % {16'd0, input_c}] <= cf_act_data;
+                        stream_capture_count <= stream_capture_count + 16'd1;
+                    end else begin
+                        stream_active <= 1'b1;
+                        stream_cycle <= 16'd0;
+                        fsm_state <= FSM_GEMM_STREAM_RUN;
+                    end
+                end
+
+                FSM_GEMM_STREAM_RUN: begin
+                    stream_cycle <= stream_cycle + 16'd1;
+                    if (cluster_arb_out_valid) begin
+                        integer str_n;
+                        for (str_n = 0; str_n < PE_COLS; str_n = str_n + 1) begin
+                            if (str_n < array_active_cols) begin
+                                reg signed [31:0] str_m;
+                                str_m = $signed({16'd0, stream_cycle}) - $signed({16'd0, active_k}) - $signed({16'd0, str_n}) - $signed({16'd0, stream_pipe_offset});
+                                if (!str_m[31] && str_m < gemm_M_val && str_n < gemm_N_val) begin
+                                    if (!c_tile_valid[str_m][str_n]) begin
+                                        c_tile[str_m][str_n] <= array_sum_out[str_n*32 +: 32];
+                                        c_tile_valid[str_m][str_n] <= 1'b1;
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    if (stream_cycle >= (gemm_M_val + active_k + array_active_cols + stream_pipe_offset + 16'd10)) begin
+                        stream_active <= 1'b0;
+                        fsm_state <= FSM_GEMM_STREAM_DONE;
+                    end
+                end
+
+                FSM_GEMM_STREAM_DONE: begin
+                    task_done_r <= 1'b1;
+                    task_active_r <= 1'b0;
+                    fsm_state <= FSM_DONE;
                 end
 
                 FSM_DONE: begin
