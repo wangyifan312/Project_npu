@@ -588,6 +588,14 @@ module npu_top #(
     assign gemm_M_val = input_h;
     assign gemm_N_val = output_c;
 
+    // GEMM weight retention cache
+    reg        gemm_weight_valid;
+    reg [31:0] gemm_weight_addr_cached;
+    reg [15:0] gemm_weight_k_base_cached;
+    reg [15:0] gemm_weight_n_base_cached;
+    reg [15:0] gemm_weight_k_size_cached;
+    reg [15:0] gemm_weight_n_size_cached;
+
     conv_frontend #(.MAX_W(32), .MAX_C_IN(64), .AW(11)) u_conv_fe (
         .clk(clk), .rst_n(rst_n),
         .act_data(cf_act_data), .act_valid(cf_act_valid), .act_ready(conv_act_ready),
@@ -647,6 +655,12 @@ module npu_top #(
     wire is_gap_mode     = (task_type == 3'd5);
     wire is_vec_relu_mode = (task_type == 3'd6);
     wire is_gemm_mode    = (task_type == 3'd7);
+    wire gemm_weight_hit = is_gemm_mode && gemm_weight_valid &&
+        (gemm_weight_k_base_cached == 16'd0) &&
+        (gemm_weight_n_base_cached == 16'd0) &&
+        (gemm_weight_k_size_cached == ((input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c)) &&
+        (gemm_weight_n_size_cached == ((output_c > PE_COLS_16) ? PE_COLS_16 : output_c)) &&
+        (gemm_weight_addr_cached == weight_addr);
     wire [15:0] array_active_rows;
     wire [15:0] array_active_cols;
     wire [15:0] array_drain_offset;
@@ -1015,10 +1029,10 @@ module npu_top #(
     wire [BUF_ADDR_W-1:0] fc_weight_beat_addr = fc_weight_dma_byte_idx[BUF_ADDR_W+4:5];
     wire [BUF_ADDR_W-1:0] fc_next_weight_beat_addr = fc_next_weight_dma_byte_idx[BUF_ADDR_W+4:5];
     wire [HB_BEAT_BYTE_BITS-1:0] fc_weight_byte_sel = fc_weight_dma_byte_idx[4:0];
-    wire [31:0] fc_act_byte_idx = fc_in_base + comp_feed_cnt;
+    wire [31:0] fc_act_byte_idx = (is_gemm_mode ? (gemm_row_idx * {16'd0, input_c}) : 32'd0) + fc_in_base + comp_feed_cnt;
     wire [31:0] fc_act_rd_byte_idx =
-        (is_fc_mode && (fsm_state == FSM_WGT_LD)) ? {16'd0, fc_in_base} :
-        (is_fc_mode && (fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_FEED_ACT)) ?
+        (fc_or_gemm && (fsm_state == FSM_WGT_LD)) ? {16'd0, fc_in_base} :
+        (fc_or_gemm && (fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_FEED_ACT)) ?
         (fc_act_byte_idx + 32'd1) : fc_act_byte_idx;
     wire [BUF_ADDR_W-1:0] fc_act_beat_addr = fc_act_rd_byte_idx[BUF_ADDR_W+4:5];
     wire [HB_BEAT_BYTE_BITS-1:0] fc_act_byte_sel = fc_act_byte_idx[4:0];
@@ -1126,7 +1140,7 @@ module npu_top #(
     assign act_rd_bank  = act_comp_bank;
 
     assign act_rd_addr  = is_pool_mode    ? act_pool_beat_addr :
-                          is_fc_mode      ? fc_act_beat_addr :
+                          fc_or_gemm      ? fc_act_beat_addr :
                           is_add_mode     ? add_src_beat_addr :
                           is_gap_mode     ? gap_src_beat_addr :
                           is_requant_mode ? rq_src_beat_addr :
@@ -1606,6 +1620,7 @@ module npu_top #(
             fc_out_start <= 16'd0; fc_tile_outputs <= 16'd0;
             fc_in_base <= 16'd0; fc_chunk_inputs <= 16'd0;
             gemm_row_idx <= 16'd0;
+            gemm_weight_valid <= 1'b0;
             fc_store_addr <= 32'd0; fc_store_bytes <= 32'd0;
             rq_acc_wr_en_r <= 1'b0; rq_acc_wr_addr_r <= {BUF_ADDR_W{1'b0}}; rq_acc_wr_data_r <= 32'd0;
             rq_src_idx <= 32'd0; rq_src_wait <= 1'b0; rq_total_words <= 32'd0; rq_pack_idx <= 2'd0; rq_pack_word <= 32'd0;
@@ -1684,6 +1699,7 @@ module npu_top #(
                         next_blk_prep <= 1'b0; next_blk_wait <= 1'b0; next_dma_launched <= 1'b0;
             pipe_mode <= 1'b0; pipe_store_done <= 1'b0;
                         fc_preload_active <= 1'b0; fc_preload_done <= 1'b0;
+                        gemm_weight_valid <= 1'b0;
                         fsm_state <= FSM_TASK_SETUP;
                     end
                 end
@@ -2079,8 +2095,13 @@ module npu_top #(
                     fc_in_base <= 16'd0;
                     fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
                     dma_rd_ptr <= 0;
-                    // P1: check if ping-pong preload completed for this tile
-                    if (fc_preload_done && (fc_preload_out_start == fc_out_start)) begin
+                    // Phase 1a+: GEMM weight retention — skip reload
+                    if (gemm_weight_hit) begin
+                        comp_feed_cnt <= 7'd0;
+                        comp_drain_cnt <= 16'd0;
+                        comp_sub_state <= CP_WAIT_WIN;
+                        fsm_state <= FSM_COMPUTE;
+                    end else if (fc_preload_done && (fc_preload_out_start == fc_out_start)) begin
                         // Use preloaded weights — skip DMA, go directly to LOAD_ARRAY
                         // P1: preload hit — use preloaded weights
                         fc_preload_done <= 1'b0;
@@ -2356,6 +2377,14 @@ module npu_top #(
                     comp_drain_cnt <= 16'd0;
                     comp_sub_state <= fc_or_gemm ? CP_FEED_ACT : CP_WAIT_WIN;
                     fc_use_preload <= 1'b0;  // P1: preload consumed, clear flag
+                    if (is_gemm_mode) begin
+                        gemm_weight_valid         <= 1'b1;
+                        gemm_weight_addr_cached   <= weight_addr;
+                        gemm_weight_k_base_cached <= fc_in_base;
+                        gemm_weight_n_base_cached <= fc_out_start;
+                        gemm_weight_k_size_cached <= fc_chunk_inputs;
+                        gemm_weight_n_size_cached <= fc_tile_outputs;
+                    end
                     // Phase 2: trigger shadow load for next FC chunk
                     if (is_fc_mode && (fc_in_base + fc_chunk_inputs < input_c)) begin
                         fc_shadow_active  <= 1'b1;
@@ -2590,6 +2619,8 @@ module npu_top #(
                                         // FSM_LOAD_ARRAY which reloads the next chunk's weights
                                         // directly from wgt_buffer.  Cost: ~128 cycles per
                                         // additional K-chunk.  Correctness > performance.
+                                        if (is_gemm_mode)
+                                            gemm_weight_valid <= 1'b0;
                                         fc_in_base <= fc_in_base + fc_chunk_inputs;
                                         fc_chunk_inputs <= ((input_c - (fc_in_base + fc_chunk_inputs)) > PE_ROWS_16) ?
                                                            PE_ROWS_16 :
@@ -2960,6 +2991,7 @@ module npu_top #(
 
                 FSM_ERROR: begin
                     task_active_r <= 1'b0;
+                    gemm_weight_valid <= 1'b0;
                     if (!ctrl_busy && !ctrl_error) begin
                         task_error_r <= 1'b0;
                         fsm_state <= FSM_IDLE;
