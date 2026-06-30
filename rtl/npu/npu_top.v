@@ -156,6 +156,11 @@ module npu_top #(
         end
     endfunction
     localparam FSM_ERROR       = 5'd14;
+    localparam FSM_GEMM_STREAM_PREP   = 6'd34;
+    localparam FSM_GEMM_STREAM_LOAD_A = 6'd35;
+    localparam FSM_GEMM_STREAM_RUN    = 6'd36;
+    localparam FSM_GEMM_STREAM_DONE   = 6'd37;
+    localparam FSM_GEMM_STREAM_STORE   = 6'd38;
 
     // COMPUTE sub-states
     localparam CP_WAIT_WIN = 3'd0;
@@ -588,6 +593,14 @@ module npu_top #(
     assign gemm_M_val = input_h;
     assign gemm_N_val = output_c;
 
+    // GEMM weight retention cache
+    reg        gemm_weight_valid;
+    reg [31:0] gemm_weight_addr_cached;
+    reg [15:0] gemm_weight_k_base_cached;
+    reg [15:0] gemm_weight_n_base_cached;
+    reg [15:0] gemm_weight_k_size_cached;
+    reg [15:0] gemm_weight_n_size_cached;
+
     conv_frontend #(.MAX_W(32), .MAX_C_IN(64), .AW(11)) u_conv_fe (
         .clk(clk), .rst_n(rst_n),
         .act_data(cf_act_data), .act_valid(cf_act_valid), .act_ready(conv_act_ready),
@@ -647,8 +660,29 @@ module npu_top #(
     wire is_gap_mode     = (task_type == 3'd5);
     wire is_vec_relu_mode = (task_type == 3'd6);
     wire is_gemm_mode    = (task_type == 3'd7);
+    wire gemm_weight_hit = is_gemm_mode && gemm_weight_valid &&
+        (gemm_weight_k_base_cached == 16'd0) &&
+        (gemm_weight_n_base_cached == 16'd0) &&
+        (gemm_weight_k_size_cached == ((input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c)) &&
+        (gemm_weight_n_size_cached == ((output_c > PE_COLS_16) ? PE_COLS_16 : output_c)) &&
+        (gemm_weight_addr_cached == weight_addr);
     wire [15:0] array_active_rows;
     wire [15:0] array_active_cols;
+    // Phase 2b-1: GEMM row-streaming enable (conv_cfg[5])
+    wire gemm_row_streaming_en = is_gemm_mode && conv_cfg[5];
+
+    // Phase 2b-1: local tile buffers for row-streaming
+    reg [7:0]  a_tile [0:7][0:63];
+    reg signed [31:0] c_tile [0:7][0:63];
+    reg        c_tile_valid [0:7][0:63];
+    reg [15:0] stream_cycle;
+    reg [15:0] stream_capture_count;
+    reg        stream_active;
+    reg        stream_a_tile_loaded;
+    reg [15:0] gemm_store_row_idx;
+    reg [15:0] gemm_store_beat_idx;
+    localparam GEMM_STREAM_FIXED_DELAY = 1;
+
     wire [15:0] array_drain_offset;
     integer cluster_bus_idx;
     integer cluster_rank_i;
@@ -671,6 +705,8 @@ module npu_top #(
     integer arb_route_col_i;
     // GEMM mode reuses FC array mapping: PE rows = K (input dim), PE cols = N (output dim)
     wire fc_or_gemm = is_fc_mode || is_gemm_mode;
+    wire [15:0] active_k = fc_or_gemm ? fc_chunk_inputs : conv_kernel_area;
+    wire [15:0] stream_pipe_offset = PE_ROWS_16 - active_k + GEMM_STREAM_FIXED_DELAY;
     assign array_active_rows = fc_or_gemm ? fc_chunk_inputs : conv_kernel_area;
     wire [15:0] total_global_cols;
     wire [15:0] cluster_active_cols;
@@ -739,7 +775,19 @@ module npu_top #(
         arb_route_col_i = 0;
         cluster_route_col_i = 0;
 
-        if (compute_fsm_active && (comp_sub_state == CP_DRAIN) &&
+        // Phase 2b-1: streaming output routing
+        if (gemm_row_streaming_en && (fsm_state == FSM_GEMM_STREAM_RUN)) begin
+            if (perf_cluster_enable[0]) begin
+                integer s_col;
+                for (s_col = 0; s_col < PE_COLS; s_col = s_col + 1) begin
+                    if (s_col < array_active_cols) begin
+                        cluster_arb_valid[0] = 1'b1;
+                        cluster_routed_sum_out_all_flat[s_col*32 +: 32] =
+                            cluster_sum_out_all_flat[s_col*32 +: 32];
+                    end
+                end
+            end
+        end else if (compute_fsm_active && (comp_sub_state == CP_DRAIN) &&
             (comp_drain_cnt >= array_drain_offset)) begin
             arb_route_col_i = comp_drain_cnt - array_drain_offset;
             cluster_route_col_i = arb_route_col_i;
@@ -802,7 +850,9 @@ module npu_top #(
         .cluster_valid(cluster_valid),
         .cluster_done(cluster_done),
         .any_cluster_busy(any_cluster_busy),
-        .all_enabled_done(all_enabled_done)
+        .all_enabled_done(all_enabled_done),
+        .continuous_mode(gemm_row_streaming_en && (fsm_state == FSM_GEMM_STREAM_RUN)),
+        .stream_active(gemm_row_streaming_en && stream_active)
     );
 
     output_arbiter #(
@@ -1015,10 +1065,10 @@ module npu_top #(
     wire [BUF_ADDR_W-1:0] fc_weight_beat_addr = fc_weight_dma_byte_idx[BUF_ADDR_W+4:5];
     wire [BUF_ADDR_W-1:0] fc_next_weight_beat_addr = fc_next_weight_dma_byte_idx[BUF_ADDR_W+4:5];
     wire [HB_BEAT_BYTE_BITS-1:0] fc_weight_byte_sel = fc_weight_dma_byte_idx[4:0];
-    wire [31:0] fc_act_byte_idx = fc_in_base + comp_feed_cnt;
+    wire [31:0] fc_act_byte_idx = (is_gemm_mode ? (gemm_row_idx * {16'd0, input_c}) : 32'd0) + fc_in_base + comp_feed_cnt;
     wire [31:0] fc_act_rd_byte_idx =
-        (is_fc_mode && (fsm_state == FSM_WGT_LD)) ? {16'd0, fc_in_base} :
-        (is_fc_mode && (fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_FEED_ACT)) ?
+        (fc_or_gemm && (fsm_state == FSM_WGT_LD)) ? {16'd0, fc_in_base} :
+        (fc_or_gemm && (fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_FEED_ACT)) ?
         (fc_act_byte_idx + 32'd1) : fc_act_byte_idx;
     wire [BUF_ADDR_W-1:0] fc_act_beat_addr = fc_act_rd_byte_idx[BUF_ADDR_W+4:5];
     wire [HB_BEAT_BYTE_BITS-1:0] fc_act_byte_sel = fc_act_byte_idx[4:0];
@@ -1126,7 +1176,7 @@ module npu_top #(
     assign act_rd_bank  = act_comp_bank;
 
     assign act_rd_addr  = is_pool_mode    ? act_pool_beat_addr :
-                          is_fc_mode      ? fc_act_beat_addr :
+                          fc_or_gemm      ? fc_act_beat_addr :
                           is_add_mode     ? add_src_beat_addr :
                           is_gap_mode     ? gap_src_beat_addr :
                           is_requant_mode ? rq_src_beat_addr :
@@ -1205,6 +1255,7 @@ module npu_top #(
     // After feeding: drive held value (registered) for column propagation
     // ============================================================
     wire act_feed_en = compute_fsm_active && (comp_sub_state == CP_FEED_ACT);
+    wire stream_drive = gemm_row_streaming_en && (fsm_state == FSM_GEMM_STREAM_RUN);
     genvar ai;
     generate
         for (ai = 0; ai < PE_ROWS; ai = ai + 1) begin : act_map
@@ -1217,7 +1268,11 @@ module npu_top #(
             end
             wire [7:0] row_feed_val = fc_or_gemm ? cf_act_data : conv_row_feed_val;
             wire array_act_drive = (comp_sub_state == CP_FEED_ACT) || (comp_sub_state == CP_DRAIN);
+            // Phase 2b-1: stream skewed activation with row_active gate
+            wire signed [31:0] s_m = $signed({16'd0, stream_cycle}) - $signed({26'd0, ai[5:0]});
+            wire [7:0] s_act = (row_active && !s_m[31] && s_m < gemm_M_val) ? a_tile[s_m[2:0]][ai[5:0]] : 8'd0;
             assign array_act_in[ai*8 +: 8] =
+                stream_drive ? s_act :
                 row_active && (is_conv_mode || is_fc_mode || is_gemm_mode) && array_act_drive ?
                 ((act_feed_en && comp_feed_cnt == ai) ? row_feed_val : act_held[ai]) :
                 8'd0;
@@ -1606,6 +1661,13 @@ module npu_top #(
             fc_out_start <= 16'd0; fc_tile_outputs <= 16'd0;
             fc_in_base <= 16'd0; fc_chunk_inputs <= 16'd0;
             gemm_row_idx <= 16'd0;
+            gemm_weight_valid <= 1'b0;
+            stream_cycle <= 16'd0;
+            stream_capture_count <= 16'd0;
+            stream_active <= 1'b0;
+            stream_a_tile_loaded <= 1'b0;
+            gemm_store_row_idx <= 16'd0;
+            gemm_store_beat_idx <= 16'd0;
             fc_store_addr <= 32'd0; fc_store_bytes <= 32'd0;
             rq_acc_wr_en_r <= 1'b0; rq_acc_wr_addr_r <= {BUF_ADDR_W{1'b0}}; rq_acc_wr_data_r <= 32'd0;
             rq_src_idx <= 32'd0; rq_src_wait <= 1'b0; rq_total_words <= 32'd0; rq_pack_idx <= 2'd0; rq_pack_word <= 32'd0;
@@ -1684,6 +1746,7 @@ module npu_top #(
                         next_blk_prep <= 1'b0; next_blk_wait <= 1'b0; next_dma_launched <= 1'b0;
             pipe_mode <= 1'b0; pipe_store_done <= 1'b0;
                         fc_preload_active <= 1'b0; fc_preload_done <= 1'b0;
+                        gemm_weight_valid <= 1'b0;
                         fsm_state <= FSM_TASK_SETUP;
                     end
                 end
@@ -2079,8 +2142,13 @@ module npu_top #(
                     fc_in_base <= 16'd0;
                     fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
                     dma_rd_ptr <= 0;
-                    // P1: check if ping-pong preload completed for this tile
-                    if (fc_preload_done && (fc_preload_out_start == fc_out_start)) begin
+                    // Phase 1a+: GEMM weight retention — skip reload
+                    if (gemm_weight_hit) begin
+                        comp_feed_cnt <= 7'd0;
+                        comp_drain_cnt <= 16'd0;
+                        comp_sub_state <= CP_WAIT_WIN;
+                        fsm_state <= FSM_COMPUTE;
+                    end else if (fc_preload_done && (fc_preload_out_start == fc_out_start)) begin
                         // Use preloaded weights — skip DMA, go directly to LOAD_ARRAY
                         // P1: preload hit — use preloaded weights
                         fc_preload_done <= 1'b0;
@@ -2354,8 +2422,21 @@ module npu_top #(
                     // weight_ld pulsed → weights now in array PEs
                     comp_feed_cnt <= 7'd0;
                     comp_drain_cnt <= 16'd0;
-                    comp_sub_state <= fc_or_gemm ? CP_FEED_ACT : CP_WAIT_WIN;
+                    if (gemm_row_streaming_en) begin
+                        fsm_state <= FSM_GEMM_STREAM_PREP;
+                    end else begin
+                        comp_sub_state <= fc_or_gemm ? CP_FEED_ACT : CP_WAIT_WIN;
+                        fsm_state <= FSM_COMPUTE;
+                    end
                     fc_use_preload <= 1'b0;  // P1: preload consumed, clear flag
+                    if (is_gemm_mode) begin
+                        gemm_weight_valid         <= 1'b1;
+                        gemm_weight_addr_cached   <= weight_addr;
+                        gemm_weight_k_base_cached <= fc_in_base;
+                        gemm_weight_n_base_cached <= fc_out_start;
+                        gemm_weight_k_size_cached <= fc_chunk_inputs;
+                        gemm_weight_n_size_cached <= fc_tile_outputs;
+                    end
                     // Phase 2: trigger shadow load for next FC chunk
                     if (is_fc_mode && (fc_in_base + fc_chunk_inputs < input_c)) begin
                         fc_shadow_active  <= 1'b1;
@@ -2366,7 +2447,8 @@ module npu_top #(
                                                    (input_c - (fc_in_base + fc_chunk_inputs));
                         fc_shadow_wait <= 1'b1;
                     end
-                    fsm_state <= FSM_COMPUTE;
+                    if (!gemm_row_streaming_en)
+                        fsm_state <= FSM_COMPUTE;
                 end
 
                 // ============================================================
@@ -2590,6 +2672,8 @@ module npu_top #(
                                         // FSM_LOAD_ARRAY which reloads the next chunk's weights
                                         // directly from wgt_buffer.  Cost: ~128 cycles per
                                         // additional K-chunk.  Correctness > performance.
+                                        if (is_gemm_mode)
+                                            gemm_weight_valid <= 1'b0;
                                         fc_in_base <= fc_in_base + fc_chunk_inputs;
                                         fc_chunk_inputs <= ((input_c - (fc_in_base + fc_chunk_inputs)) > PE_ROWS_16) ?
                                                            PE_ROWS_16 :
@@ -2953,6 +3037,139 @@ module npu_top #(
                     end
                 end
 
+                // ============================================================
+                // Phase 2b-1: GEMM row-streaming states
+                // ============================================================
+                FSM_GEMM_STREAM_PREP: begin
+                    stream_cycle <= 16'd0;
+                    stream_capture_count <= 16'd0;
+                    stream_active <= 1'b0;
+                    stream_a_tile_loaded <= 1'b0;
+                    comp_feed_cnt <= 7'd0;
+                    begin
+                        integer ci, cj;
+                        for (ci = 0; ci < 8; ci = ci + 1)
+                            for (cj = 0; cj < 64; cj = cj + 1) begin
+                                c_tile[ci][cj] <= 32'sd0;
+                                c_tile_valid[ci][cj] <= 1'b0;
+                            end
+                    end
+                    fsm_state <= FSM_GEMM_STREAM_LOAD_A;
+                end
+
+                FSM_GEMM_STREAM_LOAD_A: begin
+                    if (!stream_a_tile_loaded) begin
+                        stream_a_tile_loaded <= 1'b1;
+                        stream_capture_count <= 16'd0;
+                    end else if (stream_capture_count < (gemm_M_val * {16'd0, input_c})) begin
+                        a_tile[stream_capture_count / {16'd0, input_c}][stream_capture_count % {16'd0, input_c}] <= cf_act_data;
+                        stream_capture_count <= stream_capture_count + 16'd1;
+                    end else begin
+                        stream_active <= 1'b1;
+                        stream_cycle <= 16'd0;
+                        fsm_state <= FSM_GEMM_STREAM_RUN;
+                    end
+                end
+
+                FSM_GEMM_STREAM_RUN: begin
+                    stream_cycle <= stream_cycle + 16'd1;
+                    if (cluster_arb_out_valid) begin
+                        integer str_n;
+                        for (str_n = 0; str_n < PE_COLS; str_n = str_n + 1) begin
+                            if (str_n < array_active_cols) begin
+                                reg signed [31:0] str_m;
+                                str_m = $signed({16'd0, stream_cycle}) - $signed({16'd0, active_k}) - $signed({16'd0, str_n}) - $signed({16'd0, stream_pipe_offset});
+                                if (!str_m[31] && str_m < gemm_M_val && str_n < gemm_N_val) begin
+                                    if (!c_tile_valid[str_m][str_n]) begin
+                                        c_tile[str_m][str_n] <= array_sum_out[str_n*32 +: 32];
+                                        c_tile_valid[str_m][str_n] <= 1'b1;
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    if (stream_cycle >= (gemm_M_val + active_k + array_active_cols + stream_pipe_offset + 16'd10)) begin
+                        stream_active <= 1'b0;
+                        fsm_state <= FSM_GEMM_STREAM_DONE;
+                    end
+                end
+
+                FSM_GEMM_STREAM_DONE: begin
+                    // Start direct c_tile → DMA STORE
+                    gemm_store_row_idx <= 16'd0;
+                    gemm_store_beat_idx <= 16'd0;
+                    fsm_state <= FSM_GEMM_STREAM_STORE;
+                end
+
+                FSM_GEMM_STREAM_STORE: begin
+                    // Pack c_tile[row][base_col +: 8] → 256-bit beat per DMA transaction
+                    // Multi-beat: N>8 → multiple beats per row (Scheme B: 1 txn per beat)
+                    reg [255:0] beat;
+                    reg [31:0]  wstrb_val;
+                    reg [15:0]  base_col;
+                    reg [15:0]  remaining_cols;
+                    reg [15:0]  this_beat_cols;
+                    reg [31:0]  row_stride_bytes;
+                    integer lane;
+                    row_stride_bytes = (gemm_N_val * 32'd4 + 32'd31) & 32'hFFFF_FFE0;
+                    base_col = gemm_store_beat_idx << 3;  // * 8
+                    remaining_cols = gemm_N_val - base_col;
+                    this_beat_cols = (remaining_cols > 16'd8) ? 16'd8 : remaining_cols;
+                    beat = 256'd0;
+                    wstrb_val = 32'd0;
+                    for (lane = 0; lane < this_beat_cols; lane = lane + 1) begin
+                        beat[lane*32 +: 32] = c_tile[gemm_store_row_idx][base_col + lane];
+                        wstrb_val[lane*4 +: 4] = 4'hF;
+                    end
+                    dma_wr_data_r <= beat;
+                    dma_wr_valid_r <= 1'b1;
+                    // Setup DMA writer (one beat per transaction)
+                    if (!dma_wr_started) begin
+                        dma_wr_start <= 1'b1;
+                        dma_wr_started <= 1'b1;
+                        dma_wr_addr <= blk_out_addr
+                            + (gemm_store_row_idx * row_stride_bytes)
+                            + ({16'd0, gemm_store_beat_idx} << 5);
+                        dma_wr_bytes <= {16'd0, this_beat_cols} << 2;  // this_beat_cols * 4
+                    end
+                    $display("[DIR_ST] row=%0d beat=%0d base_col=%0d cols=%0d addr=0x%08x bytes=%0d wstrb=0x%08x",
+                        gemm_store_row_idx, gemm_store_beat_idx, base_col, this_beat_cols,
+                        blk_out_addr + (gemm_store_row_idx * row_stride_bytes)
+                            + (gemm_store_beat_idx * 32),
+                        this_beat_cols * 4, wstrb_val);
+                    // Wait for DMA write to complete, then next beat or next row
+                    fsm_state <= FSM_GEMM_STREAM_STORE + 6'd1;  // 6'd39 wait state
+                end
+
+                // Wait for DMA write done (per-beat transaction)
+                6'd39: begin
+                    dma_wr_valid_r <= 1'b0;
+                    if (dma_wr_done) begin
+                        $display("[DIR_ST] row=%0d beat=%0d dma_done", gemm_store_row_idx, gemm_store_beat_idx);
+                        dma_wr_started <= 1'b0;
+                        // beats_per_row = ceil(N / 8)
+                        if (gemm_store_beat_idx + 16'd1 < ((gemm_N_val + 16'd7) >> 3)) begin
+                            // More beats in current row
+                            gemm_store_beat_idx <= gemm_store_beat_idx + 16'd1;
+                            fsm_state <= FSM_GEMM_STREAM_STORE;
+                        end else if (gemm_store_row_idx + 16'd1 < gemm_M_val) begin
+                            // Next row
+                            gemm_store_row_idx <= gemm_store_row_idx + 16'd1;
+                            gemm_store_beat_idx <= 16'd0;
+                            fsm_state <= FSM_GEMM_STREAM_STORE;
+                        end else begin
+                            // All rows done
+                            task_done_r <= 1'b1;
+                            task_active_r <= 1'b0;
+                            fsm_state <= FSM_DONE;
+                        end
+                    end else if (dma_wr_error) begin
+                        task_error_r <= 1'b1;
+                        task_error_code_r <= dma_wr_error_code;
+                        fsm_state <= FSM_ERROR;
+                    end
+                end
+
                 FSM_DONE: begin
                     task_done_r <= 1'b0;
                     fsm_state <= FSM_IDLE;
@@ -2960,6 +3177,7 @@ module npu_top #(
 
                 FSM_ERROR: begin
                     task_active_r <= 1'b0;
+                    gemm_weight_valid <= 1'b0;
                     if (!ctrl_busy && !ctrl_error) begin
                         task_error_r <= 1'b0;
                         fsm_state <= FSM_IDLE;

@@ -17,7 +17,11 @@ module pe_cluster #(
     output wire [(TILE_COLS*4*32)-1:0]   sum_out_flat,
     output reg                           cluster_busy,
     output reg                           cluster_valid,
-    output reg                           cluster_done
+    output reg                           cluster_done,
+
+    // Phase 2: continuous streaming mode (keeps array active indefinitely)
+    input  wire                          continuous_mode,
+    input  wire                          stream_active
 );
 
     localparam PE_ROWS = TILE_ROWS * 4;
@@ -49,6 +53,11 @@ module pe_cluster #(
             cluster_busy  <= 1'b0;
             cluster_valid <= 1'b0;
             cluster_done  <= 1'b0;
+        end else if (continuous_mode) begin
+            cluster_busy  <= stream_active;
+            cluster_valid <= 1'b0;
+            cluster_done  <= 1'b0;
+            // continuous_mode active
         end else begin
             cluster_valid <= 1'b0;
             cluster_done  <= 1'b0;

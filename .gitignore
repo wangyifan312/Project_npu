@@ -58,3 +58,4 @@ datasets/mnist/lenet_requant_candidate_final_fixture_smoke/
 
 # Generated run outputs
 results/
+vc_hdrs.h

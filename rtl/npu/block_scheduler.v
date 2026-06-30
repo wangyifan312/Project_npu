@@ -239,7 +239,7 @@ module block_scheduler #(
             blk_output_bytes_r = this_block_rows * total_out_cols * output_c * 32'd4;
             blk_input_rows_r   = this_in_rows;
             blk_output_rows_r  = this_block_rows;
-        end else if (task_type == TASK_FC) begin  // FC: pass through
+        end else if ((task_type == TASK_FC) || (task_type == TASK_GEMM)) begin  // FC/GEMM: pass through
             blk_input_addr_r   = input_addr;
             blk_input_bytes_r  = input_bytes;
             blk_weight_addr_r  = weight_addr;

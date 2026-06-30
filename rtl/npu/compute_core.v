@@ -23,7 +23,11 @@ module compute_core #(
     output wire [CLUSTER_COUNT-1:0]                 cluster_valid,
     output wire [CLUSTER_COUNT-1:0]                 cluster_done,
     output wire                                     any_cluster_busy,
-    output wire                                     all_enabled_done
+    output wire                                     all_enabled_done,
+
+    // Phase 2: continuous streaming mode
+    input  wire                                     continuous_mode,
+    input  wire                                     stream_active
 );
 
     genvar cluster_idx;
@@ -45,7 +49,9 @@ module compute_core #(
                 .sum_out_flat(cluster_sum_out_flat[cluster_idx*CLUSTER_SUM_W +: CLUSTER_SUM_W]),
                 .cluster_busy(cluster_busy[cluster_idx]),
                 .cluster_valid(cluster_valid[cluster_idx]),
-                .cluster_done(cluster_done[cluster_idx])
+                .cluster_done(cluster_done[cluster_idx]),
+                .continuous_mode(continuous_mode),
+                .stream_active(stream_active)
             );
         end
     endgenerate
