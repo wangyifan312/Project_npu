@@ -226,6 +226,7 @@ package soc_top_uvm_pkg;
   // TASK_GEMM functional correctness test
   //---------------------------------------------------------------------------
   `include "npu_task_gemm_func_test.sv"
+  `include "npu_task_gemm_row_streaming_test.sv"
 
   //---------------------------------------------------------------------------
   // AXI-fed NPU GEMM Peak Microbenchmark — full subsystem matrix multiply
