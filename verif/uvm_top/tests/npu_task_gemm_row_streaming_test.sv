@@ -74,8 +74,26 @@ class npu_task_gemm_row_streaming_test extends soc_base_test;
           lvl_name, rdata[7:0], cycle_lo))
         break;
       end else begin
-        `uvm_info("TEST",$sformatf("%s: M=%0d K=%0d N=%0d cycles=%0d DONE (c_tile in RTL log)",
-          lvl_name, M_v, K_v, N_v, cycle_lo),UVM_NONE)
+        // Verify memory outputs from DMA writeback
+        int row_stride, chk_errs, r, c;
+        chk_errs = 0;
+        row_stride = ((N_v*4 + 31) / 32) * 32;
+        for (r = 0; r < M_v; r = r + 1) begin
+          for (c = 0; c < N_v; c = c + 1) begin
+            m_seq.axil_read32(32'h0002_0000 + r*row_stride + c*4, rdata);
+            if ($signed(rdata) != K_v) begin
+              if (chk_errs < 5) `uvm_error("TEST",$sformatf("%s C[%0d][%0d]=%0d expected %0d",
+                lvl_name, r, c, $signed(rdata), K_v))
+              chk_errs++;
+            end
+          end
+        end
+        if (chk_errs == 0)
+          `uvm_info("TEST",$sformatf("%s: M=%0d K=%0d N=%0d cycles=%0d mem_OK PASS",
+            lvl_name, M_v, K_v, N_v, cycle_lo),UVM_NONE)
+        else
+          `uvm_info("TEST",$sformatf("%s: M=%0d K=%0d N=%0d cycles=%0d mem_ERR=%0d FAIL",
+            lvl_name, M_v, K_v, N_v, cycle_lo, chk_errs),UVM_NONE)
       end
       levels_run = lvl+1;
     end

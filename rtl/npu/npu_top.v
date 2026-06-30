@@ -160,6 +160,7 @@ module npu_top #(
     localparam FSM_GEMM_STREAM_LOAD_A = 6'd35;
     localparam FSM_GEMM_STREAM_RUN    = 6'd36;
     localparam FSM_GEMM_STREAM_DONE   = 6'd37;
+    localparam FSM_GEMM_STREAM_STORE   = 6'd38;
 
     // COMPUTE sub-states
     localparam CP_WAIT_WIN = 3'd0;
@@ -678,6 +679,7 @@ module npu_top #(
     reg [15:0] stream_capture_count;
     reg        stream_active;
     reg        stream_a_tile_loaded;
+    reg [15:0] gemm_store_row_idx;
     localparam GEMM_STREAM_FIXED_DELAY = 1;
 
     wire [15:0] array_drain_offset;
@@ -1663,6 +1665,7 @@ module npu_top #(
             stream_capture_count <= 16'd0;
             stream_active <= 1'b0;
             stream_a_tile_loaded <= 1'b0;
+            gemm_store_row_idx <= 16'd0;
             fc_store_addr <= 32'd0; fc_store_bytes <= 32'd0;
             rq_acc_wr_en_r <= 1'b0; rq_acc_wr_addr_r <= {BUF_ADDR_W{1'b0}}; rq_acc_wr_data_r <= 32'd0;
             rq_src_idx <= 32'd0; rq_src_wait <= 1'b0; rq_total_words <= 32'd0; rq_pack_idx <= 2'd0; rq_pack_word <= 32'd0;
@@ -3090,9 +3093,58 @@ module npu_top #(
                 end
 
                 FSM_GEMM_STREAM_DONE: begin
-                    task_done_r <= 1'b1;
-                    task_active_r <= 1'b0;
-                    fsm_state <= FSM_DONE;
+                    // Start direct c_tile → DMA STORE
+                    gemm_store_row_idx <= 16'd0;
+                    fsm_state <= FSM_GEMM_STREAM_STORE;
+                end
+
+                FSM_GEMM_STREAM_STORE: begin
+                    // Pack c_tile[row][0..N-1] into 256-bit beat, push to write_beat_fifo
+                    reg [255:0] beat;
+                    reg [31:0]  wstrb_val;
+                    integer bp;
+                    beat = 256'd0;
+                    wstrb_val = 32'd0;
+                    for (bp = 0; bp < gemm_N_val; bp = bp + 1) begin
+                        beat[bp*32 +: 32] = c_tile[gemm_store_row_idx][bp];
+                        wstrb_val[bp*4 +: 4] = 4'hF;
+                    end
+                    dma_wr_data_r <= beat;
+                    dma_wr_valid_r <= 1'b1;
+                    // Setup DMA writer
+                    if (!dma_wr_started) begin
+                        dma_wr_start <= 1'b1;
+                        dma_wr_started <= 1'b1;
+                        dma_wr_addr <= blk_out_addr + (gemm_store_row_idx * ((gemm_N_val * 32'd4 + 32'd31) & 32'hFFFF_FFE0));
+                        dma_wr_bytes <= gemm_N_val * 32'd4;
+                    end
+                    $display("[DIR_ST] row=%0d addr=0x%08x bytes=%0d wstrb=0x%08x beat[31:0]=0x%08x beat[127:96]=0x%08x",
+                        gemm_store_row_idx,
+                        blk_out_addr + (gemm_store_row_idx * ((gemm_N_val * 32'd4 + 32'd31) & 32'hFFFF_FFE0)),
+                        gemm_N_val * 32'd4, wstrb_val, beat[31:0], beat[127:96]);
+                    // Wait for DMA write to complete, then next row
+                    fsm_state <= FSM_GEMM_STREAM_STORE + 6'd1;  // 6'd39 wait state
+                end
+
+                // Wait for DMA write done
+                6'd39: begin
+                    dma_wr_valid_r <= 1'b0;
+                    if (dma_wr_done) begin
+                        $display("[DIR_ST] row=%0d dma_done", gemm_store_row_idx);
+                        dma_wr_started <= 1'b0;
+                        if (gemm_store_row_idx + 16'd1 < gemm_M_val) begin
+                            gemm_store_row_idx <= gemm_store_row_idx + 16'd1;
+                            fsm_state <= FSM_GEMM_STREAM_STORE;
+                        end else begin
+                            task_done_r <= 1'b1;
+                            task_active_r <= 1'b0;
+                            fsm_state <= FSM_DONE;
+                        end
+                    end else if (dma_wr_error) begin
+                        task_error_r <= 1'b1;
+                        task_error_code_r <= dma_wr_error_code;
+                        fsm_state <= FSM_ERROR;
+                    end
                 end
 
                 FSM_DONE: begin
