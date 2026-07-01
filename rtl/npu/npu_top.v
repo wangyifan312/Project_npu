@@ -718,6 +718,26 @@ module npu_top #(
     reg [15:0] input_prefetch_stall_count;
     reg [15:0] input_prefetch_beat_count;
     reg [15:0] input_prefetch_byte_count;
+    // Phase 4b: weight staging micro-sequencer (GEMM-scoped)
+    localparam WGT_STAGE_IDLE    = 2'd0;
+    localparam WGT_STAGE_REQ     = 2'd1;
+    localparam WGT_STAGE_WAIT    = 2'd2;
+    localparam WGT_STAGE_CAPTURE = 2'd3;
+    reg        wgt_stage_active;
+    reg        wgt_stage_done;
+    reg [1:0]  wgt_stage_phase;
+    reg [15:0] wgt_stage_lane_idx;   // byte index within lane (0..k_tile*n_tile-1)
+    reg [15:0] wgt_stage_k_base;
+    reg [15:0] wgt_stage_k_tile;
+    reg [15:0] wgt_stage_n_start;
+    reg [15:0] wgt_stage_n_tile;
+    reg        wgt_stage_valid;
+    reg [15:0] wgt_stage_valid_k_base;
+    reg [15:0] wgt_stage_valid_k_tile;
+    reg [15:0] wgt_stage_valid_n_start;
+    reg [15:0] wgt_stage_valid_n_tile;
+    reg [15:0] wgt_stage_beat_count;
+    reg [15:0] wgt_stage_byte_count;
     reg [15:0] gemm_store_row_idx;
     reg [15:0] gemm_store_beat_idx;
     // Phase 3a: K-chunk streaming accumulation
@@ -1144,6 +1164,19 @@ module npu_top #(
         {25'd0, input_prefetch_col};
     wire [BUF_ADDR_W-1:0] input_prefetch_beat_addr = input_prefetch_byte_idx[BUF_ADDR_W+4:5];
     wire [4:0] input_prefetch_lane_start = input_prefetch_byte_idx[4:0];
+    // Phase 4b: weight staging byte-level address computation
+    // Same formula as legacy FSM_LOAD_ARRAY fc_weight_dma_byte_idx
+    wire [31:0] wgt_stage_out_idx  = (wgt_stage_k_tile == 16'd0) ? 32'd0 :
+                                      (wgt_stage_lane_idx / {16'd0, wgt_stage_k_tile});
+    wire [31:0] wgt_stage_row_idx  = (wgt_stage_k_tile == 16'd0) ? 32'd0 :
+                                      (wgt_stage_lane_idx % {16'd0, wgt_stage_k_tile});
+    wire [31:0] wgt_stage_buf_byte_idx = wgt_stage_out_idx * {16'd0, input_c}
+                                        + {16'd0, wgt_stage_k_base}
+                                        + wgt_stage_row_idx;
+    wire [31:0] wgt_stage_abs_byte_idx = wgt_stage_buf_byte_idx
+                                        + {27'd0, wgt_dma_byte_offset};
+    wire [BUF_ADDR_W-1:0] wgt_stage_beat_addr = wgt_stage_abs_byte_idx[BUF_ADDR_W+4:5];
+    wire [4:0] wgt_stage_byte_sel = wgt_stage_abs_byte_idx[4:0];
     wire [7:0] fc_weight_byte = hb_beat_byte(wgt_rd_data, fc_weight_byte_sel);
     wire [31:0] conv_weight_dma_byte_idx = wgt_load_phase + {27'd0, wgt_dma_byte_offset};
     wire [31:0] add_byte_idx = add_src_idx;
@@ -1292,7 +1325,8 @@ module npu_top #(
     wire [31:0] fc_shadow_dma_byte_idx = fc_shadow_buf_byte_idx + {27'd0, wgt_dma_byte_offset};
     wire [BUF_ADDR_W-1:0] fc_shadow_beat_addr = fc_shadow_dma_byte_idx[BUF_ADDR_W+4:5];
 
-    assign wgt_rd_addr  = (fsm_state == FSM_BIAS_EXTRACT) ? bias_beat_addr :
+    assign wgt_rd_addr  = (gemm_row_streaming_en && (fsm_state == FSM_LOAD_ARRAY) && wgt_stage_active) ? wgt_stage_beat_addr :
+                          (fsm_state == FSM_BIAS_EXTRACT) ? bias_beat_addr :
                           (fsm_state == FSM_ADD_COMPUTE) ? add_src_beat_addr :
                           (is_fc_mode && (fsm_state == FSM_LOAD_ARRAY)) ? fc_weight_beat_addr :
                           (fc_shadow_active) ? fc_shadow_beat_addr :
@@ -1790,6 +1824,92 @@ module npu_top #(
         end
     end
 
+    // ============================================================
+    // Phase 4b: sequential weight staging micro-sequencer.
+    // Reads B weights from wgt_buffer and unpacks into wgt_load_reg.
+    // Same address formula as legacy FSM_LOAD_ARRAY for FC/GEMM.
+    // Phase 4b-1: sequential (runs in FSM_LOAD_ARRAY, not during RUN).
+    // ============================================================
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            wgt_stage_active  <= 1'b0;
+            wgt_stage_done    <= 1'b0;
+            wgt_stage_phase   <= WGT_STAGE_IDLE;
+            wgt_stage_lane_idx <= 16'd0;
+            wgt_stage_k_base  <= 16'd0;
+            wgt_stage_k_tile  <= 16'd0;
+            wgt_stage_n_start <= 16'd0;
+            wgt_stage_n_tile  <= 16'd0;
+            wgt_stage_valid   <= 1'b0;
+            wgt_stage_valid_k_base  <= 16'd0;
+            wgt_stage_valid_k_tile  <= 16'd0;
+            wgt_stage_valid_n_start <= 16'd0;
+            wgt_stage_valid_n_tile  <= 16'd0;
+            wgt_stage_beat_count <= 16'd0;
+            wgt_stage_byte_count <= 16'd0;
+        end else if (wgt_stage_active) begin
+            case (wgt_stage_phase)
+                WGT_STAGE_IDLE: begin
+                    wgt_stage_lane_idx <= 16'd0;
+                    wgt_stage_beat_count <= 16'd0;
+                    wgt_stage_byte_count <= 16'd0;
+                    wgt_stage_phase <= WGT_STAGE_REQ;
+                end
+                WGT_STAGE_REQ: begin
+                    wgt_stage_phase <= WGT_STAGE_WAIT;
+                end
+                WGT_STAGE_WAIT: begin
+                    wgt_stage_phase <= WGT_STAGE_CAPTURE;
+                end
+                WGT_STAGE_CAPTURE: begin
+                    // Beat-level unpack: up to 32 bytes from wgt_buffer
+                    // into wgt_load_reg. Same formula as legacy FC/GEMM path.
+                    integer ws_remain;
+                    integer ws_beatsz;
+                    integer ws_count;
+                    integer ws_lane;
+                    ws_remain = (wgt_stage_n_tile * wgt_stage_k_tile) - wgt_stage_lane_idx;
+                    ws_beatsz = 32'd32 - {27'd0, wgt_stage_abs_byte_idx[4:0]};
+                    ws_count  = (ws_remain > 32'd32) ? 32'd32 : ws_remain;
+                    if (ws_beatsz < ws_count) ws_count = ws_beatsz;
+                    for (ws_lane = 0; ws_lane < 32; ws_lane = ws_lane + 1) begin
+                        if (ws_lane < ws_count) begin
+                            reg [31:0] ws_lane_idx;
+                            reg [31:0] ws_lane_out;
+                            reg [31:0] ws_lane_row;
+                            reg [4:0]  ws_lane_bsel;
+                            ws_lane_idx  = wgt_stage_lane_idx + ws_lane;
+                            ws_lane_out  = ws_lane_idx / {16'd0, wgt_stage_k_tile};
+                            ws_lane_row  = ws_lane_idx % {16'd0, wgt_stage_k_tile};
+                            ws_lane_bsel = wgt_stage_abs_byte_idx[4:0] + ws_lane;
+                            wgt_load_reg[(ws_lane_row * PE_COLS + wgt_stage_n_start + ws_lane_out)*8 +: 8]
+                                <= wgt_rd_data[ws_lane_bsel * 8 +: 8];
+                        end
+                    end
+                    wgt_stage_beat_count <= wgt_stage_beat_count + 16'd1;
+                    wgt_stage_byte_count <= wgt_stage_byte_count + {10'd0, ws_count[5:0]};
+                    if (wgt_stage_lane_idx + ws_count >= (wgt_stage_n_tile * wgt_stage_k_tile)) begin
+                        // All bytes staged: mark valid
+                        wgt_stage_valid <= 1'b1;
+                        wgt_stage_valid_k_base  <= wgt_stage_k_base;
+                        wgt_stage_valid_k_tile  <= wgt_stage_k_tile;
+                        wgt_stage_valid_n_start <= wgt_stage_n_start;
+                        wgt_stage_valid_n_tile  <= wgt_stage_n_tile;
+                        wgt_stage_done   <= 1'b1;
+                        wgt_stage_active <= 1'b0;
+                        wgt_stage_phase  <= WGT_STAGE_IDLE;
+                    end else begin
+                        wgt_stage_lane_idx <= wgt_stage_lane_idx + ws_count;
+                        wgt_stage_phase <= WGT_STAGE_REQ;
+                    end
+                end
+                default: wgt_stage_phase <= WGT_STAGE_IDLE;
+            endcase
+        end else begin
+            wgt_stage_phase <= WGT_STAGE_IDLE;
+        end
+    end
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             fsm_state <= FSM_IDLE;  comp_sub_state <= CP_WAIT_WIN;
@@ -1874,6 +1994,18 @@ module npu_top #(
             input_prefetch_stall_count <= 16'd0;
             input_prefetch_beat_count  <= 16'd0;
             input_prefetch_byte_count  <= 16'd0;
+            // Phase 4b: weight staging
+            wgt_stage_active  <= 1'b0;
+            wgt_stage_done    <= 1'b0;
+            wgt_stage_phase   <= WGT_STAGE_IDLE;
+            wgt_stage_lane_idx <= 16'd0;
+            wgt_stage_valid   <= 1'b0;
+            wgt_stage_valid_k_base  <= 16'd0;
+            wgt_stage_valid_k_tile  <= 16'd0;
+            wgt_stage_valid_n_start <= 16'd0;
+            wgt_stage_valid_n_tile  <= 16'd0;
+            wgt_stage_beat_count <= 16'd0;
+            wgt_stage_byte_count <= 16'd0;
             gemm_store_row_idx <= 16'd0;
             gemm_store_beat_idx <= 16'd0;
             gemm_stream_k_base <= 16'd0;
@@ -2550,10 +2682,43 @@ module npu_top #(
                 end
 
                 // ============================================================
-                // FSM_LOAD_ARRAY: load weights from wgt_buffer into array + wgt_load_reg
+                // FSM_LOAD_ARRAY: load weights from wgt_buffer into wgt_load_reg
+                // Phase 4b-1: GEMM streaming uses weight staging micro-sequencer.
+                // Legacy FC/GEMM/Conv uses original inline unpack.
                 // ============================================================
                 FSM_LOAD_ARRAY: begin
-                    if (fc_or_gemm) begin
+                    if (gemm_row_streaming_en) begin
+                        // Phase 4b-1: sequential weight staging
+                        if (!wgt_stage_active && !wgt_stage_done) begin
+                            wgt_stage_active   <= 1'b1;
+                            wgt_stage_done     <= 1'b0;
+                            wgt_stage_k_base   <= fc_in_base;
+                            wgt_stage_k_tile   <= fc_chunk_inputs;
+                            wgt_stage_n_start  <= fc_out_start;
+                            wgt_stage_n_tile   <= fc_tile_outputs;
+                            wgt_stage_valid    <= 1'b0;
+                            // Phase will be set to REQ by micro-sequencer IDLE state
+                            $display("[WGT_STG] START k_base=%0d k_tile=%0d n_start=%0d n_tile=%0d",
+                                fc_in_base, fc_chunk_inputs, fc_out_start, fc_tile_outputs);
+                        end else if (wgt_stage_done) begin
+                            // Weight staging complete — verify meta
+                            if (!wgt_stage_valid ||
+                                (wgt_stage_valid_k_base  != fc_in_base) ||
+                                (wgt_stage_valid_k_tile  != fc_chunk_inputs) ||
+                                (wgt_stage_valid_n_start != fc_out_start) ||
+                                (wgt_stage_valid_n_tile  != fc_tile_outputs)) begin
+                                $display("[WGT_STG] META MISMATCH: valid=%0d k(%0d/%0d) n(%0d/%0d)",
+                                    wgt_stage_valid,
+                                    wgt_stage_valid_k_base, fc_in_base,
+                                    wgt_stage_valid_k_tile, fc_chunk_inputs);
+                            end
+                            $display("[WGT_STG] DONE beats=%0d bytes=%0d",
+                                wgt_stage_beat_count, wgt_stage_byte_count);
+                            wgt_stage_done <= 1'b0;
+                            wgt_load_done_r <= 1'b1;
+                            fsm_state <= FSM_WGT_LD;
+                        end
+                    end else if (fc_or_gemm) begin
                         if (wgt_load_wait) begin
                             wgt_load_wait <= 1'b0;
                         end else if (wgt_load_phase < (fc_tile_outputs * fc_chunk_inputs)) begin
@@ -3278,6 +3443,7 @@ module npu_top #(
                         // stale data from previous tasks from matching prefetch.
                         input_bank0_valid <= 1'b0;
                         input_bank1_valid <= 1'b0;
+                        wgt_stage_valid   <= 1'b0;
                         // First chunk: load into bank0, compute from bank0
                         input_load_bank    <= 1'b0;
                         input_compute_bank <= 1'b0;
