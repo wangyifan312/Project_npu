@@ -161,6 +161,7 @@ module npu_top #(
     localparam FSM_GEMM_STREAM_RUN    = 6'd36;
     localparam FSM_GEMM_STREAM_DONE   = 6'd37;
     localparam FSM_GEMM_STREAM_STORE   = 6'd38;
+    localparam FSM_GEMM_STREAM_ACCUM   = 6'd40;  // Phase 3a: K-chunk loop check
 
     // COMPUTE sub-states
     localparam CP_WAIT_WIN = 3'd0;
@@ -681,6 +682,11 @@ module npu_top #(
     reg        stream_a_tile_loaded;
     reg [15:0] gemm_store_row_idx;
     reg [15:0] gemm_store_beat_idx;
+    // Phase 3a: K-chunk streaming accumulation
+    reg [15:0] gemm_stream_k_base;        // current K-chunk start offset (0, 64, 128, ...)
+    reg [15:0] gemm_stream_k_chunk_idx;   // 0-based chunk index
+    reg        gemm_stream_first_chunk;    // 1 during first K-chunk
+    reg        gemm_stream_last_chunk;     // 1 during last K-chunk
     localparam GEMM_STREAM_FIXED_DELAY = 1;
 
     wire [15:0] array_drain_offset;
@@ -1668,6 +1674,10 @@ module npu_top #(
             stream_a_tile_loaded <= 1'b0;
             gemm_store_row_idx <= 16'd0;
             gemm_store_beat_idx <= 16'd0;
+            gemm_stream_k_base <= 16'd0;
+            gemm_stream_k_chunk_idx <= 16'd0;
+            gemm_stream_first_chunk <= 1'b0;
+            gemm_stream_last_chunk <= 1'b0;
             fc_store_addr <= 32'd0; fc_store_bytes <= 32'd0;
             rq_acc_wr_en_r <= 1'b0; rq_acc_wr_addr_r <= {BUF_ADDR_W{1'b0}}; rq_acc_wr_data_r <= 32'd0;
             rq_src_idx <= 32'd0; rq_src_wait <= 1'b0; rq_total_words <= 32'd0; rq_pack_idx <= 2'd0; rq_pack_word <= 32'd0;
@@ -2141,6 +2151,13 @@ module npu_top #(
                         fc_tile_outputs_next;
                     fc_in_base <= 16'd0;
                     fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
+                    // Phase 3a: init streaming K-chunk state (this state entered once per task)
+                    if (gemm_row_streaming_en) begin
+                        gemm_stream_k_base       <= 16'd0;
+                        gemm_stream_k_chunk_idx  <= 16'd0;
+                        gemm_stream_first_chunk  <= 1'b1;
+                        gemm_stream_last_chunk   <= (input_c <= PE_ROWS_16);
+                    end
                     dma_rd_ptr <= 0;
                     // Phase 1a+: GEMM weight retention — skip reload
                     if (gemm_weight_hit) begin
@@ -3046,7 +3063,8 @@ module npu_top #(
                     stream_active <= 1'b0;
                     stream_a_tile_loaded <= 1'b0;
                     comp_feed_cnt <= 7'd0;
-                    begin
+                    // Phase 3a: clear c_tile only for first K-chunk
+                    if (gemm_stream_first_chunk) begin
                         integer ci, cj;
                         for (ci = 0; ci < 8; ci = ci + 1)
                             for (cj = 0; cj < 64; cj = cj + 1) begin
@@ -3054,6 +3072,9 @@ module npu_top #(
                                 c_tile_valid[ci][cj] <= 1'b0;
                             end
                     end
+                    $display("[KCHUNK] PREP k_base=%0d k_chunk_idx=%0d first=%0d last=%0d",
+                        gemm_stream_k_base, gemm_stream_k_chunk_idx,
+                        gemm_stream_first_chunk, gemm_stream_last_chunk);
                     fsm_state <= FSM_GEMM_STREAM_LOAD_A;
                 end
 
@@ -3062,7 +3083,14 @@ module npu_top #(
                         stream_a_tile_loaded <= 1'b1;
                         stream_capture_count <= 16'd0;
                     end else if (stream_capture_count < (gemm_M_val * {16'd0, input_c})) begin
-                        a_tile[stream_capture_count / {16'd0, input_c}][stream_capture_count % {16'd0, input_c}] <= cf_act_data;
+                        // Phase 3a: only capture bytes in current K-chunk range
+                        // A[m][k] where k ∈ [k_base, k_base+K_tile), store at a_tile[m][k-k_base]
+                        automatic integer raw_k;
+                        raw_k = stream_capture_count % {16'd0, input_c};
+                        if (raw_k >= gemm_stream_k_base && raw_k < (gemm_stream_k_base + fc_chunk_inputs)) begin
+                            a_tile[stream_capture_count / {16'd0, input_c}]
+                                  [raw_k - gemm_stream_k_base] <= cf_act_data;
+                        end
                         stream_capture_count <= stream_capture_count + 16'd1;
                     end else begin
                         stream_active <= 1'b1;
@@ -3080,9 +3108,16 @@ module npu_top #(
                                 reg signed [31:0] str_m;
                                 str_m = $signed({16'd0, stream_cycle}) - $signed({16'd0, active_k}) - $signed({16'd0, str_n}) - $signed({16'd0, stream_pipe_offset});
                                 if (!str_m[31] && str_m < gemm_M_val && str_n < gemm_N_val) begin
-                                    if (!c_tile_valid[str_m][str_n]) begin
-                                        c_tile[str_m][str_n] <= array_sum_out[str_n*32 +: 32];
-                                        c_tile_valid[str_m][str_n] <= 1'b1;
+                                    if (gemm_stream_first_chunk) begin
+                                        // First K-chunk: write-once (v1 behavior)
+                                        if (!c_tile_valid[str_m][str_n]) begin
+                                            c_tile[str_m][str_n] <= array_sum_out[str_n*32 +: 32];
+                                            c_tile_valid[str_m][str_n] <= 1'b1;
+                                        end
+                                    end else begin
+                                        // Subsequent K-chunk: accumulate
+                                        c_tile[str_m][str_n] <= $signed(c_tile[str_m][str_n])
+                                                              + $signed(array_sum_out[str_n*32 +: 32]);
                                     end
                                 end
                             end
@@ -3090,6 +3125,39 @@ module npu_top #(
                     end
                     if (stream_cycle >= (gemm_M_val + active_k + array_active_cols + stream_pipe_offset + 16'd10)) begin
                         stream_active <= 1'b0;
+                        fsm_state <= FSM_GEMM_STREAM_ACCUM;  // Phase 3a: check K-chunk loop
+                    end
+                end
+
+                // Phase 3a: K-chunk accumulation loop check
+                FSM_GEMM_STREAM_ACCUM: begin
+                    // Check if more K-chunks remain
+                    if (fc_in_base + fc_chunk_inputs < input_c) begin
+                        // More K-chunks: advance base, prepare next chunk
+                        gemm_stream_k_base       <= fc_in_base + fc_chunk_inputs;
+                        gemm_stream_k_chunk_idx  <= gemm_stream_k_chunk_idx + 16'd1;
+                        gemm_stream_first_chunk  <= 1'b0;
+                        gemm_stream_last_chunk   <= ((fc_in_base + fc_chunk_inputs + fc_chunk_inputs) >= input_c);
+                        // Invalidate weight cache for new chunk (k_base changed)
+                        if (is_gemm_mode)
+                            gemm_weight_valid <= 1'b0;
+                        fc_in_base <= fc_in_base + fc_chunk_inputs;
+                        fc_chunk_inputs <= ((input_c - (fc_in_base + fc_chunk_inputs)) > PE_ROWS_16) ?
+                                           PE_ROWS_16 :
+                                           (input_c - (fc_in_base + fc_chunk_inputs));
+                        wgt_load_phase <= 32'd0;
+                        wgt_load_wait <= 1'b1;
+                        fc_shadow_active <= 1'b0;
+                        $display("[KCHUNK] ACCUM: advance to k_base=%0d k_chunk_idx=%0d k_tile=%0d",
+                            fc_in_base + fc_chunk_inputs,
+                            gemm_stream_k_chunk_idx + 16'd1,
+                            ((input_c - (fc_in_base + fc_chunk_inputs)) > PE_ROWS_16) ?
+                                PE_ROWS_16 : (input_c - (fc_in_base + fc_chunk_inputs)));
+                        fsm_state <= FSM_LOAD_ARRAY;  // reload B weights for next chunk
+                    end else begin
+                        // All K-chunks done: proceed to STORE
+                        $display("[KCHUNK] ACCUM: all %0d chunks done, starting STORE",
+                            gemm_stream_k_chunk_idx + 16'd1);
                         fsm_state <= FSM_GEMM_STREAM_DONE;
                     end
                 end
