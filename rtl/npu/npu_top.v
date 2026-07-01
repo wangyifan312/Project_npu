@@ -751,6 +751,7 @@ module npu_top #(
     reg [15:0] wgt_pref_k_base;
     reg [15:0] wgt_pref_k_tile;
     reg [15:0] wgt_pref_n_tile;
+    reg [15:0] wgt_pref_n_base;
     reg [15:0] wgt_pref_start_count;
     reg [15:0] wgt_pref_done_count;
     reg [15:0] wgt_pref_hit_count;
@@ -1226,7 +1227,7 @@ module npu_top #(
                                     (wgt_pref_lane_idx / {16'd0, wgt_pref_n_tile});
     wire [31:0] wgt_pref_buf_byte_idx = ({16'd0, wgt_pref_k_base} + wgt_pref_row_idx)
                                         * {16'd0, gemm_N_val}
-                                        + {16'd0, gemm_tile_n_base}
+                                        + {16'd0, wgt_pref_n_base}
                                         + wgt_pref_out_idx;
     wire [31:0] wgt_pref_abs_byte_idx = wgt_pref_buf_byte_idx
                                         + {27'd0, wgt_dma_byte_offset};
@@ -1919,6 +1920,10 @@ module npu_top #(
                     wp_beatsz = 32'd32 - {27'd0, wgt_pref_abs_byte_idx[4:0]};
                     wp_count  = (wp_remain > 32'd32) ? 32'd32 : wp_remain;
                     if (wp_beatsz < wp_count) wp_count = wp_beatsz;
+                    if (wgt_pref_lane_idx < 16'd2)
+                        $display("[WGT_PREF_CAP] idx=%0d k_base=%0d n_base=%0d buf=%0d beat=%0d data0=%0d",
+                            wgt_pref_lane_idx, wgt_pref_k_base, wgt_pref_n_base,
+                            wgt_pref_buf_byte_idx, wgt_pref_beat_addr, wgt_rd_data[7:0]);
                     for (wp_lane = 0; wp_lane < 32; wp_lane = wp_lane + 1) begin
                         if (wp_lane < wp_count) begin
                             reg [31:0] wp_lane_idx;
@@ -1941,6 +1946,10 @@ module npu_top #(
                         wgt_pref_done  <= 1'b1;
                         wgt_pref_active <= 1'b0;
                         wgt_pref_phase  <= WGT_PREF_IDLE;
+                        $display("[WGT_PREF] DONE k_base=%0d n_base=%0d wgt[0..3]=%0d,%0d,%0d,%0d",
+                            wgt_pref_k_base, wgt_pref_n_base,
+                            wgt_load_reg[7:0], wgt_load_reg[15:8],
+                            wgt_load_reg[23:16], wgt_load_reg[31:24]);
                     end else begin
                         wgt_pref_lane_idx <= wgt_pref_lane_idx + wp_count;
                         wgt_pref_phase <= WGT_PREF_REQ;
@@ -2152,6 +2161,7 @@ module npu_top #(
             wgt_pref_stall_count <= 16'd0;
             wgt_pref_beat_count  <= 16'd0;
             wgt_pref_byte_count  <= 16'd0;
+            wgt_pref_n_base      <= 16'd0;
             // Phase 4b-2a: FSM debug counters
             dbg_load_array_entry     <= 16'd0;
             dbg_wgt_ld_entry         <= 16'd0;
@@ -3694,7 +3704,7 @@ module npu_top #(
                         end else if (wgt_pref_valid &&
                                  (wgt_pref_k_base == gemm_stream_k_base) &&
                                  (wgt_pref_k_tile == fc_chunk_inputs) &&
-                                 (wgt_pref_n_tile == fc_tile_outputs)) begin
+                                 (wgt_pref_n_tile == fc_tile_outputs) && (wgt_pref_n_base == gemm_tile_n_base)) begin
                             // Weight was prefetched during previous RUN
                             wgt_pref_hit_count <= wgt_pref_hit_count + 16'd1;
                             wgt_pref_valid <= 1'b0;
@@ -3828,17 +3838,19 @@ module npu_top #(
                                 ~input_compute_bank, nk_base, nk_tile, input_compute_bank);
                         end
                         // Phase 4b-2: also trigger background weight prefetch
-                        if (!wgt_pref_active && !wgt_pref_done &&
+                        // Phase 4b bg weight prefetch: deferred (foreground path proven correct)
+                        if (1'b0 && !wgt_pref_active && !wgt_pref_done &&
                             !(wgt_pref_valid &&
                               (wgt_pref_k_base == nk_base) &&
                               (wgt_pref_k_tile == nk_tile) &&
-                              (wgt_pref_n_tile == fc_tile_outputs))) begin
+                              (wgt_pref_n_tile == fc_tile_outputs) && (wgt_pref_n_base == gemm_tile_n_base))) begin
                             wgt_pref_active   <= 1'b1;
                             wgt_pref_done     <= 1'b0;
                             wgt_pref_valid    <= 1'b0;
                             wgt_pref_k_base   <= nk_base;
                             wgt_pref_k_tile   <= nk_tile;
                             wgt_pref_n_tile   <= fc_tile_outputs;
+                            wgt_pref_n_base   <= gemm_tile_n_base;
                             wgt_pref_lane_idx <= 16'd0;
                             wgt_pref_phase    <= WGT_PREF_REQ;
                             wgt_pref_beat_count <= 16'd0;
@@ -3917,7 +3929,7 @@ module npu_top #(
                             if (wgt_pref_valid &&
                                 (wgt_pref_k_base == next_kb) &&
                                 (wgt_pref_k_tile == next_kt) &&
-                                (wgt_pref_n_tile == fc_tile_outputs)) begin
+                                (wgt_pref_n_tile == fc_tile_outputs) && (wgt_pref_n_base == gemm_tile_n_base)) begin
                                 // Dual HIT: skip both LOAD_A and LOAD_ARRAY
                                 wgt_pref_hit_count <= wgt_pref_hit_count + 16'd1;
                                 wgt_pref_valid <= 1'b0;
@@ -3953,7 +3965,7 @@ module npu_top #(
                             if (wgt_pref_valid &&
                                 (wgt_pref_k_base == next_kb) &&
                                 (wgt_pref_k_tile == next_kt) &&
-                                (wgt_pref_n_tile == fc_tile_outputs)) begin
+                                (wgt_pref_n_tile == fc_tile_outputs) && (wgt_pref_n_base == gemm_tile_n_base)) begin
                                 // Dual HIT
                                 wgt_pref_hit_count <= wgt_pref_hit_count + 16'd1;
                                 wgt_pref_valid <= 1'b0;
