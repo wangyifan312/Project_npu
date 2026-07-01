@@ -683,8 +683,13 @@ module npu_top #(
     // Phase 4a-2: double-buffered input tile banks
     reg [7:0]  input_tile_bank0 [0:7][0:63];
     reg [7:0]  input_tile_bank1 [0:7][0:63];
-    reg signed [31:0] c_tile [0:7][0:63];
-    reg        c_tile_valid [0:7][0:63];
+    // Phase 4c-1: c_tile double buffer
+    reg signed [31:0] c_tile_bank0 [0:7][0:63];
+    reg signed [31:0] c_tile_bank1 [0:7][0:63];
+    reg        c_tile_valid_bank0 [0:7][0:63];
+    reg        c_tile_valid_bank1 [0:7][0:63];
+    reg        compute_c_bank;   // collector writes this bank
+    reg        store_c_bank;     // STORE reads this bank
     reg [15:0] stream_cycle;
     reg [15:0] stream_capture_count;
     reg        stream_active;
@@ -2173,6 +2178,8 @@ module npu_top #(
             gemm_tile_M      <= 16'd0;
             gemm_tile_n_base <= 16'd0;
             gemm_tile_N      <= 16'd0;
+            compute_c_bank   <= 1'b0;
+            store_c_bank     <= 1'b0;
             fc_store_addr <= 32'd0; fc_store_bytes <= 32'd0;
             rq_acc_wr_en_r <= 1'b0; rq_acc_wr_addr_r <= {BUF_ADDR_W{1'b0}}; rq_acc_wr_data_r <= 32'd0;
             rq_src_idx <= 32'd0; rq_src_wait <= 1'b0; rq_total_words <= 32'd0; rq_pack_idx <= 2'd0; rq_pack_word <= 32'd0;
@@ -2658,6 +2665,9 @@ module npu_top #(
                         // Phase 5-2: init N tile descriptor
                         gemm_tile_n_base <= 16'd0;
                         gemm_tile_N <= (gemm_N_val > PE_COLS_16) ? PE_COLS_16 : gemm_N_val;
+                        // Phase 4c-1: init c_tile banks
+                        compute_c_bank <= 1'b0;
+                        store_c_bank   <= 1'b0;
                     end
                     dma_rd_ptr <= 0;
                     // Phase 1a+: GEMM weight retention — skip reload
@@ -3614,8 +3624,13 @@ module npu_top #(
                         integer ci, cj;
                         for (ci = 0; ci < 8; ci = ci + 1)
                             for (cj = 0; cj < 64; cj = cj + 1) begin
-                                c_tile[ci][cj] <= 32'sd0;
-                                c_tile_valid[ci][cj] <= 1'b0;
+                                if (compute_c_bank == 1'b0) begin
+                                    c_tile_bank0[ci][cj] <= 32'sd0;
+                                    c_tile_valid_bank0[ci][cj] <= 1'b0;
+                                end else begin
+                                    c_tile_bank1[ci][cj] <= 32'sd0;
+                                    c_tile_valid_bank1[ci][cj] <= 1'b0;
+                                end
                             end
                         // First chunk of new task: clear both banks to prevent
                         // stale data from previous tasks from matching prefetch.
@@ -3864,14 +3879,23 @@ module npu_top #(
                                 if (!str_m[31] && str_m < gemm_tile_M && str_n < gemm_N_val) begin
                                     if (gemm_stream_first_chunk) begin
                                         // First K-chunk: write-once (v1 behavior)
-                                        if (!c_tile_valid[str_m][str_n]) begin
-                                            c_tile[str_m][str_n] <= array_sum_out[str_n*32 +: 32];
-                                            c_tile_valid[str_m][str_n] <= 1'b1;
+                                        if (!(compute_c_bank ? c_tile_valid_bank1[str_m][str_n] : c_tile_valid_bank0[str_m][str_n])) begin
+                                            if (compute_c_bank == 1'b0) begin
+                                                c_tile_bank0[str_m][str_n] <= array_sum_out[str_n*32 +: 32];
+                                                c_tile_valid_bank0[str_m][str_n] <= 1'b1;
+                                            end else begin
+                                                c_tile_bank1[str_m][str_n] <= array_sum_out[str_n*32 +: 32];
+                                                c_tile_valid_bank1[str_m][str_n] <= 1'b1;
+                                            end
                                         end
                                     end else begin
                                         // Subsequent K-chunk: accumulate
-                                        c_tile[str_m][str_n] <= $signed(c_tile[str_m][str_n])
-                                                              + $signed(array_sum_out[str_n*32 +: 32]);
+                                        if (compute_c_bank == 1'b0)
+                                            c_tile_bank0[str_m][str_n] <= $signed(c_tile_bank0[str_m][str_n])
+                                                                      + $signed(array_sum_out[str_n*32 +: 32]);
+                                        else
+                                            c_tile_bank1[str_m][str_n] <= $signed(c_tile_bank1[str_m][str_n])
+                                                                      + $signed(array_sum_out[str_n*32 +: 32]);
                                     end
                                 end
                             end
@@ -4011,6 +4035,7 @@ module npu_top #(
 
                 FSM_GEMM_STREAM_DONE: begin
                     // Start direct c_tile → DMA STORE
+                    store_c_bank <= compute_c_bank;
                     gemm_store_row_idx <= 16'd0;
                     gemm_store_beat_idx <= 16'd0;
                     fsm_state <= FSM_GEMM_STREAM_STORE;
@@ -4033,7 +4058,9 @@ module npu_top #(
                     beat = 256'd0;
                     wstrb_val = 32'd0;
                     for (lane = 0; lane < this_beat_cols; lane = lane + 1) begin
-                        beat[lane*32 +: 32] = c_tile[gemm_store_row_idx][base_col + lane];
+                        beat[lane*32 +: 32] = store_c_bank ?
+                            c_tile_bank1[gemm_store_row_idx][base_col + lane] :
+                            c_tile_bank0[gemm_store_row_idx][base_col + lane];
                         wstrb_val[lane*4 +: 4] = 4'hF;
                     end
                     dma_wr_data_r <= beat;
@@ -4101,6 +4128,7 @@ module npu_top #(
                                 wgt_pref_valid <= 1'b0;
                                 $display("[N_TILE] next tile: n_base=%0d N=%0d",
                                     next_n_base, gemm_tile_N);
+                                compute_c_bank <= ~compute_c_bank;
                                 fsm_state <= FSM_GEMM_STREAM_PREP;
                             end else if (gemm_tile_m_base + gemm_tile_M < gemm_M_val) begin
                                 // More M tiles: reset N base
@@ -4126,6 +4154,7 @@ module npu_top #(
                                 wgt_pref_valid <= 1'b0;
                                 $display("[M_TILE] next tile: m_base=%0d M=%0d n_reset",
                                     next_m_base, gemm_tile_M);
+                                compute_c_bank <= ~compute_c_bank;
                                 fsm_state <= FSM_GEMM_STREAM_PREP;
                             end else begin
                                 // All tiles done
