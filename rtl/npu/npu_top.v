@@ -698,6 +698,26 @@ module npu_top #(
     reg [15:0] input_bank1_k_base;       // k_base for data in bank1
     reg [15:0] input_bank0_k_tile;       // k_tile for data in bank0
     reg [15:0] input_bank1_k_tile;       // k_tile for data in bank1
+    // Phase 4a-3: background input tile prefetch during RUN
+    localparam PREF_IDLE    = 2'd0;
+    localparam PREF_REQ     = 2'd1;
+    localparam PREF_WAIT    = 2'd2;
+    localparam PREF_CAPTURE = 2'd3;
+    reg        input_prefetch_active;
+    reg        input_prefetch_done;
+    reg        input_prefetch_bank;       // which bank prefetch writes
+    reg [1:0]  input_prefetch_phase;
+    reg [2:0]  input_prefetch_row;
+    reg [6:0]  input_prefetch_col;
+    reg [15:0] input_prefetch_k_base;
+    reg [15:0] input_prefetch_k_tile;
+    // Prefetch debug counters
+    reg [15:0] input_prefetch_start_count;
+    reg [15:0] input_prefetch_done_count;
+    reg [15:0] input_prefetch_hit_count;
+    reg [15:0] input_prefetch_stall_count;
+    reg [15:0] input_prefetch_beat_count;
+    reg [15:0] input_prefetch_byte_count;
     reg [15:0] gemm_store_row_idx;
     reg [15:0] gemm_store_beat_idx;
     // Phase 3a: K-chunk streaming accumulation
@@ -1117,6 +1137,13 @@ module npu_top #(
         {25'd0, gemm_a_load_col};
     wire [BUF_ADDR_W-1:0] gemm_a_load_beat_addr = gemm_a_load_byte_idx[BUF_ADDR_W+4:5];
     wire [HB_BEAT_BYTE_BITS-1:0] gemm_a_load_lane_start = gemm_a_load_byte_idx[4:0];
+    // Phase 4a-3: background prefetch byte-level address computation
+    wire [31:0] input_prefetch_byte_idx =
+        {29'd0, input_prefetch_row} * {16'd0, input_c} +
+        {16'd0, input_prefetch_k_base} +
+        {25'd0, input_prefetch_col};
+    wire [BUF_ADDR_W-1:0] input_prefetch_beat_addr = input_prefetch_byte_idx[BUF_ADDR_W+4:5];
+    wire [4:0] input_prefetch_lane_start = input_prefetch_byte_idx[4:0];
     wire [7:0] fc_weight_byte = hb_beat_byte(wgt_rd_data, fc_weight_byte_sel);
     wire [31:0] conv_weight_dma_byte_idx = wgt_load_phase + {27'd0, wgt_dma_byte_offset};
     wire [31:0] add_byte_idx = add_src_idx;
@@ -1221,6 +1248,7 @@ module npu_top #(
     assign act_rd_bank  = act_comp_bank;
 
     assign act_rd_addr  = (fsm_state == FSM_GEMM_STREAM_LOAD_A) ? gemm_a_load_beat_addr :
+                          (input_prefetch_active && (input_prefetch_phase != PREF_IDLE)) ? input_prefetch_beat_addr :
                           is_pool_mode    ? act_pool_beat_addr :
                           fc_or_gemm      ? fc_act_beat_addr :
                           is_add_mode     ? add_src_beat_addr :
@@ -1656,6 +1684,112 @@ module npu_top #(
     reg        task_done_r, task_error_r;
     reg [7:0]  task_error_code_r;
 
+    // ============================================================
+    // Phase 4a-3: background input tile prefetch micro-sequencer.
+    // Runs during FSM_GEMM_STREAM_RUN to load next chunk's A tile
+    // into the inactive bank while compute reads the active bank.
+    // Independent of foreground LOAD_A micro-sequencer.
+    // ============================================================
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            input_prefetch_active <= 1'b0;
+            input_prefetch_done  <= 1'b0;
+            input_prefetch_bank  <= 1'b0;
+            input_prefetch_phase <= PREF_IDLE;
+            input_prefetch_row   <= 3'd0;
+            input_prefetch_col   <= 7'd0;
+            input_prefetch_k_base <= 16'd0;
+            input_prefetch_k_tile <= 16'd0;
+        end else if (input_prefetch_active) begin
+            case (input_prefetch_phase)
+                PREF_IDLE: begin
+                    input_prefetch_row   <= 3'd0;
+                    input_prefetch_col   <= 7'd0;
+                    input_prefetch_phase <= PREF_REQ;
+                end
+                PREF_REQ: begin
+                    input_prefetch_phase <= PREF_WAIT;
+                end
+                PREF_WAIT: begin
+                    input_prefetch_phase <= PREF_CAPTURE;
+                end
+                PREF_CAPTURE: begin
+                    // Beat-level bulk unpack into prefetch bank
+                    integer rem_v;
+                    integer btb_v;
+                    integer lane;
+                    integer ls_v;
+                    ls_v  = input_prefetch_lane_start;
+                    rem_v = input_prefetch_k_tile - input_prefetch_col;
+                    btb_v = (rem_v < (32 - ls_v)) ? rem_v : (32 - ls_v);
+                    // Write bytes to prefetch bank
+                    if (input_prefetch_bank == 1'b0) begin
+                        for (lane = 0; lane < 32; lane = lane + 1) begin
+                            if ((lane >= ls_v) && ((lane - ls_v) < btb_v)) begin
+                                input_tile_bank0[input_prefetch_row]
+                                    [input_prefetch_col + (lane - ls_v)]
+                                    <= act_rd_data[lane * 8 +: 8];
+                            end
+                        end
+                    end else begin
+                        for (lane = 0; lane < 32; lane = lane + 1) begin
+                            if ((lane >= ls_v) && ((lane - ls_v) < btb_v)) begin
+                                input_tile_bank1[input_prefetch_row]
+                                    [input_prefetch_col + (lane - ls_v)]
+                                    <= act_rd_data[lane * 8 +: 8];
+                            end
+                        end
+                    end
+                    input_prefetch_beat_count <= input_prefetch_beat_count + 16'd1;
+                    input_prefetch_byte_count <= input_prefetch_byte_count
+                        + {10'd0, btb_v[5:0]};
+                    // Advance
+                    if (input_prefetch_col + btb_v >= input_prefetch_k_tile) begin
+                        // Row done: zero-fill
+                        if (input_prefetch_bank == 1'b0) begin
+                            for (lane = input_prefetch_k_tile; lane < 64; lane = lane + 1)
+                                input_tile_bank0[input_prefetch_row][lane] <= 8'd0;
+                        end else begin
+                            for (lane = input_prefetch_k_tile; lane < 64; lane = lane + 1)
+                                input_tile_bank1[input_prefetch_row][lane] <= 8'd0;
+                        end
+                        if (input_prefetch_row + 3'd1 < gemm_M_val) begin
+                            input_prefetch_row   <= input_prefetch_row + 3'd1;
+                            input_prefetch_col   <= 7'd0;
+                            input_prefetch_phase <= PREF_REQ;
+                        end else begin
+                            // All rows done — mark bank valid
+                            if (input_prefetch_bank == 1'b0) begin
+                                input_bank0_valid  <= 1'b1;
+                                input_bank0_k_base <= input_prefetch_k_base;
+                                input_bank0_k_tile <= input_prefetch_k_tile;
+                            end else begin
+                                input_bank1_valid  <= 1'b1;
+                                input_bank1_k_base <= input_prefetch_k_base;
+                                input_bank1_k_tile <= input_prefetch_k_tile;
+                            end
+                            input_prefetch_done  <= 1'b1;
+                            input_prefetch_active <= 1'b0;
+                            input_prefetch_phase  <= PREF_IDLE;
+                            input_prefetch_done_count <= input_prefetch_done_count + 16'd1;
+                            $display("[PREFETCH] DONE bank=%0d k_base=%0d k_tile=%0d beats=%0d bytes=%0d",
+                                input_prefetch_bank, input_prefetch_k_base,
+                                input_prefetch_k_tile,
+                                input_prefetch_beat_count, input_prefetch_byte_count);
+                        end
+                    end else begin
+                        input_prefetch_col   <= input_prefetch_col
+                            + {1'd0, btb_v[5:0]};
+                        input_prefetch_phase <= PREF_REQ;
+                    end
+                end
+                default: input_prefetch_phase <= PREF_IDLE;
+            endcase
+        end else begin
+            input_prefetch_phase <= PREF_IDLE;
+        end
+    end
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             fsm_state <= FSM_IDLE;  comp_sub_state <= CP_WAIT_WIN;
@@ -1733,6 +1867,13 @@ module npu_top #(
             input_bank1_k_base <= 16'd0;
             input_bank0_k_tile <= 16'd0;
             input_bank1_k_tile <= 16'd0;
+            // Phase 4a-3: prefetch counters
+            input_prefetch_start_count <= 16'd0;
+            input_prefetch_done_count  <= 16'd0;
+            input_prefetch_hit_count   <= 16'd0;
+            input_prefetch_stall_count <= 16'd0;
+            input_prefetch_beat_count  <= 16'd0;
+            input_prefetch_byte_count  <= 16'd0;
             gemm_store_row_idx <= 16'd0;
             gemm_store_beat_idx <= 16'd0;
             gemm_stream_k_base <= 16'd0;
@@ -3133,6 +3274,10 @@ module npu_top #(
                                 c_tile[ci][cj] <= 32'sd0;
                                 c_tile_valid[ci][cj] <= 1'b0;
                             end
+                        // First chunk of new task: clear both banks to prevent
+                        // stale data from previous tasks from matching prefetch.
+                        input_bank0_valid <= 1'b0;
+                        input_bank1_valid <= 1'b0;
                         // First chunk: load into bank0, compute from bank0
                         input_load_bank    <= 1'b0;
                         input_compute_bank <= 1'b0;
@@ -3290,6 +3435,37 @@ module npu_top #(
                 end
 
                 FSM_GEMM_STREAM_RUN: begin
+                    // Phase 4a-3: on first cycle of RUN, trigger background prefetch
+                    // of next chunk's input tile into the inactive bank.
+                    if ((stream_cycle == 16'd0) && !gemm_stream_last_chunk &&
+                        !input_prefetch_active) begin
+                        // Compute next chunk's k_base and k_tile
+                        // next_k_base = gemm_stream_k_base + fc_chunk_inputs
+                        // next_k_tile = min(64, input_c - next_k_base)
+                        automatic integer nk_base;
+                        automatic integer nk_tile;
+                        nk_base = gemm_stream_k_base + fc_chunk_inputs;
+                        nk_tile = (input_c - nk_base > 64) ? 64 : (input_c - nk_base);
+                        // Launch prefetch only if bank not already valid with matching meta
+                        if (!((input_bank0_valid && (input_bank0_k_base == nk_base) &&
+                               (input_bank0_k_tile == nk_tile)) ||
+                              (input_bank1_valid && (input_bank1_k_base == nk_base) &&
+                               (input_bank1_k_tile == nk_tile)))) begin
+                            input_prefetch_active <= 1'b1;
+                            input_prefetch_done  <= 1'b0;
+                            input_prefetch_bank  <= ~input_compute_bank;
+                            input_prefetch_k_base <= nk_base;
+                            input_prefetch_k_tile <= nk_tile;
+                            input_prefetch_row   <= 3'd0;
+                            input_prefetch_col   <= 7'd0;
+                            input_prefetch_phase <= PREF_REQ;
+                            input_prefetch_beat_count <= 16'd0;
+                            input_prefetch_byte_count <= 16'd0;
+                            input_prefetch_start_count <= input_prefetch_start_count + 16'd1;
+                            $display("[PREFETCH] START bank=%0d k_base=%0d k_tile=%0d comp_bank=%0d",
+                                ~input_compute_bank, nk_base, nk_tile, input_compute_bank);
+                        end
+                    end
                     stream_cycle <= stream_cycle + 16'd1;
                     if (cluster_arb_out_valid) begin
                         integer str_n;
@@ -3319,37 +3495,81 @@ module npu_top #(
                     end
                 end
 
-                // Phase 3a/3c: K-chunk accumulation loop check
-                // Phase 3c routing: ACCUM → LOAD_A → LOAD_ARRAY → WGT_LD → PREP → RUN → ACCUM
+                // Phase 4a-3: K-chunk loop with prefetch-aware routing
+                // If next chunk's input tile was prefetched during RUN,
+                // skip foreground LOAD_A and go directly to LOAD_ARRAY.
                 FSM_GEMM_STREAM_ACCUM: begin
-                    // Check if more K-chunks remain
                     if (fc_in_base + fc_chunk_inputs < input_c) begin
-                        // More K-chunks: advance base, prepare next chunk
-                        gemm_stream_k_base       <= fc_in_base + fc_chunk_inputs;
-                        gemm_stream_k_chunk_idx  <= gemm_stream_k_chunk_idx + 16'd1;
-                        gemm_stream_first_chunk  <= 1'b0;
-                        gemm_stream_last_chunk   <= ((fc_in_base + fc_chunk_inputs + fc_chunk_inputs) >= input_c);
-                        // Invalidate weight cache for new chunk (k_base changed)
-                        if (is_gemm_mode)
-                            gemm_weight_valid <= 1'b0;
-                        fc_in_base <= fc_in_base + fc_chunk_inputs;
-                        fc_chunk_inputs <= ((input_c - (fc_in_base + fc_chunk_inputs)) > PE_ROWS_16) ?
-                                           PE_ROWS_16 :
-                                           (input_c - (fc_in_base + fc_chunk_inputs));
-                        // Phase 4a-2: toggle load bank for next chunk, clear done flag
-                        input_load_bank <= ~input_load_bank;
-                        gemm_a_load_done <= 1'b0;
-                        wgt_load_phase <= 32'd0;
-                        wgt_load_wait <= 1'b1;
-                        fc_shadow_active <= 1'b0;
-                        $display("[KCHUNK] ACCUM: advance to k_base=%0d k_chunk_idx=%0d k_tile=%0d",
-                            fc_in_base + fc_chunk_inputs,
-                            gemm_stream_k_chunk_idx + 16'd1,
-                            ((input_c - (fc_in_base + fc_chunk_inputs)) > PE_ROWS_16) ?
-                                PE_ROWS_16 : (input_c - (fc_in_base + fc_chunk_inputs)));
-                        // Phase 3c: LOAD_A first (reload A_tile from act_buffer),
-                        // then LOAD_ARRAY (reload B weights from memory).
-                        fsm_state <= FSM_GEMM_STREAM_LOAD_A;
+                        // More K-chunks remain
+                        automatic integer next_kb;
+                        automatic integer next_kt;
+                        next_kb = fc_in_base + fc_chunk_inputs;
+                        next_kt = (input_c - next_kb > PE_ROWS_16) ? PE_ROWS_16 : (input_c - next_kb);
+
+                        if (input_prefetch_active) begin
+                            // Prefetch still running — stall in ACCUM
+                            input_prefetch_stall_count <= input_prefetch_stall_count + 16'd1;
+                            $display("[PREFETCH] STALL bank=%0d k_base=%0d",
+                                input_prefetch_bank, input_prefetch_k_base);
+                        end else if (input_bank0_valid && (input_bank0_k_base == next_kb) &&
+                                       (input_bank0_k_tile == next_kt) &&
+                                       (1'b0 != input_compute_bank)) begin
+                            // Prefetch HIT: bank0 has next chunk's data.
+                            // Set load_bank to 0 so PREP can set compute_bank.
+                            input_prefetch_hit_count <= input_prefetch_hit_count + 16'd1;
+                            gemm_stream_k_base       <= next_kb;
+                            gemm_stream_k_chunk_idx  <= gemm_stream_k_chunk_idx + 16'd1;
+                            gemm_stream_first_chunk  <= 1'b0;
+                            gemm_stream_last_chunk   <= ((next_kb + next_kt) >= input_c);
+                            if (is_gemm_mode) gemm_weight_valid <= 1'b0;
+                            fc_in_base <= next_kb;
+                            fc_chunk_inputs <= next_kt;
+                            input_load_bank <= 1'b0;  // PREP sets compute_bank = load_bank
+                            wgt_load_phase <= 32'd0;
+                            wgt_load_wait <= 1'b1;
+                            fc_shadow_active <= 1'b0;
+                            $display("[PREFETCH] HIT bank0 k_base=%0d k_chunk=%0d (skip LOAD_A)",
+                                next_kb, gemm_stream_k_chunk_idx + 16'd1);
+                            fsm_state <= FSM_LOAD_ARRAY;
+                        end else if (input_bank1_valid && (input_bank1_k_base == next_kb) &&
+                                       (input_bank1_k_tile == next_kt) &&
+                                       (1'b1 != input_compute_bank)) begin
+                            // Prefetch HIT: bank1 has next chunk's data
+                            input_prefetch_hit_count <= input_prefetch_hit_count + 16'd1;
+                            gemm_stream_k_base       <= next_kb;
+                            gemm_stream_k_chunk_idx  <= gemm_stream_k_chunk_idx + 16'd1;
+                            gemm_stream_first_chunk  <= 1'b0;
+                            gemm_stream_last_chunk   <= ((next_kb + next_kt) >= input_c);
+                            if (is_gemm_mode) gemm_weight_valid <= 1'b0;
+                            fc_in_base <= next_kb;
+                            fc_chunk_inputs <= next_kt;
+                            input_load_bank <= 1'b1;  // PREP sets compute_bank = load_bank
+                            wgt_load_phase <= 32'd0;
+                            wgt_load_wait <= 1'b1;
+                            fc_shadow_active <= 1'b0;
+                            $display("[PREFETCH] HIT bank1 k_base=%0d k_chunk=%0d (skip LOAD_A)",
+                                next_kb, gemm_stream_k_chunk_idx + 16'd1);
+                            fsm_state <= FSM_LOAD_ARRAY;
+                        end else begin
+                            // Fallback: no prefetch data — use foreground LOAD_A
+                            // Also handles first chunk after RUN0 (prefetch started but not done)
+                            gemm_stream_k_base       <= next_kb;
+                            gemm_stream_k_chunk_idx  <= gemm_stream_k_chunk_idx + 16'd1;
+                            gemm_stream_first_chunk  <= 1'b0;
+                            gemm_stream_last_chunk   <= ((next_kb + next_kt) >= input_c);
+                            if (is_gemm_mode) gemm_weight_valid <= 1'b0;
+                            fc_in_base <= next_kb;
+                            fc_chunk_inputs <= next_kt;
+                            input_load_bank <= ~input_load_bank;
+                            gemm_a_load_done <= 1'b0;
+                            wgt_load_phase <= 32'd0;
+                            wgt_load_wait <= 1'b1;
+                            fc_shadow_active <= 1'b0;
+                            $display("[KCHUNK] ACCUM: advance k_base=%0d k_chunk=%0d k_tile=%0d (fg LOAD_A bank=%0d)",
+                                next_kb, gemm_stream_k_chunk_idx + 16'd1, next_kt,
+                                ~input_load_bank);
+                            fsm_state <= FSM_GEMM_STREAM_LOAD_A;
+                        end
                     end else begin
                         // All K-chunks done: proceed to STORE
                         $display("[KCHUNK] ACCUM: all %0d chunks done, starting STORE",
