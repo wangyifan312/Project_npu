@@ -1920,10 +1920,6 @@ module npu_top #(
                     wp_beatsz = 32'd32 - {27'd0, wgt_pref_abs_byte_idx[4:0]};
                     wp_count  = (wp_remain > 32'd32) ? 32'd32 : wp_remain;
                     if (wp_beatsz < wp_count) wp_count = wp_beatsz;
-                    if (wgt_pref_lane_idx < 16'd2)
-                        $display("[WGT_PREF_CAP] idx=%0d k_base=%0d n_base=%0d buf=%0d beat=%0d data0=%0d",
-                            wgt_pref_lane_idx, wgt_pref_k_base, wgt_pref_n_base,
-                            wgt_pref_buf_byte_idx, wgt_pref_beat_addr, wgt_rd_data[7:0]);
                     for (wp_lane = 0; wp_lane < 32; wp_lane = wp_lane + 1) begin
                         if (wp_lane < wp_count) begin
                             reg [31:0] wp_lane_idx;
@@ -1946,10 +1942,9 @@ module npu_top #(
                         wgt_pref_done  <= 1'b1;
                         wgt_pref_active <= 1'b0;
                         wgt_pref_phase  <= WGT_PREF_IDLE;
-                        $display("[WGT_PREF] DONE k_base=%0d n_base=%0d wgt[0..3]=%0d,%0d,%0d,%0d",
+                        $display("[WGT_PREF] DONE k_base=%0d n_base=%0d beats=%0d bytes=%0d",
                             wgt_pref_k_base, wgt_pref_n_base,
-                            wgt_load_reg[7:0], wgt_load_reg[15:8],
-                            wgt_load_reg[23:16], wgt_load_reg[31:24]);
+                            wgt_pref_beat_count, wgt_pref_byte_count);
                     end else begin
                         wgt_pref_lane_idx <= wgt_pref_lane_idx + wp_count;
                         wgt_pref_phase <= WGT_PREF_REQ;
@@ -3838,7 +3833,6 @@ module npu_top #(
                                 ~input_compute_bank, nk_base, nk_tile, input_compute_bank);
                         end
                         // Phase 4b-2: also trigger background weight prefetch
-                        // Phase 4b bg weight prefetch: deferred (foreground path proven correct)
                         if (1'b0 && !wgt_pref_active && !wgt_pref_done &&
                             !(wgt_pref_valid &&
                               (wgt_pref_k_base == nk_base) &&
