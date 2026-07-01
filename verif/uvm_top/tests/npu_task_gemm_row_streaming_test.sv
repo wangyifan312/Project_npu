@@ -1642,6 +1642,176 @@ class npu_task_gemm_row_streaming_test extends soc_base_test;
     end
 
     //=================================================================
+    // Phase 5-1: M-tiling tests
+    //=================================================================
+
+    // MT0: M tiling basic (M=16, K=64, N=8, A=1, B=1)
+    begin
+      int M_v, K_v, N_v;
+      M_v=16; K_v=64; N_v=8;
+      lvl_name = "MT0";
+      `uvm_info("TEST",$sformatf("%s: M=%0d K=%0d N=%0d M-tiling basic expected C=%0d",
+        lvl_name, M_v, K_v, N_v, K_v),UVM_NONE)
+      for(i=0; i<M_v*K_v; i=i+4) m_seq.axil_write32(32'h0000_0100+i, 32'h01010101);
+      for(i=0; i<K_v*N_v; i=i+4) m_seq.axil_write32(32'h0001_0000+i, 32'h01010101);
+      for(i=0; i<M_v*N_v*4+128; i=i+4) m_seq.axil_write32(32'h0002_0000+i, 32'hDEADBEEF);
+      row_stride = row_stride_bytes(N_v);
+      m_seq.axil_write32(32'h0001_FFE0, 32'hCAFE_BABE);
+      m_seq.axil_write32(32'h0002_0000 + M_v * row_stride, 32'hFEED_F00D);
+      m_seq.axil_write32(`NPU_REG_TASK_TYPE,    32'd7);
+      m_seq.axil_write32(`NPU_REG_INPUT_ADDR,   32'h0000_0100);
+      m_seq.axil_write32(`NPU_REG_WEIGHT_ADDR,  32'h0001_0000);
+      m_seq.axil_write32(`NPU_REG_OUTPUT_ADDR,  32'h0002_0000);
+      m_seq.axil_write32(`NPU_REG_INPUT_BYTES,  M_v*K_v);
+      m_seq.axil_write32(`NPU_REG_WEIGHT_BYTES, K_v*N_v);
+      m_seq.axil_write32(`NPU_REG_OUTPUT_BYTES, M_v*N_v*4);
+      m_seq.axil_write32(`NPU_REG_DIM_IN,       {16'd1, M_v[15:0]});
+      m_seq.axil_write32(`NPU_REG_DIM_OUT,      {N_v[15:0], K_v[15:0]});
+      m_seq.axil_write32(`NPU_REG_POSTPROC,     32'd0);
+      m_seq.axil_write32(`NPU_REG_CONV_CFG,    32'h20);
+      m_seq.axil_write32(`NPU_REG_CLUSTER_MODE, 32'd0);
+      m_seq.axil_write32(`NPU_REG_CLUSTER_MASK, 32'd1);
+      m_seq.axil_write32(`NPU_REG_CTRL, 32'd1);
+      repeat(400000) begin
+        m_seq.axil_read32(`NPU_REG_CTRL, rdata);
+        if(rdata[2] || rdata[3]) break;
+        #100;
+      end
+      m_seq.axil_read32(`NPU_REG_PERF_CYCLE_LO, cycle_lo);
+      levels_run++;
+      if(rdata[3]) begin
+        `uvm_error("TEST",$sformatf("%s ERROR code=0x%02x", lvl_name, rdata[7:0]))
+      end else begin
+        chk_errs = 0;
+        for (r = 0; r < M_v; r = r + 1) begin
+          for (c = 0; c < N_v; c = c + 1) begin
+            m_seq.axil_read32(32'h0002_0000 + r*row_stride + c*4, rdata);
+            if ($signed(rdata) != K_v) begin
+              if (chk_errs < 8) `uvm_error("TEST",$sformatf("%s C[%0d][%0d]=%0d expected %0d",
+                lvl_name, r, c, $signed(rdata), K_v))
+              chk_errs++;
+            end
+          end
+        end
+        if (chk_errs == 0) begin
+          `uvm_info("TEST",$sformatf("%s: M=%0d K=%0d cycles=%0d mem_OK PASS",
+            lvl_name, M_v, K_v, cycle_lo),UVM_NONE)
+          levels_pass++;
+        end else `uvm_info("TEST",$sformatf("%s: mem_ERR=%0d FAIL", lvl_name, chk_errs),UVM_NONE)
+      end
+    end
+
+    // MT1: M tiling + K chunks (M=16, K=128, N=8)
+    begin
+      int M_v, K_v, N_v;
+      M_v=16; K_v=128; N_v=8;
+      lvl_name = "MT1";
+      `uvm_info("TEST",$sformatf("%s: M=%0d K=%0d N=%0d M+K tiling expected C=%0d",
+        lvl_name, M_v, K_v, N_v, K_v),UVM_NONE)
+      for(i=0; i<M_v*K_v; i=i+4) m_seq.axil_write32(32'h0000_0100+i, 32'h01010101);
+      for(i=0; i<K_v*N_v; i=i+4) m_seq.axil_write32(32'h0001_0000+i, 32'h01010101);
+      for(i=0; i<M_v*N_v*4+128; i=i+4) m_seq.axil_write32(32'h0002_0000+i, 32'hDEADBEEF);
+      row_stride = row_stride_bytes(N_v);
+      m_seq.axil_write32(32'h0001_FFE0, 32'hCAFE_BABE);
+      m_seq.axil_write32(32'h0002_0000 + M_v * row_stride, 32'hFEED_F00D);
+      m_seq.axil_write32(`NPU_REG_TASK_TYPE,    32'd7);
+      m_seq.axil_write32(`NPU_REG_INPUT_ADDR,   32'h0000_0100);
+      m_seq.axil_write32(`NPU_REG_WEIGHT_ADDR,  32'h0001_0000);
+      m_seq.axil_write32(`NPU_REG_OUTPUT_ADDR,  32'h0002_0000);
+      m_seq.axil_write32(`NPU_REG_INPUT_BYTES,  M_v*K_v);
+      m_seq.axil_write32(`NPU_REG_WEIGHT_BYTES, K_v*N_v);
+      m_seq.axil_write32(`NPU_REG_OUTPUT_BYTES, M_v*N_v*4);
+      m_seq.axil_write32(`NPU_REG_DIM_IN,       {16'd1, M_v[15:0]});
+      m_seq.axil_write32(`NPU_REG_DIM_OUT,      {N_v[15:0], K_v[15:0]});
+      m_seq.axil_write32(`NPU_REG_POSTPROC,     32'd0);
+      m_seq.axil_write32(`NPU_REG_CONV_CFG,    32'h20);
+      m_seq.axil_write32(`NPU_REG_CLUSTER_MODE, 32'd0);
+      m_seq.axil_write32(`NPU_REG_CLUSTER_MASK, 32'd1);
+      m_seq.axil_write32(`NPU_REG_CTRL, 32'd1);
+      repeat(400000) begin
+        m_seq.axil_read32(`NPU_REG_CTRL, rdata);
+        if(rdata[2] || rdata[3]) break;
+        #100;
+      end
+      m_seq.axil_read32(`NPU_REG_PERF_CYCLE_LO, cycle_lo);
+      levels_run++;
+      if(rdata[3]) begin
+        `uvm_error("TEST",$sformatf("%s ERROR code=0x%02x", lvl_name, rdata[7:0]))
+      end else begin
+        chk_errs = 0;
+        for (r = 0; r < M_v; r = r + 1) begin
+          for (c = 0; c < N_v; c = c + 1) begin
+            m_seq.axil_read32(32'h0002_0000 + r*row_stride + c*4, rdata);
+            if ($signed(rdata) != K_v) begin
+              if (chk_errs < 8) `uvm_error("TEST",$sformatf("%s C[%0d][%0d]=%0d expected %0d",
+                lvl_name, r, c, $signed(rdata), K_v))
+              chk_errs++;
+            end
+          end
+        end
+        if (chk_errs == 0) begin
+          `uvm_info("TEST",$sformatf("%s: M+K tiling cycles=%0d mem_OK PASS", lvl_name, cycle_lo),UVM_NONE)
+          levels_pass++;
+        end else `uvm_info("TEST",$sformatf("%s: mem_ERR=%0d FAIL", lvl_name, chk_errs),UVM_NONE)
+      end
+    end
+
+    // MT2: M boundary (M=9, K=64, N=8)
+    begin
+      int M_v, K_v, N_v;
+      M_v=9; K_v=64; N_v=8;
+      lvl_name = "MT2";
+      `uvm_info("TEST",$sformatf("%s: M=%0d K=%0d N=%0d M boundary expected C=%0d",
+        lvl_name, M_v, K_v, N_v, K_v),UVM_NONE)
+      for(i=0; i<M_v*K_v; i=i+4) m_seq.axil_write32(32'h0000_0100+i, 32'h01010101);
+      for(i=0; i<K_v*N_v; i=i+4) m_seq.axil_write32(32'h0001_0000+i, 32'h01010101);
+      for(i=0; i<M_v*N_v*4+128; i=i+4) m_seq.axil_write32(32'h0002_0000+i, 32'hDEADBEEF);
+      row_stride = row_stride_bytes(N_v);
+      m_seq.axil_write32(32'h0001_FFE0, 32'hCAFE_BABE);
+      m_seq.axil_write32(32'h0002_0000 + M_v * row_stride, 32'hFEED_F00D);
+      m_seq.axil_write32(`NPU_REG_TASK_TYPE,    32'd7);
+      m_seq.axil_write32(`NPU_REG_INPUT_ADDR,   32'h0000_0100);
+      m_seq.axil_write32(`NPU_REG_WEIGHT_ADDR,  32'h0001_0000);
+      m_seq.axil_write32(`NPU_REG_OUTPUT_ADDR,  32'h0002_0000);
+      m_seq.axil_write32(`NPU_REG_INPUT_BYTES,  M_v*K_v);
+      m_seq.axil_write32(`NPU_REG_WEIGHT_BYTES, K_v*N_v);
+      m_seq.axil_write32(`NPU_REG_OUTPUT_BYTES, M_v*N_v*4);
+      m_seq.axil_write32(`NPU_REG_DIM_IN,       {16'd1, M_v[15:0]});
+      m_seq.axil_write32(`NPU_REG_DIM_OUT,      {N_v[15:0], K_v[15:0]});
+      m_seq.axil_write32(`NPU_REG_POSTPROC,     32'd0);
+      m_seq.axil_write32(`NPU_REG_CONV_CFG,    32'h20);
+      m_seq.axil_write32(`NPU_REG_CLUSTER_MODE, 32'd0);
+      m_seq.axil_write32(`NPU_REG_CLUSTER_MASK, 32'd1);
+      m_seq.axil_write32(`NPU_REG_CTRL, 32'd1);
+      repeat(400000) begin
+        m_seq.axil_read32(`NPU_REG_CTRL, rdata);
+        if(rdata[2] || rdata[3]) break;
+        #100;
+      end
+      m_seq.axil_read32(`NPU_REG_PERF_CYCLE_LO, cycle_lo);
+      levels_run++;
+      if(rdata[3]) begin
+        `uvm_error("TEST",$sformatf("%s ERROR code=0x%02x", lvl_name, rdata[7:0]))
+      end else begin
+        chk_errs = 0;
+        for (r = 0; r < M_v; r = r + 1) begin
+          for (c = 0; c < N_v; c = c + 1) begin
+            m_seq.axil_read32(32'h0002_0000 + r*row_stride + c*4, rdata);
+            if ($signed(rdata) != K_v) begin
+              if (chk_errs < 5) `uvm_error("TEST",$sformatf("%s C[%0d][%0d]=%0d expected %0d",
+                lvl_name, r, c, $signed(rdata), K_v))
+              chk_errs++;
+            end
+          end
+        end
+        if (chk_errs == 0) begin
+          `uvm_info("TEST",$sformatf("%s: M boundary cycles=%0d mem_OK PASS", lvl_name, cycle_lo),UVM_NONE)
+          levels_pass++;
+        end else `uvm_info("TEST",$sformatf("%s: mem_ERR=%0d FAIL", lvl_name, chk_errs),UVM_NONE)
+      end
+    end
+
+    //=================================================================
     // Final summary
     //=================================================================
     `uvm_info("TEST",$sformatf("ROW_STREAMING_ENHANCED: %0d/%0d levels PASS", levels_pass, levels_run),UVM_NONE)
