@@ -680,14 +680,24 @@ module npu_top #(
     wire [15:0] array_active_rows;
     wire [15:0] array_active_cols;
 
-    // Phase 2b-1: local tile buffers for row-streaming
-    reg [7:0]  a_tile [0:7][0:63];
+    // Phase 4a-2: double-buffered input tile banks
+    reg [7:0]  input_tile_bank0 [0:7][0:63];
+    reg [7:0]  input_tile_bank1 [0:7][0:63];
     reg signed [31:0] c_tile [0:7][0:63];
     reg        c_tile_valid [0:7][0:63];
     reg [15:0] stream_cycle;
     reg [15:0] stream_capture_count;
     reg        stream_active;
     reg        stream_a_tile_loaded;
+    // Phase 4a-2: bank ownership and metadata
+    reg        input_load_bank;          // which bank loader writes
+    reg        input_compute_bank;       // which bank compute reads
+    reg        input_bank0_valid;        // bank0 has valid loaded data
+    reg        input_bank1_valid;        // bank1 has valid loaded data
+    reg [15:0] input_bank0_k_base;       // k_base for data in bank0
+    reg [15:0] input_bank1_k_base;       // k_base for data in bank1
+    reg [15:0] input_bank0_k_tile;       // k_tile for data in bank0
+    reg [15:0] input_bank1_k_tile;       // k_tile for data in bank1
     reg [15:0] gemm_store_row_idx;
     reg [15:0] gemm_store_beat_idx;
     // Phase 3a: K-chunk streaming accumulation
@@ -1306,7 +1316,10 @@ module npu_top #(
             wire array_act_drive = (comp_sub_state == CP_FEED_ACT) || (comp_sub_state == CP_DRAIN);
             // Phase 2b-1: stream skewed activation with row_active gate
             wire signed [31:0] s_m = $signed({16'd0, stream_cycle}) - $signed({26'd0, ai[5:0]});
-            wire [7:0] s_act = (row_active && !s_m[31] && s_m < gemm_M_val) ? a_tile[s_m[2:0]][ai[5:0]] : 8'd0;
+            wire [7:0] s_act_b0 = input_tile_bank0[s_m[2:0]][ai[5:0]];
+            wire [7:0] s_act_b1 = input_tile_bank1[s_m[2:0]][ai[5:0]];
+            wire [7:0] s_act = (row_active && !s_m[31] && s_m < gemm_M_val) ?
+                                (input_compute_bank ? s_act_b1 : s_act_b0) : 8'd0;
             assign array_act_in[ai*8 +: 8] =
                 stream_drive ? s_act :
                 row_active && (is_conv_mode || is_fc_mode || is_gemm_mode) && array_act_drive ?
@@ -1711,6 +1724,15 @@ module npu_top #(
             gemm_a_load_byte_count   <= 16'd0;
             gemm_a_load_max_beats_per_row <= 6'd0;
             gemm_a_load_unaligned_row_count <= 16'd0;
+            // Phase 4a-2: bank ownership and metadata
+            input_load_bank    <= 1'b0;
+            input_compute_bank <= 1'b0;
+            input_bank0_valid  <= 1'b0;
+            input_bank1_valid  <= 1'b0;
+            input_bank0_k_base <= 16'd0;
+            input_bank1_k_base <= 16'd0;
+            input_bank0_k_tile <= 16'd0;
+            input_bank1_k_tile <= 16'd0;
             gemm_store_row_idx <= 16'd0;
             gemm_store_beat_idx <= 16'd0;
             gemm_stream_k_base <= 16'd0;
@@ -3103,7 +3125,7 @@ module npu_top #(
                     stream_a_tile_loaded <= 1'b0;
                     gemm_a_load_done <= 1'b0;
                     comp_feed_cnt <= 7'd0;
-                    // Phase 3a: clear c_tile only for first K-chunk
+                    // Phase 4a-2: bank selection — toggles per chunk
                     if (gemm_stream_first_chunk) begin
                         integer ci, cj;
                         for (ci = 0; ci < 8; ci = ci + 1)
@@ -3111,32 +3133,64 @@ module npu_top #(
                                 c_tile[ci][cj] <= 32'sd0;
                                 c_tile_valid[ci][cj] <= 1'b0;
                             end
-                        // First chunk: load a_tile from act_buffer
+                        // First chunk: load into bank0, compute from bank0
+                        input_load_bank    <= 1'b0;
+                        input_compute_bank <= 1'b0;
                         fsm_state <= FSM_GEMM_STREAM_LOAD_A;
                     end else begin
-                        // Subsequent chunks: a_tile already loaded in ACCUM→LOAD_A path.
-                        // Skip LOAD_A and go directly to RUN.
+                        // Subsequent chunks: compute from the bank LOAD_A just loaded.
+                        // input_load_bank was toggled in ACCUM before LOAD_A.
+                        input_compute_bank <= input_load_bank;
+                        // Check that the bank LOAD_A loaded has valid metadata
+                        if (input_load_bank == 1'b0) begin
+                            if (!input_bank0_valid ||
+                                (input_bank0_k_base != gemm_stream_k_base) ||
+                                (input_bank0_k_tile != fc_chunk_inputs)) begin
+                                $display("[BANK_ERR] PREP bank0 mismatch: valid=%0d k_base=%0d/%0d k_tile=%0d/%0d",
+                                    input_bank0_valid, input_bank0_k_base, gemm_stream_k_base,
+                                    input_bank0_k_tile, fc_chunk_inputs);
+                            end
+                        end else begin
+                            if (!input_bank1_valid ||
+                                (input_bank1_k_base != gemm_stream_k_base) ||
+                                (input_bank1_k_tile != fc_chunk_inputs)) begin
+                                $display("[BANK_ERR] PREP bank1 mismatch: valid=%0d k_base=%0d/%0d k_tile=%0d/%0d",
+                                    input_bank1_valid, input_bank1_k_base, gemm_stream_k_base,
+                                    input_bank1_k_tile, fc_chunk_inputs);
+                            end
+                        end
+                        // Skip LOAD_A — bank already loaded by ACCUM→LOAD_A
                         fsm_state <= FSM_GEMM_STREAM_RUN;
                     end
-                    $display("[KCHUNK] PREP k_base=%0d k_chunk_idx=%0d first=%0d last=%0d",
+                    $display("[KCHUNK] PREP k_base=%0d k_chunk_idx=%0d first=%0d last=%0d load_bank=%0d comp_bank=%0d b0v=%0d b1v=%0d",
                         gemm_stream_k_base, gemm_stream_k_chunk_idx,
-                        gemm_stream_first_chunk, gemm_stream_last_chunk);
+                        gemm_stream_first_chunk, gemm_stream_last_chunk,
+                        input_load_bank, input_compute_bank,
+                        input_bank0_valid, input_bank1_valid);
                 end
 
                 // ============================================================
-                // Phase 4a-1: beat-level input-tile-loader micro-sequencer
-                // Reads a_tile[row][col] = A[row][gemm_stream_k_base+col]
+                // Phase 4a-2: beat-level input-tile-loader with double-buffer
+                // Reads input_tile_bank[load_bank][row][col] = A[row][k_base+col]
                 // from act_buffer: one 256-bit beat per read, unpack up to 32 bytes.
-                // Address: beat_idx = (row*input_c + k_base + col) >> 5
-                // Lane:    lane_start = (row*input_c + k_base + col) & 0x1F
                 // Handles unaligned rows: up to 3 beats for 64 bytes.
                 // ============================================================
                 FSM_GEMM_STREAM_LOAD_A: begin
                     if (gemm_a_load_done) begin
-                        // Micro-sequencer finished loading a_tile.
-                        $display("[BEAT_LD] done: beats=%0d bytes=%0d unaligned_rows=%0d",
-                            gemm_a_load_beat_count, gemm_a_load_byte_count,
-                            gemm_a_load_unaligned_row_count);
+                        // Micro-sequencer finished loading input tile.
+                        // Mark loaded bank as valid with metadata.
+                        if (input_load_bank == 1'b0) begin
+                            input_bank0_valid  <= 1'b1;
+                            input_bank0_k_base <= gemm_stream_k_base;
+                            input_bank0_k_tile <= fc_chunk_inputs;
+                        end else begin
+                            input_bank1_valid  <= 1'b1;
+                            input_bank1_k_base <= gemm_stream_k_base;
+                            input_bank1_k_tile <= fc_chunk_inputs;
+                        end
+                        $display("[BEAT_LD] done: bank=%0d beats=%0d bytes=%0d unaligned_rows=%0d k_base=%0d k_tile=%0d",
+                            input_load_bank, gemm_a_load_beat_count, gemm_a_load_byte_count,
+                            gemm_a_load_unaligned_row_count, gemm_stream_k_base, fc_chunk_inputs);
                         // Route: chunk0 → RUN (weights already loaded);
                         //        chunk1+ → LOAD_ARRAY (reload B weights).
                         if (gemm_stream_first_chunk)
@@ -3165,8 +3219,7 @@ module npu_top #(
                             end
                             A_LOAD_CAPTURE: begin
                                 // Beat-level bulk unpack: up to 32 bytes from one 256-bit beat.
-                                // lane_start = byte offset within this beat
-                                // bytes_this_beat = min(K_tile - col, 32 - lane_start)
+                                // Writes to input_tile_bank[input_load_bank].
                                 integer lane_start_v;
                                 integer remaining_v;
                                 integer bytes_this_beat_v;
@@ -3176,13 +3229,24 @@ module npu_top #(
                                 bytes_this_beat_v = (remaining_v < (32 - lane_start_v)) ?
                                                       remaining_v : (32 - lane_start_v);
 
-                                // Unpack valid bytes from this beat into a_tile
-                                for (lane = 0; lane < 32; lane = lane + 1) begin
-                                    if ((lane >= lane_start_v) &&
-                                        ((lane - lane_start_v) < bytes_this_beat_v)) begin
-                                        a_tile[gemm_a_load_row]
-                                              [gemm_a_load_col + (lane - lane_start_v)]
-                                            <= act_rd_data[lane * 8 +: 8];
+                                // Unpack valid bytes from this beat into load bank
+                                if (input_load_bank == 1'b0) begin
+                                    for (lane = 0; lane < 32; lane = lane + 1) begin
+                                        if ((lane >= lane_start_v) &&
+                                            ((lane - lane_start_v) < bytes_this_beat_v)) begin
+                                            input_tile_bank0[gemm_a_load_row]
+                                                [gemm_a_load_col + (lane - lane_start_v)]
+                                                <= act_rd_data[lane * 8 +: 8];
+                                        end
+                                    end
+                                end else begin
+                                    for (lane = 0; lane < 32; lane = lane + 1) begin
+                                        if ((lane >= lane_start_v) &&
+                                            ((lane - lane_start_v) < bytes_this_beat_v)) begin
+                                            input_tile_bank1[gemm_a_load_row]
+                                                [gemm_a_load_col + (lane - lane_start_v)]
+                                                <= act_rd_data[lane * 8 +: 8];
+                                        end
                                     end
                                 end
 
@@ -3196,9 +3260,14 @@ module npu_top #(
 
                                 // Advance col by bytes captured this beat
                                 if (gemm_a_load_col + bytes_this_beat_v >= fc_chunk_inputs) begin
-                                    // Row complete: zero-fill a_tile[row][K_tile : 63]
-                                    for (lane = fc_chunk_inputs; lane < 64; lane = lane + 1)
-                                        a_tile[gemm_a_load_row][lane] <= 8'd0;
+                                    // Row complete: zero-fill in load bank
+                                    if (input_load_bank == 1'b0) begin
+                                        for (lane = fc_chunk_inputs; lane < 64; lane = lane + 1)
+                                            input_tile_bank0[gemm_a_load_row][lane] <= 8'd0;
+                                    end else begin
+                                        for (lane = fc_chunk_inputs; lane < 64; lane = lane + 1)
+                                            input_tile_bank1[gemm_a_load_row][lane] <= 8'd0;
+                                    end
 
                                     if (gemm_a_load_row + 3'd1 < gemm_M_val) begin
                                         gemm_a_load_row   <= gemm_a_load_row + 3'd1;
@@ -3267,7 +3336,8 @@ module npu_top #(
                         fc_chunk_inputs <= ((input_c - (fc_in_base + fc_chunk_inputs)) > PE_ROWS_16) ?
                                            PE_ROWS_16 :
                                            (input_c - (fc_in_base + fc_chunk_inputs));
-                        // Phase 3c: clear a_tile done flag — LOAD_A will reload for new k_base
+                        // Phase 4a-2: toggle load bank for next chunk, clear done flag
+                        input_load_bank <= ~input_load_bank;
                         gemm_a_load_done <= 1'b0;
                         wgt_load_phase <= 32'd0;
                         wgt_load_wait <= 1'b1;
