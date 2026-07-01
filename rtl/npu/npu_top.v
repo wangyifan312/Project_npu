@@ -771,10 +771,13 @@ module npu_top #(
     reg        gemm_stream_first_chunk;    // 1 during first K-chunk
     reg        gemm_stream_last_chunk;     // 1 during last K-chunk
     localparam GEMM_STREAM_FIXED_DELAY = 1;
+    // Phase 5-1: M tile descriptor
+    reg [15:0] gemm_tile_m_base;    // global starting row of current M tile
+    reg [15:0] gemm_tile_M;         // rows in current M tile (≤ 8)
     // Phase 3c: input-tile-loader micro-sequencer (GEMM-scoped, Phase 4→common)
     reg        gemm_a_load_done;     // pulsed when micro-sequencer completes
     reg [1:0]  gemm_a_load_phase;
-    reg [2:0]  gemm_a_load_row;     // 0..gemm_M_val-1
+    reg [2:0]  gemm_a_load_row;     // 0..gemm_tile_M-1
     reg [6:0]  gemm_a_load_col;     // 0..fc_chunk_inputs-1
     // Phase 4a-1: beat-level debug counters
     reg [15:0] gemm_a_load_beat_count;    // beats read in current LOAD_A
@@ -1171,20 +1174,20 @@ module npu_top #(
         (fc_act_byte_idx + 32'd1) : fc_act_byte_idx;
     wire [BUF_ADDR_W-1:0] fc_act_beat_addr = fc_act_rd_byte_idx[BUF_ADDR_W+4:5];
     wire [HB_BEAT_BYTE_BITS-1:0] fc_act_byte_sel = fc_act_byte_idx[4:0];
-    // Phase 4a-1: input-tile-loader beat-level address computation
-    // byte_idx = row * input_c + gemm_stream_k_base + col
-    // beat_addr = byte_idx >> 5  (within act_buffer address space)
-    // lane_start = byte_idx & 0x1F  (first valid byte lane within 256-bit beat)
-    // bytes_this_beat = min(K_tile - col, 32 - lane_start) — up to 32 bytes
+    // Phase 5-1: input-tile-loader address with M-tile support
+    // global_m = gemm_tile_m_base + local_row
+    // byte_idx = global_m * input_c + gemm_stream_k_base + col
+    wire [31:0] gemm_a_load_global_m = {16'd0, gemm_tile_m_base} + {13'd0, gemm_a_load_row};
     wire [31:0] gemm_a_load_byte_idx =
-        {29'd0, gemm_a_load_row} * {16'd0, input_c} +
+        gemm_a_load_global_m * {16'd0, input_c} +
         {16'd0, gemm_stream_k_base} +
         {25'd0, gemm_a_load_col};
     wire [BUF_ADDR_W-1:0] gemm_a_load_beat_addr = gemm_a_load_byte_idx[BUF_ADDR_W+4:5];
     wire [HB_BEAT_BYTE_BITS-1:0] gemm_a_load_lane_start = gemm_a_load_byte_idx[4:0];
     // Phase 4a-3: background prefetch byte-level address computation
+    wire [31:0] input_prefetch_global_m = {16'd0, gemm_tile_m_base} + {13'd0, input_prefetch_row};
     wire [31:0] input_prefetch_byte_idx =
-        {29'd0, input_prefetch_row} * {16'd0, input_c} +
+        input_prefetch_global_m * {16'd0, input_c} +
         {16'd0, input_prefetch_k_base} +
         {25'd0, input_prefetch_col};
     wire [BUF_ADDR_W-1:0] input_prefetch_beat_addr = input_prefetch_byte_idx[BUF_ADDR_W+4:5];
@@ -1425,7 +1428,7 @@ module npu_top #(
             wire signed [31:0] s_m = $signed({16'd0, stream_cycle}) - $signed({26'd0, ai[5:0]});
             wire [7:0] s_act_b0 = input_tile_bank0[s_m[2:0]][ai[5:0]];
             wire [7:0] s_act_b1 = input_tile_bank1[s_m[2:0]][ai[5:0]];
-            wire [7:0] s_act = (row_active && !s_m[31] && s_m < gemm_M_val) ?
+            wire [7:0] s_act = (row_active && !s_m[31] && s_m < gemm_tile_M) ?
                                 (input_compute_bank ? s_act_b1 : s_act_b0) : 8'd0;
             assign array_act_in[ai*8 +: 8] =
                 stream_drive ? s_act :
@@ -1832,7 +1835,7 @@ module npu_top #(
                             for (lane = input_prefetch_k_tile; lane < 64; lane = lane + 1)
                                 input_tile_bank1[input_prefetch_row][lane] <= 8'd0;
                         end
-                        if (input_prefetch_row + 3'd1 < gemm_M_val) begin
+                        if (input_prefetch_row + 3'd1 < gemm_tile_M) begin
                             input_prefetch_row   <= input_prefetch_row + 3'd1;
                             input_prefetch_col   <= 7'd0;
                             input_prefetch_phase <= PREF_REQ;
@@ -2147,6 +2150,8 @@ module npu_top #(
             gemm_stream_k_chunk_idx <= 16'd0;
             gemm_stream_first_chunk <= 1'b0;
             gemm_stream_last_chunk <= 1'b0;
+            gemm_tile_m_base <= 16'd0;
+            gemm_tile_M      <= 16'd0;
             fc_store_addr <= 32'd0; fc_store_bytes <= 32'd0;
             rq_acc_wr_en_r <= 1'b0; rq_acc_wr_addr_r <= {BUF_ADDR_W{1'b0}}; rq_acc_wr_data_r <= 32'd0;
             rq_src_idx <= 32'd0; rq_src_wait <= 1'b0; rq_total_words <= 32'd0; rq_pack_idx <= 2'd0; rq_pack_word <= 32'd0;
@@ -2626,6 +2631,9 @@ module npu_top #(
                         gemm_stream_k_chunk_idx  <= 16'd0;
                         gemm_stream_first_chunk  <= 1'b1;
                         gemm_stream_last_chunk   <= (input_c <= PE_ROWS_16);
+                        // Phase 5-1: init M tile descriptor
+                        gemm_tile_m_base <= 16'd0;
+                        gemm_tile_M <= (gemm_M_val > 16'd8) ? 16'd8 : gemm_M_val;
                     end
                     dma_rd_ptr <= 0;
                     // Phase 1a+: GEMM weight retention — skip reload
@@ -3584,6 +3592,7 @@ module npu_top #(
                         wgt_pref_valid    <= 1'b0;
                         wgt_pref_done     <= 1'b0;
                         wgt_pref_active   <= 1'b0;
+                        // Phase 5-1: M tile descriptor set once per task at FC_TILE_PREP
                         // First chunk: load into bank0, compute from bank0
                         input_load_bank    <= 1'b0;
                         input_compute_bank <= 1'b0;
@@ -3642,12 +3651,19 @@ module npu_top #(
                         $display("[BEAT_LD] done: bank=%0d beats=%0d bytes=%0d unaligned_rows=%0d k_base=%0d k_tile=%0d",
                             input_load_bank, gemm_a_load_beat_count, gemm_a_load_byte_count,
                             gemm_a_load_unaligned_row_count, gemm_stream_k_base, fc_chunk_inputs);
-                        // Route: chunk0 → RUN (weights already loaded);
-                        //        chunk1+ → LOAD_ARRAY (reload B weights)
-                        //        unless weight prefetch already done → WGT_LD.
-                        if (gemm_stream_first_chunk)
+                        // Route: first K-chunk of first M tile → RUN (weights pre-loaded);
+                        //        first K-chunk of subsequent M tile → LOAD_ARRAY
+                        //        (clear first_chunk so PREP doesn't re-clear c_tile);
+                        //        K-chunk1+ → LOAD_ARRAY or WGT_LD if prefetched.
+                        if (gemm_stream_first_chunk && (gemm_tile_m_base == 16'd0))
                             fsm_state <= FSM_GEMM_STREAM_RUN;
-                        else if (wgt_pref_valid &&
+                        else if (gemm_stream_first_chunk) begin
+                            // Subsequent M tile: need weight reload, clear first_chunk
+                            gemm_stream_first_chunk <= 1'b0;
+                            wgt_load_phase <= 32'd0;
+                            wgt_load_wait <= 1'b1;
+                            fsm_state <= FSM_LOAD_ARRAY;
+                        end else if (wgt_pref_valid &&
                                  (wgt_pref_k_base == gemm_stream_k_base) &&
                                  (wgt_pref_k_tile == fc_chunk_inputs) &&
                                  (wgt_pref_n_tile == fc_tile_outputs)) begin
@@ -3732,7 +3748,7 @@ module npu_top #(
                                             input_tile_bank1[gemm_a_load_row][lane] <= 8'd0;
                                     end
 
-                                    if (gemm_a_load_row + 3'd1 < gemm_M_val) begin
+                                    if (gemm_a_load_row + 3'd1 < gemm_tile_M) begin
                                         gemm_a_load_row   <= gemm_a_load_row + 3'd1;
                                         gemm_a_load_col   <= 7'd0;
                                         gemm_a_load_phase <= A_LOAD_REQ;
@@ -3811,7 +3827,7 @@ module npu_top #(
                             if (str_n < array_active_cols) begin
                                 reg signed [31:0] str_m;
                                 str_m = $signed({16'd0, stream_cycle}) - $signed({16'd0, active_k}) - $signed({16'd0, str_n}) - $signed({16'd0, stream_pipe_offset});
-                                if (!str_m[31] && str_m < gemm_M_val && str_n < gemm_N_val) begin
+                                if (!str_m[31] && str_m < gemm_tile_M && str_n < gemm_N_val) begin
                                     if (gemm_stream_first_chunk) begin
                                         // First K-chunk: write-once (v1 behavior)
                                         if (!c_tile_valid[str_m][str_n]) begin
@@ -3827,7 +3843,7 @@ module npu_top #(
                             end
                         end
                     end
-                    if (stream_cycle >= (gemm_M_val + active_k + array_active_cols + stream_pipe_offset + 16'd10)) begin
+                    if (stream_cycle >= (gemm_tile_M + active_k + array_active_cols + stream_pipe_offset + 16'd10)) begin
                         stream_active <= 1'b0;
                         fsm_state <= FSM_GEMM_STREAM_ACCUM;  // Phase 3a: check K-chunk loop
                     end
@@ -3993,13 +4009,13 @@ module npu_top #(
                         dma_wr_start <= 1'b1;
                         dma_wr_started <= 1'b1;
                         dma_wr_addr <= blk_out_addr
-                            + (gemm_store_row_idx * row_stride_bytes)
+                            + ((gemm_tile_m_base + gemm_store_row_idx) * row_stride_bytes)
                             + ({16'd0, gemm_store_beat_idx} << 5);
                         dma_wr_bytes <= {16'd0, this_beat_cols} << 2;  // this_beat_cols * 4
                     end
                     $display("[DIR_ST] row=%0d beat=%0d base_col=%0d cols=%0d addr=0x%08x bytes=%0d wstrb=0x%08x",
                         gemm_store_row_idx, gemm_store_beat_idx, base_col, this_beat_cols,
-                        blk_out_addr + (gemm_store_row_idx * row_stride_bytes)
+                        blk_out_addr + ((gemm_tile_m_base + gemm_store_row_idx) * row_stride_bytes)
                             + (gemm_store_beat_idx * 32),
                         this_beat_cols * 4, wstrb_val);
                     // Wait for DMA write to complete, then next beat or next row
@@ -4017,16 +4033,43 @@ module npu_top #(
                             // More beats in current row
                             gemm_store_beat_idx <= gemm_store_beat_idx + 16'd1;
                             fsm_state <= FSM_GEMM_STREAM_STORE;
-                        end else if (gemm_store_row_idx + 16'd1 < gemm_M_val) begin
+                        end else if (gemm_store_row_idx + 16'd1 < gemm_tile_M) begin
                             // Next row
                             gemm_store_row_idx <= gemm_store_row_idx + 16'd1;
                             gemm_store_beat_idx <= 16'd0;
                             fsm_state <= FSM_GEMM_STREAM_STORE;
                         end else begin
-                            // All rows done
-                            task_done_r <= 1'b1;
-                            task_active_r <= 1'b0;
-                            fsm_state <= FSM_DONE;
+                            // All rows of current M tile stored
+                            // Phase 5-1: check if more M tiles remain
+                            if (gemm_tile_m_base + gemm_tile_M < gemm_M_val) begin
+                                automatic integer next_m_base;
+                                next_m_base = gemm_tile_m_base + gemm_tile_M;
+                                gemm_tile_m_base <= next_m_base;
+                                gemm_tile_M <= (gemm_M_val - next_m_base > 16'd8) ?
+                                               16'd8 : (gemm_M_val - next_m_base);
+                                // Reset K-chunk state for new M tile
+                                gemm_stream_k_base       <= 16'd0;
+                                gemm_stream_k_chunk_idx  <= 16'd0;
+                                gemm_stream_first_chunk  <= 1'b1;
+                                gemm_stream_last_chunk   <= (input_c <= PE_ROWS_16);
+                                fc_in_base <= 16'd0;
+                                fc_chunk_inputs <= (input_c > PE_ROWS_16) ?
+                                                   PE_ROWS_16 : input_c;
+                                // Clear prefetch state from previous M tile
+                                input_prefetch_active <= 1'b0;
+                                input_prefetch_done  <= 1'b0;
+                                wgt_pref_active <= 1'b0;
+                                wgt_pref_done  <= 1'b0;
+                                wgt_pref_valid <= 1'b0;
+                                $display("[M_TILE] next tile: m_base=%0d M=%0d",
+                                    next_m_base, gemm_tile_M);
+                                fsm_state <= FSM_GEMM_STREAM_PREP;
+                            end else begin
+                                // All M tiles done
+                                task_done_r <= 1'b1;
+                                task_active_r <= 1'b0;
+                                fsm_state <= FSM_DONE;
+                            end
                         end
                     end else if (dma_wr_error) begin
                         task_error_r <= 1'b1;
