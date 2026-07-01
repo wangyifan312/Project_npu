@@ -2098,12 +2098,12 @@ class npu_task_gemm_row_streaming_test extends soc_base_test;
       lvl_name = "NT3";
       `uvm_info("TEST",$sformatf("%s: M=%0d K=%0d N=%0d B[k][n]=n+1", lvl_name, M_v, K_v, N_v),UVM_NONE)
       for(i=0; i<M_v*K_v; i=i+4) m_seq.axil_write32(32'h0000_0100+i, 32'h01010101);
-      // B[k][n] = n+1. Write 4 bytes at a time in K-major order
+      // B[k][n] = (n % 64)+1, fits signed INT8 range 1..64
       for(i=0; i<K_v*N_v; i=i+4) begin
-        automatic integer n0 = (i % N_v) + 1;
-        automatic integer n1 = ((i+1) % N_v) + 1;
-        automatic integer n2 = ((i+2) % N_v) + 1;
-        automatic integer n3 = ((i+3) % N_v) + 1;
+        automatic integer n0 = ((i % N_v) % 64) + 1;
+        automatic integer n1 = (((i+1) % N_v) % 64) + 1;
+        automatic integer n2 = (((i+2) % N_v) % 64) + 1;
+        automatic integer n3 = (((i+3) % N_v) % 64) + 1;
         m_seq.axil_write32(32'h0001_0000+i, n0 | (n1<<8) | (n2<<16) | (n3<<24));
       end
       for(i=0; i<M_v*N_v*4+128; i=i+4) m_seq.axil_write32(32'h0002_0000+i, 32'hDEADBEEF);
@@ -2130,7 +2130,7 @@ class npu_task_gemm_row_streaming_test extends soc_base_test;
         chk_errs = 0;
         for (r = 0; r < M_v; r = r + 1) for (c = 0; c < N_v; c = c + 1) begin
           m_seq.axil_read32(32'h0002_0000 + r*row_stride + c*4, rdata);
-          if ($signed(rdata) != 64 * (c + 1)) begin if(chk_errs<5) `uvm_error("TEST",$sformatf("%s C[%0d][%0d]=%0d exp %0d", lvl_name,r,c,$signed(rdata),64*(c+1))) chk_errs++; end
+          if ($signed(rdata) != 64 * ((c % 64) + 1)) begin if(chk_errs<5) `uvm_error("TEST",$sformatf("%s C[%0d][%0d]=%0d exp %0d", lvl_name,r,c,$signed(rdata),64*((c%64)+1))) chk_errs++; end
         end
         if(chk_errs==0) begin `uvm_info("TEST",$sformatf("%s: B-by-col cycles=%0d PASS",lvl_name,cycle_lo),UVM_NONE) levels_pass++; end
         else `uvm_info("TEST",$sformatf("%s: ERR=%0d FAIL",lvl_name,chk_errs),UVM_NONE)
