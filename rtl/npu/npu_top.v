@@ -774,6 +774,9 @@ module npu_top #(
     // Phase 5-1: M tile descriptor
     reg [15:0] gemm_tile_m_base;    // global starting row of current M tile
     reg [15:0] gemm_tile_M;         // rows in current M tile (≤ 8)
+    // Phase 5-2: N tile descriptor
+    reg [15:0] gemm_tile_n_base;    // global starting column of current N tile
+    reg [15:0] gemm_tile_N;         // columns in current N tile (≤ 64)
     // Phase 3c: input-tile-loader micro-sequencer (GEMM-scoped, Phase 4→common)
     reg        gemm_a_load_done;     // pulsed when micro-sequencer completes
     reg [1:0]  gemm_a_load_phase;
@@ -1203,7 +1206,8 @@ module npu_top #(
                                            + {16'd0, wgt_stage_k_base}
                                            + wgt_stage_row_idx;
     wire [31:0] wgt_stage_buf_byte_idx_gemm = ({16'd0, wgt_stage_k_base} + wgt_stage_row_idx)
-                                             * {16'd0, wgt_stage_n_tile}
+                                             * {16'd0, gemm_N_val}
+                                             + {16'd0, gemm_tile_n_base}
                                              + wgt_stage_out_idx;
     wire [31:0] wgt_stage_buf_byte_idx = gemm_row_streaming_en ?
                                           wgt_stage_buf_byte_idx_gemm :
@@ -1212,13 +1216,14 @@ module npu_top #(
                                         + {27'd0, wgt_dma_byte_offset};
     wire [BUF_ADDR_W-1:0] wgt_stage_beat_addr = wgt_stage_abs_byte_idx[BUF_ADDR_W+4:5];
     wire [4:0] wgt_stage_byte_sel = wgt_stage_abs_byte_idx[4:0];
-    // Phase 4b-2: background weight prefetch address (K-major compact B)
+    // Phase 5-2: background weight prefetch address (full B matrix, global N offset)
     wire [31:0] wgt_pref_out_idx = (wgt_pref_k_tile == 16'd0) ? 32'd0 :
                                     (wgt_pref_lane_idx / {16'd0, wgt_pref_k_tile});
     wire [31:0] wgt_pref_row_idx = (wgt_pref_k_tile == 16'd0) ? 32'd0 :
                                     (wgt_pref_lane_idx % {16'd0, wgt_pref_k_tile});
     wire [31:0] wgt_pref_buf_byte_idx = ({16'd0, wgt_pref_k_base} + wgt_pref_row_idx)
-                                        * {16'd0, wgt_pref_n_tile}
+                                        * {16'd0, gemm_N_val}
+                                        + {16'd0, gemm_tile_n_base}
                                         + wgt_pref_out_idx;
     wire [31:0] wgt_pref_abs_byte_idx = wgt_pref_buf_byte_idx
                                         + {27'd0, wgt_dma_byte_offset};
@@ -2152,6 +2157,8 @@ module npu_top #(
             gemm_stream_last_chunk <= 1'b0;
             gemm_tile_m_base <= 16'd0;
             gemm_tile_M      <= 16'd0;
+            gemm_tile_n_base <= 16'd0;
+            gemm_tile_N      <= 16'd0;
             fc_store_addr <= 32'd0; fc_store_bytes <= 32'd0;
             rq_acc_wr_en_r <= 1'b0; rq_acc_wr_addr_r <= {BUF_ADDR_W{1'b0}}; rq_acc_wr_data_r <= 32'd0;
             rq_src_idx <= 32'd0; rq_src_wait <= 1'b0; rq_total_words <= 32'd0; rq_pack_idx <= 2'd0; rq_pack_word <= 32'd0;
@@ -2619,9 +2626,9 @@ module npu_top #(
                 end
 
                 FSM_FC_TILE_PREP: begin
-                    // GEMM: output columns = N (≤64 for V1). Bypass capacity calc.
+                    // GEMM: output columns per tile = min(64,N). Phase 5-2 N-tiling.
                     fc_tile_outputs <= is_gemm_mode ?
-                        ((output_c > PE_COLS_16) ? PE_COLS_16 : output_c) :
+                        ((gemm_N_val > PE_COLS_16) ? PE_COLS_16 : gemm_N_val) :
                         fc_tile_outputs_next;
                     fc_in_base <= 16'd0;
                     fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
@@ -2634,6 +2641,9 @@ module npu_top #(
                         // Phase 5-1: init M tile descriptor
                         gemm_tile_m_base <= 16'd0;
                         gemm_tile_M <= (gemm_M_val > 16'd8) ? 16'd8 : gemm_M_val;
+                        // Phase 5-2: init N tile descriptor
+                        gemm_tile_n_base <= 16'd0;
+                        gemm_tile_N <= (gemm_N_val > PE_COLS_16) ? PE_COLS_16 : gemm_N_val;
                     end
                     dma_rd_ptr <= 0;
                     // Phase 1a+: GEMM weight retention — skip reload
@@ -2680,7 +2690,10 @@ module npu_top #(
                     wgt_dma_start <= 1'b1;
                     wgt_dma_addr <= {fc_wgt_dma_base[31:5], 5'b0};
                     wgt_dma_byte_offset <= fc_wgt_dma_base[4:0];
-                    wgt_dma_bytes <= (fc_tile_outputs * input_c) + {27'd0, fc_wgt_dma_base[4:0]};
+                    // Phase 5-2: streaming GEMM loads full B[K,N] for N-tiling
+                    wgt_dma_bytes <= gemm_row_streaming_en ?
+                        (output_c * input_c) + {27'd0, fc_wgt_dma_base[4:0]} :
+                        (fc_tile_outputs * input_c) + {27'd0, fc_wgt_dma_base[4:0]};
                     wgt_load_start <= 1'b1;
                     wgt_load_bank <= block_bank;
                     fsm_state <= FSM_FC_LOAD_WAIT;
@@ -3994,7 +4007,7 @@ module npu_top #(
                     integer lane;
                     row_stride_bytes = (gemm_N_val * 32'd4 + 32'd31) & 32'hFFFF_FFE0;
                     base_col = gemm_store_beat_idx << 3;  // * 8
-                    remaining_cols = gemm_N_val - base_col;
+                    remaining_cols = gemm_tile_N - base_col;
                     this_beat_cols = (remaining_cols > 16'd8) ? 16'd8 : remaining_cols;
                     beat = 256'd0;
                     wstrb_val = 32'd0;
@@ -4010,6 +4023,7 @@ module npu_top #(
                         dma_wr_started <= 1'b1;
                         dma_wr_addr <= blk_out_addr
                             + ((gemm_tile_m_base + gemm_store_row_idx) * row_stride_bytes)
+                            + {12'd0, gemm_tile_n_base, 2'b0}
                             + ({16'd0, gemm_store_beat_idx} << 5);
                         dma_wr_bytes <= {16'd0, this_beat_cols} << 2;  // this_beat_cols * 4
                     end
@@ -4028,8 +4042,8 @@ module npu_top #(
                     if (dma_wr_done) begin
                         $display("[DIR_ST] row=%0d beat=%0d dma_done", gemm_store_row_idx, gemm_store_beat_idx);
                         dma_wr_started <= 1'b0;
-                        // beats_per_row = ceil(N / 8)
-                        if (gemm_store_beat_idx + 16'd1 < ((gemm_N_val + 16'd7) >> 3)) begin
+                        // beats_per_row = ceil(tile_N / 8)
+                        if (gemm_store_beat_idx + 16'd1 < ((gemm_tile_N + 16'd7) >> 3)) begin
                             // More beats in current row
                             gemm_store_beat_idx <= gemm_store_beat_idx + 16'd1;
                             fsm_state <= FSM_GEMM_STREAM_STORE;
@@ -4039,15 +4053,19 @@ module npu_top #(
                             gemm_store_beat_idx <= 16'd0;
                             fsm_state <= FSM_GEMM_STREAM_STORE;
                         end else begin
-                            // All rows of current M tile stored
-                            // Phase 5-1: check if more M tiles remain
-                            if (gemm_tile_m_base + gemm_tile_M < gemm_M_val) begin
-                                automatic integer next_m_base;
-                                next_m_base = gemm_tile_m_base + gemm_tile_M;
-                                gemm_tile_m_base <= next_m_base;
-                                gemm_tile_M <= (gemm_M_val - next_m_base > 16'd8) ?
-                                               16'd8 : (gemm_M_val - next_m_base);
-                                // Reset K-chunk state for new M tile
+                            // All rows of current tile stored
+                            // Phase 5-2: N tile loop inside M tile loop
+                            if (gemm_tile_n_base + gemm_tile_N < gemm_N_val) begin
+                                // More N tiles in current M tile
+                                automatic integer next_n_base;
+                                next_n_base = gemm_tile_n_base + gemm_tile_N;
+                                gemm_tile_n_base <= next_n_base;
+                                gemm_tile_N <= (gemm_N_val - next_n_base > PE_COLS_16) ?
+                                               PE_COLS_16 : (gemm_N_val - next_n_base);
+                                // Also update fc_tile_outputs for PE array sizing
+                                fc_tile_outputs <= (gemm_N_val - next_n_base > PE_COLS_16) ?
+                                                   PE_COLS_16 : (gemm_N_val - next_n_base);
+                                // Reset K-chunk state for new N tile
                                 gemm_stream_k_base       <= 16'd0;
                                 gemm_stream_k_chunk_idx  <= 16'd0;
                                 gemm_stream_first_chunk  <= 1'b1;
@@ -4055,17 +4073,41 @@ module npu_top #(
                                 fc_in_base <= 16'd0;
                                 fc_chunk_inputs <= (input_c > PE_ROWS_16) ?
                                                    PE_ROWS_16 : input_c;
-                                // Clear prefetch state from previous M tile
                                 input_prefetch_active <= 1'b0;
                                 input_prefetch_done  <= 1'b0;
                                 wgt_pref_active <= 1'b0;
                                 wgt_pref_done  <= 1'b0;
                                 wgt_pref_valid <= 1'b0;
-                                $display("[M_TILE] next tile: m_base=%0d M=%0d",
+                                $display("[N_TILE] next tile: n_base=%0d N=%0d",
+                                    next_n_base, gemm_tile_N);
+                                fsm_state <= FSM_GEMM_STREAM_PREP;
+                            end else if (gemm_tile_m_base + gemm_tile_M < gemm_M_val) begin
+                                // More M tiles: reset N base
+                                automatic integer next_m_base;
+                                next_m_base = gemm_tile_m_base + gemm_tile_M;
+                                gemm_tile_m_base <= next_m_base;
+                                gemm_tile_M <= (gemm_M_val - next_m_base > 16'd8) ?
+                                               16'd8 : (gemm_M_val - next_m_base);
+                                gemm_tile_n_base <= 16'd0;
+                                gemm_tile_N <= (gemm_N_val > PE_COLS_16) ? PE_COLS_16 : gemm_N_val;
+                                fc_tile_outputs <= (gemm_N_val > PE_COLS_16) ? PE_COLS_16 : gemm_N_val;
+                                gemm_stream_k_base       <= 16'd0;
+                                gemm_stream_k_chunk_idx  <= 16'd0;
+                                gemm_stream_first_chunk  <= 1'b1;
+                                gemm_stream_last_chunk   <= (input_c <= PE_ROWS_16);
+                                fc_in_base <= 16'd0;
+                                fc_chunk_inputs <= (input_c > PE_ROWS_16) ?
+                                                   PE_ROWS_16 : input_c;
+                                input_prefetch_active <= 1'b0;
+                                input_prefetch_done  <= 1'b0;
+                                wgt_pref_active <= 1'b0;
+                                wgt_pref_done  <= 1'b0;
+                                wgt_pref_valid <= 1'b0;
+                                $display("[M_TILE] next tile: m_base=%0d M=%0d n_reset",
                                     next_m_base, gemm_tile_M);
                                 fsm_state <= FSM_GEMM_STREAM_PREP;
                             end else begin
-                                // All M tiles done
+                                // All tiles done
                                 task_done_r <= 1'b1;
                                 task_active_r <= 1'b0;
                                 fsm_state <= FSM_DONE;
