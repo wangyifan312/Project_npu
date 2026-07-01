@@ -1920,10 +1920,6 @@ module npu_top #(
                     wp_beatsz = 32'd32 - {27'd0, wgt_pref_abs_byte_idx[4:0]};
                     wp_count  = (wp_remain > 32'd32) ? 32'd32 : wp_remain;
                     if (wp_beatsz < wp_count) wp_count = wp_beatsz;
-                    if (wgt_pref_lane_idx < 16'd2)
-                        $display("[WGT_PREF_CAP] idx=%0d k_base=%0d n_base=%0d buf=%0d beat=%0d data0=%0d",
-                            wgt_pref_lane_idx, wgt_pref_k_base, wgt_pref_n_base,
-                            wgt_pref_buf_byte_idx, wgt_pref_beat_addr, wgt_rd_data[7:0]);
                     for (wp_lane = 0; wp_lane < 32; wp_lane = wp_lane + 1) begin
                         if (wp_lane < wp_count) begin
                             reg [31:0] wp_lane_idx;
@@ -1946,10 +1942,9 @@ module npu_top #(
                         wgt_pref_done  <= 1'b1;
                         wgt_pref_active <= 1'b0;
                         wgt_pref_phase  <= WGT_PREF_IDLE;
-                        $display("[WGT_PREF] DONE k_base=%0d n_base=%0d wgt[0..3]=%0d,%0d,%0d,%0d",
+                        $display("[WGT_PREF] DONE k_base=%0d n_base=%0d beats=%0d bytes=%0d",
                             wgt_pref_k_base, wgt_pref_n_base,
-                            wgt_load_reg[7:0], wgt_load_reg[15:8],
-                            wgt_load_reg[23:16], wgt_load_reg[31:24]);
+                            wgt_pref_beat_count, wgt_pref_byte_count);
                     end else begin
                         wgt_pref_lane_idx <= wgt_pref_lane_idx + wp_count;
                         wgt_pref_phase <= WGT_PREF_REQ;
@@ -3935,8 +3930,8 @@ module npu_top #(
                                 wgt_pref_done  <= 1'b0;
                                 dbg_dual_hit_count <= dbg_dual_hit_count + 16'd1;
                                 dbg_accum_to_wgtld_direct <= dbg_accum_to_wgtld_direct + 16'd1;
-                                $display("[DUAL_HIT] bank0 + wgt_pref k_base=%0d n_base=%0d wgt[0]=%0d (skip LOAD_A+LOAD_ARRAY → WGT_LD)",
-                                    next_kb, gemm_tile_n_base, wgt_load_reg[7:0]);
+                                $display("[DUAL_HIT] bank0 + wgt_pref k_base=%0d (skip LOAD_A+LOAD_ARRAY → WGT_LD)",
+                                    next_kb);
                                 fsm_state <= FSM_WGT_LD;
                             end else begin
                                 // Input hit only: skip LOAD_A, go to LOAD_ARRAY
@@ -3971,8 +3966,8 @@ module npu_top #(
                                 wgt_pref_done  <= 1'b0;
                                 dbg_dual_hit_count <= dbg_dual_hit_count + 16'd1;
                                 dbg_accum_to_wgtld_direct <= dbg_accum_to_wgtld_direct + 16'd1;
-                                $display("[DUAL_HIT] bank1 + wgt_pref k_base=%0d n_base=%0d wgt[0]=%0d (skip LOAD_A+LOAD_ARRAY → WGT_LD)",
-                                    next_kb, gemm_tile_n_base, wgt_load_reg[7:0]);
+                                $display("[DUAL_HIT] bank1 + wgt_pref k_base=%0d (skip LOAD_A+LOAD_ARRAY → WGT_LD)",
+                                    next_kb);
                                 fsm_state <= FSM_WGT_LD;
                             end else begin
                                 wgt_load_phase <= 32'd0;
