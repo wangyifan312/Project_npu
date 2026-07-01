@@ -3651,12 +3651,19 @@ module npu_top #(
                         $display("[BEAT_LD] done: bank=%0d beats=%0d bytes=%0d unaligned_rows=%0d k_base=%0d k_tile=%0d",
                             input_load_bank, gemm_a_load_beat_count, gemm_a_load_byte_count,
                             gemm_a_load_unaligned_row_count, gemm_stream_k_base, fc_chunk_inputs);
-                        // Route: chunk0 → RUN (weights already loaded);
-                        //        chunk1+ → LOAD_ARRAY (reload B weights)
-                        //        unless weight prefetch already done → WGT_LD.
-                        if (gemm_stream_first_chunk)
+                        // Route: first K-chunk of first M tile → RUN (weights pre-loaded);
+                        //        first K-chunk of subsequent M tile → LOAD_ARRAY
+                        //        (clear first_chunk so PREP doesn't re-clear c_tile);
+                        //        K-chunk1+ → LOAD_ARRAY or WGT_LD if prefetched.
+                        if (gemm_stream_first_chunk && (gemm_tile_m_base == 16'd0))
                             fsm_state <= FSM_GEMM_STREAM_RUN;
-                        else if (wgt_pref_valid &&
+                        else if (gemm_stream_first_chunk) begin
+                            // Subsequent M tile: need weight reload, clear first_chunk
+                            gemm_stream_first_chunk <= 1'b0;
+                            wgt_load_phase <= 32'd0;
+                            wgt_load_wait <= 1'b1;
+                            fsm_state <= FSM_LOAD_ARRAY;
+                        end else if (wgt_pref_valid &&
                                  (wgt_pref_k_base == gemm_stream_k_base) &&
                                  (wgt_pref_k_tile == fc_chunk_inputs) &&
                                  (wgt_pref_n_tile == fc_tile_outputs)) begin
