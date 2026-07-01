@@ -701,6 +701,11 @@ module npu_top #(
     reg [1:0]  gemm_a_load_phase;
     reg [2:0]  gemm_a_load_row;     // 0..gemm_M_val-1
     reg [6:0]  gemm_a_load_col;     // 0..fc_chunk_inputs-1
+    // Phase 4a-1: beat-level debug counters
+    reg [15:0] gemm_a_load_beat_count;    // beats read in current LOAD_A
+    reg [15:0] gemm_a_load_byte_count;    // bytes captured
+    reg [5:0]  gemm_a_load_max_beats_per_row;  // max beats for any row
+    reg [15:0] gemm_a_load_unaligned_row_count; // rows with non-zero lane_start
 
     wire [15:0] array_drain_offset;
     integer cluster_bus_idx;
@@ -1091,16 +1096,17 @@ module npu_top #(
         (fc_act_byte_idx + 32'd1) : fc_act_byte_idx;
     wire [BUF_ADDR_W-1:0] fc_act_beat_addr = fc_act_rd_byte_idx[BUF_ADDR_W+4:5];
     wire [HB_BEAT_BYTE_BITS-1:0] fc_act_byte_sel = fc_act_byte_idx[4:0];
-    // Phase 3c: input-tile-loader byte-level address computation
+    // Phase 4a-1: input-tile-loader beat-level address computation
     // byte_idx = row * input_c + gemm_stream_k_base + col
     // beat_addr = byte_idx >> 5  (within act_buffer address space)
-    // byte_sel  = byte_idx & 0x1F  (byte lane within 256-bit beat)
+    // lane_start = byte_idx & 0x1F  (first valid byte lane within 256-bit beat)
+    // bytes_this_beat = min(K_tile - col, 32 - lane_start) — up to 32 bytes
     wire [31:0] gemm_a_load_byte_idx =
         {29'd0, gemm_a_load_row} * {16'd0, input_c} +
         {16'd0, gemm_stream_k_base} +
         {25'd0, gemm_a_load_col};
     wire [BUF_ADDR_W-1:0] gemm_a_load_beat_addr = gemm_a_load_byte_idx[BUF_ADDR_W+4:5];
-    wire [HB_BEAT_BYTE_BITS-1:0] gemm_a_load_byte_sel = gemm_a_load_byte_idx[4:0];
+    wire [HB_BEAT_BYTE_BITS-1:0] gemm_a_load_lane_start = gemm_a_load_byte_idx[4:0];
     wire [7:0] fc_weight_byte = hb_beat_byte(wgt_rd_data, fc_weight_byte_sel);
     wire [31:0] conv_weight_dma_byte_idx = wgt_load_phase + {27'd0, wgt_dma_byte_offset};
     wire [31:0] add_byte_idx = add_src_idx;
@@ -1701,6 +1707,10 @@ module npu_top #(
             gemm_a_load_phase <= A_LOAD_IDLE;
             gemm_a_load_row   <= 3'd0;
             gemm_a_load_col   <= 7'd0;
+            gemm_a_load_beat_count   <= 16'd0;
+            gemm_a_load_byte_count   <= 16'd0;
+            gemm_a_load_max_beats_per_row <= 6'd0;
+            gemm_a_load_unaligned_row_count <= 16'd0;
             gemm_store_row_idx <= 16'd0;
             gemm_store_beat_idx <= 16'd0;
             gemm_stream_k_base <= 16'd0;
@@ -3114,15 +3124,19 @@ module npu_top #(
                 end
 
                 // ============================================================
-                // Phase 3c: input-tile-loader micro-sequencer
-                // Reads a_tile[row][kk] = A[row][gemm_stream_k_base+kk]
-                // from act_buffer via raw byte-level beat access.
-                // Byte index: row * input_c + gemm_stream_k_base + kk
-                // Beat addr: byte_idx >> 5   Byte lane: byte_idx & 0x1F
+                // Phase 4a-1: beat-level input-tile-loader micro-sequencer
+                // Reads a_tile[row][col] = A[row][gemm_stream_k_base+col]
+                // from act_buffer: one 256-bit beat per read, unpack up to 32 bytes.
+                // Address: beat_idx = (row*input_c + k_base + col) >> 5
+                // Lane:    lane_start = (row*input_c + k_base + col) & 0x1F
+                // Handles unaligned rows: up to 3 beats for 64 bytes.
                 // ============================================================
                 FSM_GEMM_STREAM_LOAD_A: begin
                     if (gemm_a_load_done) begin
                         // Micro-sequencer finished loading a_tile.
+                        $display("[BEAT_LD] done: beats=%0d bytes=%0d unaligned_rows=%0d",
+                            gemm_a_load_beat_count, gemm_a_load_byte_count,
+                            gemm_a_load_unaligned_row_count);
                         // Route: chunk0 → RUN (weights already loaded);
                         //        chunk1+ → LOAD_ARRAY (reload B weights).
                         if (gemm_stream_first_chunk)
@@ -3130,11 +3144,14 @@ module npu_top #(
                         else
                             fsm_state <= FSM_LOAD_ARRAY;
                     end else begin
-                        // Micro-sequencer: 4-phase byte-by-byte load
+                        // Micro-sequencer: 4-phase beat-level load
                         case (gemm_a_load_phase)
                             A_LOAD_IDLE: begin
                                 gemm_a_load_row   <= 3'd0;
                                 gemm_a_load_col   <= 7'd0;
+                                gemm_a_load_beat_count <= 16'd0;
+                                gemm_a_load_byte_count <= 16'd0;
+                                gemm_a_load_unaligned_row_count <= 16'd0;
                                 gemm_a_load_phase <= A_LOAD_REQ;
                             end
                             A_LOAD_REQ: begin
@@ -3147,21 +3164,55 @@ module npu_top #(
                                 gemm_a_load_phase <= A_LOAD_CAPTURE;
                             end
                             A_LOAD_CAPTURE: begin
-                                // Capture byte from act_buffer beat
-                                a_tile[gemm_a_load_row][gemm_a_load_col] <=
-                                    act_rd_data[gemm_a_load_byte_sel * 8 +: 8];
-                                // Advance to next column / row
-                                if (gemm_a_load_col + 7'd1 < fc_chunk_inputs) begin
-                                    gemm_a_load_col   <= gemm_a_load_col + 7'd1;
-                                    gemm_a_load_phase <= A_LOAD_REQ;
-                                end else if (gemm_a_load_row + 3'd1 < gemm_M_val) begin
-                                    gemm_a_load_row   <= gemm_a_load_row + 3'd1;
-                                    gemm_a_load_col   <= 7'd0;
-                                    gemm_a_load_phase <= A_LOAD_REQ;
+                                // Beat-level bulk unpack: up to 32 bytes from one 256-bit beat.
+                                // lane_start = byte offset within this beat
+                                // bytes_this_beat = min(K_tile - col, 32 - lane_start)
+                                integer lane_start_v;
+                                integer remaining_v;
+                                integer bytes_this_beat_v;
+                                integer lane;
+                                lane_start_v   = gemm_a_load_lane_start;
+                                remaining_v    = fc_chunk_inputs - gemm_a_load_col;
+                                bytes_this_beat_v = (remaining_v < (32 - lane_start_v)) ?
+                                                      remaining_v : (32 - lane_start_v);
+
+                                // Unpack valid bytes from this beat into a_tile
+                                for (lane = 0; lane < 32; lane = lane + 1) begin
+                                    if ((lane >= lane_start_v) &&
+                                        ((lane - lane_start_v) < bytes_this_beat_v)) begin
+                                        a_tile[gemm_a_load_row]
+                                              [gemm_a_load_col + (lane - lane_start_v)]
+                                            <= act_rd_data[lane * 8 +: 8];
+                                    end
+                                end
+
+                                // Debug counters
+                                gemm_a_load_beat_count <= gemm_a_load_beat_count + 16'd1;
+                                gemm_a_load_byte_count <= gemm_a_load_byte_count
+                                    + {10'd0, bytes_this_beat_v[5:0]};
+                                if ((gemm_a_load_col == 7'd0) && (lane_start_v != 0))
+                                    gemm_a_load_unaligned_row_count <=
+                                        gemm_a_load_unaligned_row_count + 16'd1;
+
+                                // Advance col by bytes captured this beat
+                                if (gemm_a_load_col + bytes_this_beat_v >= fc_chunk_inputs) begin
+                                    // Row complete: zero-fill a_tile[row][K_tile : 63]
+                                    for (lane = fc_chunk_inputs; lane < 64; lane = lane + 1)
+                                        a_tile[gemm_a_load_row][lane] <= 8'd0;
+
+                                    if (gemm_a_load_row + 3'd1 < gemm_M_val) begin
+                                        gemm_a_load_row   <= gemm_a_load_row + 3'd1;
+                                        gemm_a_load_col   <= 7'd0;
+                                        gemm_a_load_phase <= A_LOAD_REQ;
+                                    end else begin
+                                        // All rows done
+                                        gemm_a_load_done  <= 1'b1;
+                                        gemm_a_load_phase <= A_LOAD_IDLE;
+                                    end
                                 end else begin
-                                    // All done: signal completion, return to IDLE
-                                    gemm_a_load_done  <= 1'b1;
-                                    gemm_a_load_phase <= A_LOAD_IDLE;
+                                    gemm_a_load_col   <= gemm_a_load_col
+                                        + {1'd0, bytes_this_beat_v[5:0]};
+                                    gemm_a_load_phase <= A_LOAD_REQ;
                                 end
                             end
                             default: gemm_a_load_phase <= A_LOAD_IDLE;
