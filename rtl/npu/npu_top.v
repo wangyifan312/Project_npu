@@ -661,7 +661,9 @@ module npu_top #(
     wire is_gap_mode     = (task_type == 3'd5);
     wire is_vec_relu_mode = (task_type == 3'd6);
     wire is_gemm_mode    = (task_type == 3'd7);
+    wire gemm_row_streaming_en = is_gemm_mode && conv_cfg[5];
     wire gemm_weight_hit = is_gemm_mode && gemm_weight_valid &&
+        !gemm_row_streaming_en &&  // Phase 3b: streaming GEMM bypasses legacy cache
         (gemm_weight_k_base_cached == 16'd0) &&
         (gemm_weight_n_base_cached == 16'd0) &&
         (gemm_weight_k_size_cached == ((input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c)) &&
@@ -669,8 +671,6 @@ module npu_top #(
         (gemm_weight_addr_cached == weight_addr);
     wire [15:0] array_active_rows;
     wire [15:0] array_active_cols;
-    // Phase 2b-1: GEMM row-streaming enable (conv_cfg[5])
-    wire gemm_row_streaming_en = is_gemm_mode && conv_cfg[5];
 
     // Phase 2b-1: local tile buffers for row-streaming
     reg [7:0]  a_tile [0:7][0:63];
