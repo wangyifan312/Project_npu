@@ -738,6 +738,25 @@ module npu_top #(
     reg [15:0] wgt_stage_valid_n_tile;
     reg [15:0] wgt_stage_beat_count;
     reg [15:0] wgt_stage_byte_count;
+    // Phase 4b-2: background weight prefetch during RUN
+    localparam WGT_PREF_IDLE    = 2'd0;
+    localparam WGT_PREF_REQ     = 2'd1;
+    localparam WGT_PREF_WAIT    = 2'd2;
+    localparam WGT_PREF_CAPTURE = 2'd3;
+    reg        wgt_pref_active;
+    reg        wgt_pref_done;
+    reg        wgt_pref_valid;
+    reg [1:0]  wgt_pref_phase;
+    reg [15:0] wgt_pref_lane_idx;
+    reg [15:0] wgt_pref_k_base;
+    reg [15:0] wgt_pref_k_tile;
+    reg [15:0] wgt_pref_n_tile;
+    reg [15:0] wgt_pref_start_count;
+    reg [15:0] wgt_pref_done_count;
+    reg [15:0] wgt_pref_hit_count;
+    reg [15:0] wgt_pref_stall_count;
+    reg [15:0] wgt_pref_beat_count;
+    reg [15:0] wgt_pref_byte_count;
     reg [15:0] gemm_store_row_idx;
     reg [15:0] gemm_store_beat_idx;
     // Phase 3a: K-chunk streaming accumulation
@@ -1184,6 +1203,18 @@ module npu_top #(
                                         + {27'd0, wgt_dma_byte_offset};
     wire [BUF_ADDR_W-1:0] wgt_stage_beat_addr = wgt_stage_abs_byte_idx[BUF_ADDR_W+4:5];
     wire [4:0] wgt_stage_byte_sel = wgt_stage_abs_byte_idx[4:0];
+    // Phase 4b-2: background weight prefetch address (K-major compact B)
+    wire [31:0] wgt_pref_out_idx = (wgt_pref_k_tile == 16'd0) ? 32'd0 :
+                                    (wgt_pref_lane_idx / {16'd0, wgt_pref_k_tile});
+    wire [31:0] wgt_pref_row_idx = (wgt_pref_k_tile == 16'd0) ? 32'd0 :
+                                    (wgt_pref_lane_idx % {16'd0, wgt_pref_k_tile});
+    wire [31:0] wgt_pref_buf_byte_idx = ({16'd0, wgt_pref_k_base} + wgt_pref_row_idx)
+                                        * {16'd0, wgt_pref_n_tile}
+                                        + wgt_pref_out_idx;
+    wire [31:0] wgt_pref_abs_byte_idx = wgt_pref_buf_byte_idx
+                                        + {27'd0, wgt_dma_byte_offset};
+    wire [BUF_ADDR_W-1:0] wgt_pref_beat_addr = wgt_pref_abs_byte_idx[BUF_ADDR_W+4:5];
+    wire [4:0] wgt_pref_byte_sel = wgt_pref_abs_byte_idx[4:0];
     wire [7:0] fc_weight_byte = hb_beat_byte(wgt_rd_data, fc_weight_byte_sel);
     wire [31:0] conv_weight_dma_byte_idx = wgt_load_phase + {27'd0, wgt_dma_byte_offset};
     wire [31:0] add_byte_idx = add_src_idx;
@@ -1333,6 +1364,7 @@ module npu_top #(
     wire [BUF_ADDR_W-1:0] fc_shadow_beat_addr = fc_shadow_dma_byte_idx[BUF_ADDR_W+4:5];
 
     assign wgt_rd_addr  = (gemm_row_streaming_en && (fsm_state == FSM_LOAD_ARRAY) && wgt_stage_active) ? wgt_stage_beat_addr :
+                          (gemm_row_streaming_en && (fsm_state == FSM_GEMM_STREAM_RUN) && wgt_pref_active && (wgt_pref_phase != WGT_PREF_IDLE)) ? wgt_pref_beat_addr :
                           (fsm_state == FSM_BIAS_EXTRACT) ? bias_beat_addr :
                           (fsm_state == FSM_ADD_COMPUTE) ? add_src_beat_addr :
                           (is_fc_mode && (fsm_state == FSM_LOAD_ARRAY)) ? fc_weight_beat_addr :
@@ -1832,6 +1864,78 @@ module npu_top #(
     end
 
     // ============================================================
+    // Phase 4b-2: background weight prefetch micro-sequencer.
+    // Runs during FSM_GEMM_STREAM_RUN, reads next chunk's B weights
+    // from wgt_buffer and writes them into wgt_load_reg.
+    // Uses K-major compact B layout: (k_base+kk)*N_tile + n.
+    // ============================================================
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            wgt_pref_active  <= 1'b0;
+            wgt_pref_done    <= 1'b0;
+            wgt_pref_valid   <= 1'b0;
+            wgt_pref_phase   <= WGT_PREF_IDLE;
+            wgt_pref_lane_idx <= 16'd0;
+            wgt_pref_k_base  <= 16'd0;
+            wgt_pref_k_tile  <= 16'd0;
+            wgt_pref_n_tile  <= 16'd0;
+        end else if (wgt_pref_active) begin
+            case (wgt_pref_phase)
+                WGT_PREF_IDLE: begin
+                    wgt_pref_lane_idx <= 16'd0;
+                    wgt_pref_beat_count <= 16'd0;
+                    wgt_pref_byte_count <= 16'd0;
+                    wgt_pref_phase <= WGT_PREF_REQ;
+                end
+                WGT_PREF_REQ: begin
+                    wgt_pref_phase <= WGT_PREF_WAIT;
+                end
+                WGT_PREF_WAIT: begin
+                    wgt_pref_phase <= WGT_PREF_CAPTURE;
+                end
+                WGT_PREF_CAPTURE: begin
+                    integer wp_remain;
+                    integer wp_beatsz;
+                    integer wp_count;
+                    integer wp_lane;
+                    wp_remain = (wgt_pref_n_tile * wgt_pref_k_tile) - wgt_pref_lane_idx;
+                    wp_beatsz = 32'd32 - {27'd0, wgt_pref_abs_byte_idx[4:0]};
+                    wp_count  = (wp_remain > 32'd32) ? 32'd32 : wp_remain;
+                    if (wp_beatsz < wp_count) wp_count = wp_beatsz;
+                    for (wp_lane = 0; wp_lane < 32; wp_lane = wp_lane + 1) begin
+                        if (wp_lane < wp_count) begin
+                            reg [31:0] wp_lane_idx;
+                            reg [31:0] wp_lane_out;
+                            reg [31:0] wp_lane_row;
+                            reg [4:0]  wp_lane_bsel;
+                            wp_lane_idx  = wgt_pref_lane_idx + wp_lane;
+                            wp_lane_out  = wp_lane_idx / {16'd0, wgt_pref_k_tile};
+                            wp_lane_row  = wp_lane_idx % {16'd0, wgt_pref_k_tile};
+                            wp_lane_bsel = wgt_pref_abs_byte_idx[4:0] + wp_lane;
+                            wgt_load_reg[(wp_lane_row * PE_COLS + wp_lane_out)*8 +: 8]
+                                <= wgt_rd_data[wp_lane_bsel * 8 +: 8];
+                        end
+                    end
+                    wgt_pref_beat_count <= wgt_pref_beat_count + 16'd1;
+                    wgt_pref_byte_count <= wgt_pref_byte_count + {10'd0, wp_count[5:0]};
+                    if (wgt_pref_lane_idx + wp_count >= (wgt_pref_n_tile * wgt_pref_k_tile)) begin
+                        wgt_pref_valid <= 1'b1;
+                        wgt_pref_done  <= 1'b1;
+                        wgt_pref_active <= 1'b0;
+                        wgt_pref_phase  <= WGT_PREF_IDLE;
+                    end else begin
+                        wgt_pref_lane_idx <= wgt_pref_lane_idx + wp_count;
+                        wgt_pref_phase <= WGT_PREF_REQ;
+                    end
+                end
+                default: wgt_pref_phase <= WGT_PREF_IDLE;
+            endcase
+        end else begin
+            wgt_pref_phase <= WGT_PREF_IDLE;
+        end
+    end
+
+    // ============================================================
     // Phase 4b: sequential weight staging micro-sequencer.
     // Reads B weights from wgt_buffer and unpacks into wgt_load_reg.
     // Same address formula as legacy FSM_LOAD_ARRAY for FC/GEMM.
@@ -2013,6 +2117,18 @@ module npu_top #(
             wgt_stage_valid_n_tile  <= 16'd0;
             wgt_stage_beat_count <= 16'd0;
             wgt_stage_byte_count <= 16'd0;
+            // Phase 4b-2: weight prefetch
+            wgt_pref_active  <= 1'b0;
+            wgt_pref_done    <= 1'b0;
+            wgt_pref_valid   <= 1'b0;
+            wgt_pref_phase   <= WGT_PREF_IDLE;
+            wgt_pref_lane_idx <= 16'd0;
+            wgt_pref_start_count <= 16'd0;
+            wgt_pref_done_count  <= 16'd0;
+            wgt_pref_hit_count   <= 16'd0;
+            wgt_pref_stall_count <= 16'd0;
+            wgt_pref_beat_count  <= 16'd0;
+            wgt_pref_byte_count  <= 16'd0;
             gemm_store_row_idx <= 16'd0;
             gemm_store_beat_idx <= 16'd0;
             gemm_stream_k_base <= 16'd0;
@@ -3451,6 +3567,7 @@ module npu_top #(
                         input_bank0_valid <= 1'b0;
                         input_bank1_valid <= 1'b0;
                         wgt_stage_valid   <= 1'b0;
+                        wgt_pref_valid    <= 1'b0;
                         // First chunk: load into bank0, compute from bank0
                         input_load_bank    <= 1'b0;
                         input_compute_bank <= 1'b0;
@@ -3510,10 +3627,21 @@ module npu_top #(
                             input_load_bank, gemm_a_load_beat_count, gemm_a_load_byte_count,
                             gemm_a_load_unaligned_row_count, gemm_stream_k_base, fc_chunk_inputs);
                         // Route: chunk0 → RUN (weights already loaded);
-                        //        chunk1+ → LOAD_ARRAY (reload B weights).
+                        //        chunk1+ → LOAD_ARRAY (reload B weights)
+                        //        unless weight prefetch already done → WGT_LD.
                         if (gemm_stream_first_chunk)
                             fsm_state <= FSM_GEMM_STREAM_RUN;
-                        else
+                        else if (wgt_pref_valid &&
+                                 (wgt_pref_k_base == gemm_stream_k_base) &&
+                                 (wgt_pref_k_tile == fc_chunk_inputs) &&
+                                 (wgt_pref_n_tile == fc_tile_outputs)) begin
+                            // Weight was prefetched during previous RUN
+                            wgt_pref_hit_count <= wgt_pref_hit_count + 16'd1;
+                            wgt_pref_valid <= 1'b0;
+                            $display("[WGT_PREF] HIT at LOAD_A done: k_base=%0d → skip LOAD_ARRAY",
+                                gemm_stream_k_base);
+                            fsm_state <= FSM_WGT_LD;
+                        end else
                             fsm_state <= FSM_LOAD_ARRAY;
                     end else begin
                         // Micro-sequencer: 4-phase beat-level load
@@ -3638,6 +3766,26 @@ module npu_top #(
                             $display("[PREFETCH] START bank=%0d k_base=%0d k_tile=%0d comp_bank=%0d",
                                 ~input_compute_bank, nk_base, nk_tile, input_compute_bank);
                         end
+                        // Phase 4b-2: also trigger background weight prefetch
+                        if (!wgt_pref_active && !wgt_pref_done &&
+                            !(wgt_pref_valid &&
+                              (wgt_pref_k_base == nk_base) &&
+                              (wgt_pref_k_tile == nk_tile) &&
+                              (wgt_pref_n_tile == fc_tile_outputs))) begin
+                            wgt_pref_active   <= 1'b1;
+                            wgt_pref_done     <= 1'b0;
+                            wgt_pref_valid    <= 1'b0;
+                            wgt_pref_k_base   <= nk_base;
+                            wgt_pref_k_tile   <= nk_tile;
+                            wgt_pref_n_tile   <= fc_tile_outputs;
+                            wgt_pref_lane_idx <= 16'd0;
+                            wgt_pref_phase    <= WGT_PREF_REQ;
+                            wgt_pref_beat_count <= 16'd0;
+                            wgt_pref_byte_count <= 16'd0;
+                            wgt_pref_start_count <= wgt_pref_start_count + 16'd1;
+                            $display("[WGT_PREF] START k_base=%0d k_tile=%0d n_tile=%0d",
+                                nk_base, nk_tile, fc_tile_outputs);
+                        end
                     end
                     stream_cycle <= stream_cycle + 16'd1;
                     if (cluster_arb_out_valid) begin
@@ -3679,16 +3827,21 @@ module npu_top #(
                         next_kb = fc_in_base + fc_chunk_inputs;
                         next_kt = (input_c - next_kb > PE_ROWS_16) ? PE_ROWS_16 : (input_c - next_kb);
 
-                        if (input_prefetch_active) begin
-                            // Prefetch still running — stall in ACCUM
-                            input_prefetch_stall_count <= input_prefetch_stall_count + 16'd1;
-                            $display("[PREFETCH] STALL bank=%0d k_base=%0d",
-                                input_prefetch_bank, input_prefetch_k_base);
+                        // Phase 4b-2: also check weight prefetch stall
+                        if (input_prefetch_active || wgt_pref_active) begin
+                            if (input_prefetch_active) begin
+                                input_prefetch_stall_count <= input_prefetch_stall_count + 16'd1;
+                                $display("[PREFETCH] STALL bank=%0d k_base=%0d",
+                                    input_prefetch_bank, input_prefetch_k_base);
+                            end
+                            if (wgt_pref_active) begin
+                                wgt_pref_stall_count <= wgt_pref_stall_count + 16'd1;
+                                $display("[WGT_PREF] STALL k_base=%0d", wgt_pref_k_base);
+                            end
                         end else if (input_bank0_valid && (input_bank0_k_base == next_kb) &&
                                        (input_bank0_k_tile == next_kt) &&
                                        (1'b0 != input_compute_bank)) begin
-                            // Prefetch HIT: bank0 has next chunk's data.
-                            // Set load_bank to 0 so PREP can set compute_bank.
+                            // Input prefetch HIT: bank0 has next chunk's A data.
                             input_prefetch_hit_count <= input_prefetch_hit_count + 16'd1;
                             gemm_stream_k_base       <= next_kb;
                             gemm_stream_k_chunk_idx  <= gemm_stream_k_chunk_idx + 16'd1;
@@ -3697,17 +3850,31 @@ module npu_top #(
                             if (is_gemm_mode) gemm_weight_valid <= 1'b0;
                             fc_in_base <= next_kb;
                             fc_chunk_inputs <= next_kt;
-                            input_load_bank <= 1'b0;  // PREP sets compute_bank = load_bank
-                            wgt_load_phase <= 32'd0;
-                            wgt_load_wait <= 1'b1;
+                            input_load_bank <= 1'b0;
                             fc_shadow_active <= 1'b0;
-                            $display("[PREFETCH] HIT bank0 k_base=%0d k_chunk=%0d (skip LOAD_A)",
-                                next_kb, gemm_stream_k_chunk_idx + 16'd1);
-                            fsm_state <= FSM_LOAD_ARRAY;
+                            // Check weight prefetch hit too
+                            if (wgt_pref_valid &&
+                                (wgt_pref_k_base == next_kb) &&
+                                (wgt_pref_k_tile == next_kt) &&
+                                (wgt_pref_n_tile == fc_tile_outputs)) begin
+                                // Dual HIT: skip both LOAD_A and LOAD_ARRAY
+                                wgt_pref_hit_count <= wgt_pref_hit_count + 16'd1;
+                                wgt_pref_valid <= 1'b0;
+                                $display("[DUAL_HIT] bank0 + wgt_pref k_base=%0d (skip LOAD_A+LOAD_ARRAY → WGT_LD)",
+                                    next_kb);
+                                fsm_state <= FSM_WGT_LD;
+                            end else begin
+                                // Input hit only: skip LOAD_A, go to LOAD_ARRAY
+                                wgt_load_phase <= 32'd0;
+                                wgt_load_wait <= 1'b1;
+                                $display("[PREFETCH] HIT bank0 k_base=%0d k_chunk=%0d (skip LOAD_A)",
+                                    next_kb, gemm_stream_k_chunk_idx + 16'd1);
+                                fsm_state <= FSM_LOAD_ARRAY;
+                            end
                         end else if (input_bank1_valid && (input_bank1_k_base == next_kb) &&
                                        (input_bank1_k_tile == next_kt) &&
                                        (1'b1 != input_compute_bank)) begin
-                            // Prefetch HIT: bank1 has next chunk's data
+                            // Input prefetch HIT: bank1 has next chunk's A data
                             input_prefetch_hit_count <= input_prefetch_hit_count + 16'd1;
                             gemm_stream_k_base       <= next_kb;
                             gemm_stream_k_chunk_idx  <= gemm_stream_k_chunk_idx + 16'd1;
@@ -3716,13 +3883,26 @@ module npu_top #(
                             if (is_gemm_mode) gemm_weight_valid <= 1'b0;
                             fc_in_base <= next_kb;
                             fc_chunk_inputs <= next_kt;
-                            input_load_bank <= 1'b1;  // PREP sets compute_bank = load_bank
-                            wgt_load_phase <= 32'd0;
-                            wgt_load_wait <= 1'b1;
+                            input_load_bank <= 1'b1;
                             fc_shadow_active <= 1'b0;
-                            $display("[PREFETCH] HIT bank1 k_base=%0d k_chunk=%0d (skip LOAD_A)",
-                                next_kb, gemm_stream_k_chunk_idx + 16'd1);
-                            fsm_state <= FSM_LOAD_ARRAY;
+                            // Check weight prefetch hit too
+                            if (wgt_pref_valid &&
+                                (wgt_pref_k_base == next_kb) &&
+                                (wgt_pref_k_tile == next_kt) &&
+                                (wgt_pref_n_tile == fc_tile_outputs)) begin
+                                // Dual HIT
+                                wgt_pref_hit_count <= wgt_pref_hit_count + 16'd1;
+                                wgt_pref_valid <= 1'b0;
+                                $display("[DUAL_HIT] bank1 + wgt_pref k_base=%0d (skip LOAD_A+LOAD_ARRAY → WGT_LD)",
+                                    next_kb);
+                                fsm_state <= FSM_WGT_LD;
+                            end else begin
+                                wgt_load_phase <= 32'd0;
+                                wgt_load_wait <= 1'b1;
+                                $display("[PREFETCH] HIT bank1 k_base=%0d k_chunk=%0d (skip LOAD_A)",
+                                    next_kb, gemm_stream_k_chunk_idx + 16'd1);
+                                fsm_state <= FSM_LOAD_ARRAY;
+                            end
                         end else begin
                             // Fallback: no prefetch data — use foreground LOAD_A
                             // Also handles first chunk after RUN0 (prefetch started but not done)
