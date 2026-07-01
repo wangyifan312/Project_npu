@@ -1144,6 +1144,263 @@ class npu_task_gemm_row_streaming_test extends soc_base_test;
     end
 
     //=================================================================
+    // RS14: non-uniform A across K chunks
+    // M=2 K=128 N=4  B=all-1
+    // A: k=0..63=1  k=64..127=2
+    // expected C = 64*1 + 64*2 = 192
+    // If A_tile stale: C = 64*1 + 64*1 = 128 (wrong)
+    //=================================================================
+    begin
+      int M_v, K_v, N_v, beats_per_row;
+      int expected_chunks, expected_val;
+      int k;
+      M_v=2; K_v=128; N_v=4;
+      beats_per_row = (N_v * 4 + 31) / 32;
+      expected_chunks = (K_v + 63) / 64;
+      expected_val = 192;  // 64*1 + 64*2 = 192
+      lvl_name = "RS14";
+      `uvm_info("TEST",$sformatf("%s: M=%0d K=%0d N=%0d non-uniform A expected C=%0d",
+        lvl_name, M_v, K_v, N_v, expected_val),UVM_NONE)
+
+      // Row 0, k=0..63 = 1: addresses 0x100..0x13F
+      for(k=0; k<64; k=k+4) m_seq.axil_write32(32'h0000_0100 + k, 32'h01010101);
+      // Row 0, k=64..127 = 2: addresses 0x140..0x17F
+      for(k=0; k<64; k=k+4) m_seq.axil_write32(32'h0000_0140 + k, 32'h02020202);
+      // Row 1, k=0..63 = 1: addresses 0x180..0x1BF (input_addr + K)
+      for(k=0; k<64; k=k+4) m_seq.axil_write32(32'h0000_0180 + k, 32'h01010101);
+      // Row 1, k=64..127 = 2: addresses 0x1C0..0x1FF
+      for(k=0; k<64; k=k+4) m_seq.axil_write32(32'h0000_01C0 + k, 32'h02020202);
+      // B[k][n] = 1 = 0x01
+      for(i=0; i<K_v*N_v; i=i+4) m_seq.axil_write32(32'h0001_0000+i, 32'h01010101);
+      for(i=0; i<M_v*N_v*4+128; i=i+4) m_seq.axil_write32(32'h0002_0000+i, 32'hDEADBEEF);
+      row_stride = row_stride_bytes(N_v);
+      m_seq.axil_write32(32'h0001_FFE0, 32'hCAFE_BABE);
+      m_seq.axil_write32(32'h0002_0000 + M_v * row_stride, 32'hFEED_F00D);
+
+      m_seq.axil_write32(`NPU_REG_TASK_TYPE,    32'd7);
+      m_seq.axil_write32(`NPU_REG_INPUT_ADDR,   32'h0000_0100);
+      m_seq.axil_write32(`NPU_REG_WEIGHT_ADDR,  32'h0001_0000);
+      m_seq.axil_write32(`NPU_REG_OUTPUT_ADDR,  32'h0002_0000);
+      m_seq.axil_write32(`NPU_REG_INPUT_BYTES,  M_v*K_v);
+      m_seq.axil_write32(`NPU_REG_WEIGHT_BYTES, K_v*N_v);
+      m_seq.axil_write32(`NPU_REG_OUTPUT_BYTES, M_v*N_v*4);
+      m_seq.axil_write32(`NPU_REG_DIM_IN,       {16'd1, M_v[15:0]});
+      m_seq.axil_write32(`NPU_REG_DIM_OUT,      {N_v[15:0], K_v[15:0]});
+      m_seq.axil_write32(`NPU_REG_POSTPROC,     32'd0);
+      m_seq.axil_write32(`NPU_REG_CONV_CFG,    32'h20);
+      m_seq.axil_write32(`NPU_REG_CLUSTER_MODE, 32'd0);
+      m_seq.axil_write32(`NPU_REG_CLUSTER_MASK, 32'd1);
+      m_seq.axil_write32(`NPU_REG_CTRL, 32'd1);
+      repeat(400000) begin
+        m_seq.axil_read32(`NPU_REG_CTRL, rdata);
+        if(rdata[2] || rdata[3]) break;
+        #100;
+      end
+
+      m_seq.axil_read32(`NPU_REG_PERF_CYCLE_LO, cycle_lo);
+      levels_run++;
+      if(rdata[3]) begin
+        m_seq.axil_read32(`NPU_REG_STATUS, rdata);
+        `uvm_error("TEST",$sformatf("%s ERROR code=0x%02x cycles=%0d",
+          lvl_name, rdata[7:0], cycle_lo))
+      end else begin
+        chk_errs = 0;
+        for (r = 0; r < M_v; r = r + 1) begin
+          for (c = 0; c < N_v; c = c + 1) begin
+            m_seq.axil_read32(32'h0002_0000 + r*row_stride + c*4, rdata);
+            if ($signed(rdata) != expected_val) begin
+              if (chk_errs < 8) `uvm_error("TEST",$sformatf("%s C[%0d][%0d]=%0d expected %0d",
+                lvl_name, r, c, $signed(rdata), expected_val))
+              chk_errs++;
+            end
+          end
+        end
+        m_seq.axil_read32(32'h0001_FFE0, rdata);
+        if (rdata != 32'hCAFE_BABE) `uvm_error("TEST",$sformatf("%s pre-guard corrupted: 0x%08x", lvl_name, rdata))
+        m_seq.axil_read32(32'h0002_0000 + M_v * row_stride, rdata);
+        if (rdata != 32'hFEED_F00D) `uvm_error("TEST",$sformatf("%s post-guard corrupted: 0x%08x", lvl_name, rdata))
+        if (chk_errs == 0) begin
+          `uvm_info("TEST",$sformatf("%s: non-uniform A K=%0d chunks=%0d cycles=%0d mem_OK PASS",
+            lvl_name, K_v, expected_chunks, cycle_lo),UVM_NONE)
+          levels_pass++;
+        end else begin
+          `uvm_info("TEST",$sformatf("%s: mem_ERR=%0d FAIL", lvl_name, chk_errs),UVM_NONE)
+        end
+      end
+    end
+
+    //=================================================================
+    // RS15: K=65 boundary A reload
+    // M=2 K=65 N=4  B=all-1
+    // A: k=0..63=1  k=64=7
+    // expected C = 64*1 + 7 = 71
+    // Verifies last K_tile=1 correctly reloads A.
+    //=================================================================
+    begin
+      int M_v, K_v, N_v;
+      int expected_chunks, expected_val;
+      int k;
+      M_v=2; K_v=65; N_v=4;
+      expected_chunks = (K_v + 63) / 64;
+      expected_val = 71;  // 64*1 + 7 = 71
+      lvl_name = "RS15";
+      `uvm_info("TEST",$sformatf("%s: M=%0d K=%0d N=%0d boundary K%%64=1 expected C=%0d",
+        lvl_name, M_v, K_v, N_v, expected_val),UVM_NONE)
+
+      // A[m][k]: k=0..63=1  k=64=7  (K=65 per row)
+      // Row 0: bytes 0..63 = 1 at addr 0x100..0x13F
+      for(k=0; k<64; k=k+4) m_seq.axil_write32(32'h0000_0100 + k, 32'h01010101);
+      // Row 0 byte 64 = 7 + Row 1 bytes 0..2 = 1 at addr 0x140
+      m_seq.axil_write32(32'h0000_0140, 32'h01010107);
+      // Row 1 bytes 3..62 = 1 at addr 0x144..0x17F
+      for(k=4; k<64; k=k+4) m_seq.axil_write32(32'h0000_0140 + k, 32'h01010101);
+      // Row 1 bytes 63=1, 64=7 at addr 0x180
+      m_seq.axil_write32(32'h0000_0180, 32'h00000701);
+      // B[k][n] = 1 = 0x01
+      for(i=0; i<K_v*N_v; i=i+4) m_seq.axil_write32(32'h0001_0000+i, 32'h01010101);
+      for(i=0; i<M_v*N_v*4+128; i=i+4) m_seq.axil_write32(32'h0002_0000+i, 32'hDEADBEEF);
+      row_stride = row_stride_bytes(N_v);
+      m_seq.axil_write32(32'h0001_FFE0, 32'hCAFE_BABE);
+      m_seq.axil_write32(32'h0002_0000 + M_v * row_stride, 32'hFEED_F00D);
+
+      m_seq.axil_write32(`NPU_REG_TASK_TYPE,    32'd7);
+      m_seq.axil_write32(`NPU_REG_INPUT_ADDR,   32'h0000_0100);
+      m_seq.axil_write32(`NPU_REG_WEIGHT_ADDR,  32'h0001_0000);
+      m_seq.axil_write32(`NPU_REG_OUTPUT_ADDR,  32'h0002_0000);
+      m_seq.axil_write32(`NPU_REG_INPUT_BYTES,  M_v*K_v);
+      m_seq.axil_write32(`NPU_REG_WEIGHT_BYTES, K_v*N_v);
+      m_seq.axil_write32(`NPU_REG_OUTPUT_BYTES, M_v*N_v*4);
+      m_seq.axil_write32(`NPU_REG_DIM_IN,       {16'd1, M_v[15:0]});
+      m_seq.axil_write32(`NPU_REG_DIM_OUT,      {N_v[15:0], K_v[15:0]});
+      m_seq.axil_write32(`NPU_REG_POSTPROC,     32'd0);
+      m_seq.axil_write32(`NPU_REG_CONV_CFG,    32'h20);
+      m_seq.axil_write32(`NPU_REG_CLUSTER_MODE, 32'd0);
+      m_seq.axil_write32(`NPU_REG_CLUSTER_MASK, 32'd1);
+      m_seq.axil_write32(`NPU_REG_CTRL, 32'd1);
+      repeat(400000) begin
+        m_seq.axil_read32(`NPU_REG_CTRL, rdata);
+        if(rdata[2] || rdata[3]) break;
+        #100;
+      end
+
+      m_seq.axil_read32(`NPU_REG_PERF_CYCLE_LO, cycle_lo);
+      levels_run++;
+      if(rdata[3]) begin
+        m_seq.axil_read32(`NPU_REG_STATUS, rdata);
+        `uvm_error("TEST",$sformatf("%s ERROR code=0x%02x cycles=%0d",
+          lvl_name, rdata[7:0], cycle_lo))
+      end else begin
+        chk_errs = 0;
+        for (r = 0; r < M_v; r = r + 1) begin
+          for (c = 0; c < N_v; c = c + 1) begin
+            m_seq.axil_read32(32'h0002_0000 + r*row_stride + c*4, rdata);
+            if ($signed(rdata) != expected_val) begin
+              if (chk_errs < 8) `uvm_error("TEST",$sformatf("%s C[%0d][%0d]=%0d expected %0d",
+                lvl_name, r, c, $signed(rdata), expected_val))
+              chk_errs++;
+            end
+          end
+        end
+        m_seq.axil_read32(32'h0001_FFE0, rdata);
+        if (rdata != 32'hCAFE_BABE) `uvm_error("TEST",$sformatf("%s pre-guard corrupted: 0x%08x", lvl_name, rdata))
+        m_seq.axil_read32(32'h0002_0000 + M_v * row_stride, rdata);
+        if (rdata != 32'hFEED_F00D) `uvm_error("TEST",$sformatf("%s post-guard corrupted: 0x%08x", lvl_name, rdata))
+        if (chk_errs == 0) begin
+          `uvm_info("TEST",$sformatf("%s: boundary K=%0d K%%64=1 chunks=%0d cycles=%0d mem_OK PASS",
+            lvl_name, K_v, expected_chunks, cycle_lo),UVM_NONE)
+          levels_pass++;
+        end else begin
+          `uvm_info("TEST",$sformatf("%s: mem_ERR=%0d FAIL", lvl_name, chk_errs),UVM_NONE)
+        end
+      end
+    end
+
+    //=================================================================
+    // RS16: signed non-uniform A across K chunks
+    // M=2 K=128 N=4  B=all-1
+    // A: k=0..63=1  k=64..127=-1
+    // expected C = 64*1 + 64*(-1) = 0
+    // Verifies signed non-uniform A reload.
+    //=================================================================
+    begin
+      int M_v, K_v, N_v;
+      int expected_chunks, expected_val;
+      int k;
+      M_v=2; K_v=128; N_v=4;
+      expected_chunks = (K_v + 63) / 64;
+      expected_val = 0;  // 64*1 + 64*(-1) = 0
+      lvl_name = "RS16";
+      `uvm_info("TEST",$sformatf("%s: M=%0d K=%0d N=%0d signed non-uniform A expected C=%0d",
+        lvl_name, M_v, K_v, N_v, expected_val),UVM_NONE)
+
+      // Row 0, k=0..63 = 1 (0x01): addresses 0x100..0x13F
+      for(k=0; k<64; k=k+4) m_seq.axil_write32(32'h0000_0100 + k, 32'h01010101);
+      // Row 0, k=64..127 = -1 (0xFF): addresses 0x140..0x17F
+      for(k=0; k<64; k=k+4) m_seq.axil_write32(32'h0000_0140 + k, 32'hFFFFFFFF);
+      // Row 1, k=0..63 = 1: addresses 0x180..0x1BF
+      for(k=0; k<64; k=k+4) m_seq.axil_write32(32'h0000_0180 + k, 32'h01010101);
+      // Row 1, k=64..127 = -1: addresses 0x1C0..0x1FF
+      for(k=0; k<64; k=k+4) m_seq.axil_write32(32'h0000_01C0 + k, 32'hFFFFFFFF);
+      // B[k][n] = 1 = 0x01
+      for(i=0; i<K_v*N_v; i=i+4) m_seq.axil_write32(32'h0001_0000+i, 32'h01010101);
+      for(i=0; i<M_v*N_v*4+128; i=i+4) m_seq.axil_write32(32'h0002_0000+i, 32'hDEADBEEF);
+      row_stride = row_stride_bytes(N_v);
+      m_seq.axil_write32(32'h0001_FFE0, 32'hCAFE_BABE);
+      m_seq.axil_write32(32'h0002_0000 + M_v * row_stride, 32'hFEED_F00D);
+
+      m_seq.axil_write32(`NPU_REG_TASK_TYPE,    32'd7);
+      m_seq.axil_write32(`NPU_REG_INPUT_ADDR,   32'h0000_0100);
+      m_seq.axil_write32(`NPU_REG_WEIGHT_ADDR,  32'h0001_0000);
+      m_seq.axil_write32(`NPU_REG_OUTPUT_ADDR,  32'h0002_0000);
+      m_seq.axil_write32(`NPU_REG_INPUT_BYTES,  M_v*K_v);
+      m_seq.axil_write32(`NPU_REG_WEIGHT_BYTES, K_v*N_v);
+      m_seq.axil_write32(`NPU_REG_OUTPUT_BYTES, M_v*N_v*4);
+      m_seq.axil_write32(`NPU_REG_DIM_IN,       {16'd1, M_v[15:0]});
+      m_seq.axil_write32(`NPU_REG_DIM_OUT,      {N_v[15:0], K_v[15:0]});
+      m_seq.axil_write32(`NPU_REG_POSTPROC,     32'd0);
+      m_seq.axil_write32(`NPU_REG_CONV_CFG,    32'h20);
+      m_seq.axil_write32(`NPU_REG_CLUSTER_MODE, 32'd0);
+      m_seq.axil_write32(`NPU_REG_CLUSTER_MASK, 32'd1);
+      m_seq.axil_write32(`NPU_REG_CTRL, 32'd1);
+      repeat(400000) begin
+        m_seq.axil_read32(`NPU_REG_CTRL, rdata);
+        if(rdata[2] || rdata[3]) break;
+        #100;
+      end
+
+      m_seq.axil_read32(`NPU_REG_PERF_CYCLE_LO, cycle_lo);
+      levels_run++;
+      if(rdata[3]) begin
+        m_seq.axil_read32(`NPU_REG_STATUS, rdata);
+        `uvm_error("TEST",$sformatf("%s ERROR code=0x%02x cycles=%0d",
+          lvl_name, rdata[7:0], cycle_lo))
+      end else begin
+        chk_errs = 0;
+        for (r = 0; r < M_v; r = r + 1) begin
+          for (c = 0; c < N_v; c = c + 1) begin
+            m_seq.axil_read32(32'h0002_0000 + r*row_stride + c*4, rdata);
+            if ($signed(rdata) != expected_val) begin
+              if (chk_errs < 8) `uvm_error("TEST",$sformatf("%s C[%0d][%0d]=%0d expected %0d",
+                lvl_name, r, c, $signed(rdata), expected_val))
+              chk_errs++;
+            end
+          end
+        end
+        m_seq.axil_read32(32'h0001_FFE0, rdata);
+        if (rdata != 32'hCAFE_BABE) `uvm_error("TEST",$sformatf("%s pre-guard corrupted: 0x%08x", lvl_name, rdata))
+        m_seq.axil_read32(32'h0002_0000 + M_v * row_stride, rdata);
+        if (rdata != 32'hFEED_F00D) `uvm_error("TEST",$sformatf("%s post-guard corrupted: 0x%08x", lvl_name, rdata))
+        if (chk_errs == 0) begin
+          `uvm_info("TEST",$sformatf("%s: signed non-uniform A K=%0d chunks=%0d cycles=%0d mem_OK PASS",
+            lvl_name, K_v, expected_chunks, cycle_lo),UVM_NONE)
+          levels_pass++;
+        end else begin
+          `uvm_info("TEST",$sformatf("%s: mem_ERR=%0d FAIL", lvl_name, chk_errs),UVM_NONE)
+        end
+      end
+    end
+
+    //=================================================================
     // Final summary
     //=================================================================
     `uvm_info("TEST",$sformatf("ROW_STREAMING_ENHANCED: %0d/%0d levels PASS", levels_pass, levels_run),UVM_NONE)
