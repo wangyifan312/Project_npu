@@ -1199,14 +1199,12 @@ module npu_top #(
     // GEMM streaming: N-major iteration (all N for each K) for strided full-B read.
     // row = idx / n_tile, out = idx % n_tile → contiguous within each K row.
     // FC / legacy: N-major layout W[n][k] at byte_idx = n * K + k
-    wire [31:0] wgt_stage_out_idx  = (wgt_stage_k_tile == 16'd0) ? 32'd0 :
-                                      gemm_row_streaming_en ?
-                                      (wgt_stage_lane_idx % {16'd0, wgt_stage_n_tile}) :
-                                      (wgt_stage_lane_idx / {16'd0, wgt_stage_k_tile});
-    wire [31:0] wgt_stage_row_idx  = (wgt_stage_k_tile == 16'd0) ? 32'd0 :
-                                      gemm_row_streaming_en ?
-                                      (wgt_stage_lane_idx / {16'd0, wgt_stage_n_tile}) :
-                                      (wgt_stage_lane_idx % {16'd0, wgt_stage_k_tile});
+    wire [31:0] wgt_stage_out_idx  = gemm_row_streaming_en ?
+        ((wgt_stage_n_tile == 16'd0) ? 32'd0 : (wgt_stage_lane_idx % {16'd0, wgt_stage_n_tile})) :
+        ((wgt_stage_k_tile == 16'd0) ? 32'd0 : (wgt_stage_lane_idx / {16'd0, wgt_stage_k_tile}));
+    wire [31:0] wgt_stage_row_idx  = gemm_row_streaming_en ?
+        ((wgt_stage_n_tile == 16'd0) ? 32'd0 : (wgt_stage_lane_idx / {16'd0, wgt_stage_n_tile})) :
+        ((wgt_stage_k_tile == 16'd0) ? 32'd0 : (wgt_stage_lane_idx % {16'd0, wgt_stage_k_tile}));
     wire [31:0] wgt_stage_buf_byte_idx_fc = wgt_stage_out_idx * {16'd0, input_c}
                                            + {16'd0, wgt_stage_k_base}
                                            + wgt_stage_row_idx;
@@ -1222,9 +1220,9 @@ module npu_top #(
     wire [BUF_ADDR_W-1:0] wgt_stage_beat_addr = wgt_stage_abs_byte_idx[BUF_ADDR_W+4:5];
     wire [4:0] wgt_stage_byte_sel = wgt_stage_abs_byte_idx[4:0];
     // Phase 5-2: background weight prefetch address (N-major for full B strided read)
-    wire [31:0] wgt_pref_out_idx = (wgt_pref_k_tile == 16'd0) ? 32'd0 :
+    wire [31:0] wgt_pref_out_idx = (wgt_pref_n_tile == 16'd0) ? 32'd0 :
                                     (wgt_pref_lane_idx % {16'd0, wgt_pref_n_tile});
-    wire [31:0] wgt_pref_row_idx = (wgt_pref_k_tile == 16'd0) ? 32'd0 :
+    wire [31:0] wgt_pref_row_idx = (wgt_pref_n_tile == 16'd0) ? 32'd0 :
                                     (wgt_pref_lane_idx / {16'd0, wgt_pref_n_tile});
     wire [31:0] wgt_pref_buf_byte_idx = ({16'd0, wgt_pref_k_base} + wgt_pref_row_idx)
                                         * {16'd0, gemm_N_val}
@@ -1929,8 +1927,8 @@ module npu_top #(
                             reg [4:0]  wp_lane_bsel;
                             wp_lane_idx  = wgt_pref_lane_idx + wp_lane;
                             // Phase 5-2: N-major for streaming GEMM full-B strided read
-                            wp_lane_out  = (wp_lane_idx % {16'd0, wgt_pref_n_tile});
-                            wp_lane_row  = (wp_lane_idx / {16'd0, wgt_pref_n_tile});
+                            wp_lane_out  = (wgt_pref_n_tile == 16'd0) ? 32'd0 : (wp_lane_idx % {16'd0, wgt_pref_n_tile});
+                            wp_lane_row  = (wgt_pref_n_tile == 16'd0) ? 32'd0 : (wp_lane_idx / {16'd0, wgt_pref_n_tile});
                             wp_lane_bsel = wgt_pref_abs_byte_idx[4:0] + wp_lane;
                             wgt_load_reg[(wp_lane_row * PE_COLS + wp_lane_out)*8 +: 8]
                                 <= wgt_rd_data[wp_lane_bsel * 8 +: 8];
@@ -2012,11 +2010,11 @@ module npu_top #(
                             ws_lane_idx  = wgt_stage_lane_idx + ws_lane;
                             // Phase 5-2: N-major for streaming GEMM full-B strided read
                             ws_lane_out  = gemm_row_streaming_en ?
-                                (ws_lane_idx % {16'd0, wgt_stage_n_tile}) :
-                                (ws_lane_idx / {16'd0, wgt_stage_k_tile});
+                                ((wgt_stage_n_tile == 16'd0) ? 32'd0 : (ws_lane_idx % {16'd0, wgt_stage_n_tile})) :
+                                ((wgt_stage_k_tile == 16'd0) ? 32'd0 : (ws_lane_idx / {16'd0, wgt_stage_k_tile}));
                             ws_lane_row  = gemm_row_streaming_en ?
-                                (ws_lane_idx / {16'd0, wgt_stage_n_tile}) :
-                                (ws_lane_idx % {16'd0, wgt_stage_k_tile});
+                                ((wgt_stage_n_tile == 16'd0) ? 32'd0 : (ws_lane_idx / {16'd0, wgt_stage_n_tile})) :
+                                ((wgt_stage_k_tile == 16'd0) ? 32'd0 : (ws_lane_idx % {16'd0, wgt_stage_k_tile}));
                             ws_lane_bsel = wgt_stage_abs_byte_idx[4:0] + ws_lane;
                             wgt_load_reg[(ws_lane_row * PE_COLS + wgt_stage_n_start + ws_lane_out)*8 +: 8]
                                 <= wgt_rd_data[ws_lane_bsel * 8 +: 8];
