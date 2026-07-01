@@ -757,6 +757,12 @@ module npu_top #(
     reg [15:0] wgt_pref_stall_count;
     reg [15:0] wgt_pref_beat_count;
     reg [15:0] wgt_pref_byte_count;
+    // Phase 4b-2a: FSM entry debug counters
+    reg [15:0] dbg_load_array_entry;
+    reg [15:0] dbg_wgt_ld_entry;
+    reg [15:0] dbg_dual_hit_count;
+    reg [15:0] dbg_accum_to_wgtld_direct;
+    reg [15:0] dbg_accum_to_load_array;
     reg [15:0] gemm_store_row_idx;
     reg [15:0] gemm_store_beat_idx;
     // Phase 3a: K-chunk streaming accumulation
@@ -1938,8 +1944,8 @@ module npu_top #(
     // ============================================================
     // Phase 4b: sequential weight staging micro-sequencer.
     // Reads B weights from wgt_buffer and unpacks into wgt_load_reg.
-    // Same address formula as legacy FSM_LOAD_ARRAY for FC/GEMM.
     // Phase 4b-1: sequential (runs in FSM_LOAD_ARRAY, not during RUN).
+    // Phase 4b-2a: DBG counter increment
     // ============================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -2129,6 +2135,12 @@ module npu_top #(
             wgt_pref_stall_count <= 16'd0;
             wgt_pref_beat_count  <= 16'd0;
             wgt_pref_byte_count  <= 16'd0;
+            // Phase 4b-2a: FSM debug counters
+            dbg_load_array_entry     <= 16'd0;
+            dbg_wgt_ld_entry         <= 16'd0;
+            dbg_dual_hit_count       <= 16'd0;
+            dbg_accum_to_wgtld_direct <= 16'd0;
+            dbg_accum_to_load_array  <= 16'd0;
             gemm_store_row_idx <= 16'd0;
             gemm_store_beat_idx <= 16'd0;
             gemm_stream_k_base <= 16'd0;
@@ -2810,6 +2822,7 @@ module npu_top #(
                 // Legacy FC/GEMM/Conv uses original inline unpack.
                 // ============================================================
                 FSM_LOAD_ARRAY: begin
+                    dbg_load_array_entry <= dbg_load_array_entry + 16'd1;
                     if (gemm_row_streaming_en) begin
                         // Phase 4b-1: sequential weight staging
                         if (!wgt_stage_active && !wgt_stage_done) begin
@@ -2926,6 +2939,7 @@ module npu_top #(
                 end
 
                 FSM_WGT_LD: begin
+                    dbg_wgt_ld_entry <= dbg_wgt_ld_entry + 16'd1;
                     // weight_ld pulsed → weights now in array PEs
                     comp_feed_cnt <= 7'd0;
                     comp_drain_cnt <= 16'd0;
@@ -3568,6 +3582,8 @@ module npu_top #(
                         input_bank1_valid <= 1'b0;
                         wgt_stage_valid   <= 1'b0;
                         wgt_pref_valid    <= 1'b0;
+                        wgt_pref_done     <= 1'b0;
+                        wgt_pref_active   <= 1'b0;
                         // First chunk: load into bank0, compute from bank0
                         input_load_bank    <= 1'b0;
                         input_compute_bank <= 1'b0;
@@ -3638,6 +3654,7 @@ module npu_top #(
                             // Weight was prefetched during previous RUN
                             wgt_pref_hit_count <= wgt_pref_hit_count + 16'd1;
                             wgt_pref_valid <= 1'b0;
+                            wgt_pref_done  <= 1'b0;
                             $display("[WGT_PREF] HIT at LOAD_A done: k_base=%0d → skip LOAD_ARRAY",
                                 gemm_stream_k_base);
                             fsm_state <= FSM_WGT_LD;
@@ -3860,6 +3877,9 @@ module npu_top #(
                                 // Dual HIT: skip both LOAD_A and LOAD_ARRAY
                                 wgt_pref_hit_count <= wgt_pref_hit_count + 16'd1;
                                 wgt_pref_valid <= 1'b0;
+                                wgt_pref_done  <= 1'b0;
+                                dbg_dual_hit_count <= dbg_dual_hit_count + 16'd1;
+                                dbg_accum_to_wgtld_direct <= dbg_accum_to_wgtld_direct + 16'd1;
                                 $display("[DUAL_HIT] bank0 + wgt_pref k_base=%0d (skip LOAD_A+LOAD_ARRAY → WGT_LD)",
                                     next_kb);
                                 fsm_state <= FSM_WGT_LD;
@@ -3893,12 +3913,16 @@ module npu_top #(
                                 // Dual HIT
                                 wgt_pref_hit_count <= wgt_pref_hit_count + 16'd1;
                                 wgt_pref_valid <= 1'b0;
+                                wgt_pref_done  <= 1'b0;
+                                dbg_dual_hit_count <= dbg_dual_hit_count + 16'd1;
+                                dbg_accum_to_wgtld_direct <= dbg_accum_to_wgtld_direct + 16'd1;
                                 $display("[DUAL_HIT] bank1 + wgt_pref k_base=%0d (skip LOAD_A+LOAD_ARRAY → WGT_LD)",
                                     next_kb);
                                 fsm_state <= FSM_WGT_LD;
                             end else begin
                                 wgt_load_phase <= 32'd0;
                                 wgt_load_wait <= 1'b1;
+                                dbg_accum_to_load_array <= dbg_accum_to_load_array + 16'd1;
                                 $display("[PREFETCH] HIT bank1 k_base=%0d k_chunk=%0d (skip LOAD_A)",
                                     next_kb, gemm_stream_k_chunk_idx + 16'd1);
                                 fsm_state <= FSM_LOAD_ARRAY;
@@ -3927,6 +3951,10 @@ module npu_top #(
                         // All K-chunks done: proceed to STORE
                         $display("[KCHUNK] ACCUM: all %0d chunks done, starting STORE",
                             gemm_stream_k_chunk_idx + 16'd1);
+                        $display("[FSM_DBG] LOAD_ARRAY_entries=%0d WGT_LD_entries=%0d DUAL_HIT=%0d ACCUM→WGT_LD=%0d ACCUM→LOAD_ARRAY=%0d",
+                            dbg_load_array_entry, dbg_wgt_ld_entry,
+                            dbg_dual_hit_count, dbg_accum_to_wgtld_direct,
+                            dbg_accum_to_load_array);
                         fsm_state <= FSM_GEMM_STREAM_DONE;
                     end
                 end
