@@ -161,6 +161,15 @@ module npu_top #(
     localparam FSM_GEMM_STREAM_RUN    = 6'd36;
     localparam FSM_GEMM_STREAM_DONE   = 6'd37;
     localparam FSM_GEMM_STREAM_STORE   = 6'd38;
+    localparam FSM_GEMM_STREAM_ACCUM   = 6'd40;  // Phase 3a: K-chunk loop check
+
+    // Phase 3c: input-tile-loader micro-sequencer within FSM_GEMM_STREAM_LOAD_A
+    // Currently GEMM-scoped (gemm_a_load_*); intended to become common
+    // input_tile_loader in Phase 4.
+    localparam A_LOAD_IDLE    = 2'd0;
+    localparam A_LOAD_REQ     = 2'd1;
+    localparam A_LOAD_WAIT    = 2'd2;
+    localparam A_LOAD_CAPTURE = 2'd3;
 
     // COMPUTE sub-states
     localparam CP_WAIT_WIN = 3'd0;
@@ -660,7 +669,9 @@ module npu_top #(
     wire is_gap_mode     = (task_type == 3'd5);
     wire is_vec_relu_mode = (task_type == 3'd6);
     wire is_gemm_mode    = (task_type == 3'd7);
+    wire gemm_row_streaming_en = is_gemm_mode && conv_cfg[5];
     wire gemm_weight_hit = is_gemm_mode && gemm_weight_valid &&
+        !gemm_row_streaming_en &&  // Phase 3b: streaming GEMM bypasses legacy cache
         (gemm_weight_k_base_cached == 16'd0) &&
         (gemm_weight_n_base_cached == 16'd0) &&
         (gemm_weight_k_size_cached == ((input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c)) &&
@@ -668,8 +679,6 @@ module npu_top #(
         (gemm_weight_addr_cached == weight_addr);
     wire [15:0] array_active_rows;
     wire [15:0] array_active_cols;
-    // Phase 2b-1: GEMM row-streaming enable (conv_cfg[5])
-    wire gemm_row_streaming_en = is_gemm_mode && conv_cfg[5];
 
     // Phase 2b-1: local tile buffers for row-streaming
     reg [7:0]  a_tile [0:7][0:63];
@@ -681,7 +690,17 @@ module npu_top #(
     reg        stream_a_tile_loaded;
     reg [15:0] gemm_store_row_idx;
     reg [15:0] gemm_store_beat_idx;
+    // Phase 3a: K-chunk streaming accumulation
+    reg [15:0] gemm_stream_k_base;        // current K-chunk start offset (0, 64, 128, ...)
+    reg [15:0] gemm_stream_k_chunk_idx;   // 0-based chunk index
+    reg        gemm_stream_first_chunk;    // 1 during first K-chunk
+    reg        gemm_stream_last_chunk;     // 1 during last K-chunk
     localparam GEMM_STREAM_FIXED_DELAY = 1;
+    // Phase 3c: input-tile-loader micro-sequencer (GEMM-scoped, Phase 4→common)
+    reg        gemm_a_load_done;     // pulsed when micro-sequencer completes
+    reg [1:0]  gemm_a_load_phase;
+    reg [2:0]  gemm_a_load_row;     // 0..gemm_M_val-1
+    reg [6:0]  gemm_a_load_col;     // 0..fc_chunk_inputs-1
 
     wire [15:0] array_drain_offset;
     integer cluster_bus_idx;
@@ -1072,6 +1091,16 @@ module npu_top #(
         (fc_act_byte_idx + 32'd1) : fc_act_byte_idx;
     wire [BUF_ADDR_W-1:0] fc_act_beat_addr = fc_act_rd_byte_idx[BUF_ADDR_W+4:5];
     wire [HB_BEAT_BYTE_BITS-1:0] fc_act_byte_sel = fc_act_byte_idx[4:0];
+    // Phase 3c: input-tile-loader byte-level address computation
+    // byte_idx = row * input_c + gemm_stream_k_base + col
+    // beat_addr = byte_idx >> 5  (within act_buffer address space)
+    // byte_sel  = byte_idx & 0x1F  (byte lane within 256-bit beat)
+    wire [31:0] gemm_a_load_byte_idx =
+        {29'd0, gemm_a_load_row} * {16'd0, input_c} +
+        {16'd0, gemm_stream_k_base} +
+        {25'd0, gemm_a_load_col};
+    wire [BUF_ADDR_W-1:0] gemm_a_load_beat_addr = gemm_a_load_byte_idx[BUF_ADDR_W+4:5];
+    wire [HB_BEAT_BYTE_BITS-1:0] gemm_a_load_byte_sel = gemm_a_load_byte_idx[4:0];
     wire [7:0] fc_weight_byte = hb_beat_byte(wgt_rd_data, fc_weight_byte_sel);
     wire [31:0] conv_weight_dma_byte_idx = wgt_load_phase + {27'd0, wgt_dma_byte_offset};
     wire [31:0] add_byte_idx = add_src_idx;
@@ -1175,7 +1204,8 @@ module npu_top #(
     assign cf_act_data  = hb_beat_byte(act_rd_data, act_byte_sel);
     assign act_rd_bank  = act_comp_bank;
 
-    assign act_rd_addr  = is_pool_mode    ? act_pool_beat_addr :
+    assign act_rd_addr  = (fsm_state == FSM_GEMM_STREAM_LOAD_A) ? gemm_a_load_beat_addr :
+                          is_pool_mode    ? act_pool_beat_addr :
                           fc_or_gemm      ? fc_act_beat_addr :
                           is_add_mode     ? add_src_beat_addr :
                           is_gap_mode     ? gap_src_beat_addr :
@@ -1666,8 +1696,17 @@ module npu_top #(
             stream_capture_count <= 16'd0;
             stream_active <= 1'b0;
             stream_a_tile_loaded <= 1'b0;
+            // Phase 3c: input-tile-loader micro-sequencer
+            gemm_a_load_done  <= 1'b0;
+            gemm_a_load_phase <= A_LOAD_IDLE;
+            gemm_a_load_row   <= 3'd0;
+            gemm_a_load_col   <= 7'd0;
             gemm_store_row_idx <= 16'd0;
             gemm_store_beat_idx <= 16'd0;
+            gemm_stream_k_base <= 16'd0;
+            gemm_stream_k_chunk_idx <= 16'd0;
+            gemm_stream_first_chunk <= 1'b0;
+            gemm_stream_last_chunk <= 1'b0;
             fc_store_addr <= 32'd0; fc_store_bytes <= 32'd0;
             rq_acc_wr_en_r <= 1'b0; rq_acc_wr_addr_r <= {BUF_ADDR_W{1'b0}}; rq_acc_wr_data_r <= 32'd0;
             rq_src_idx <= 32'd0; rq_src_wait <= 1'b0; rq_total_words <= 32'd0; rq_pack_idx <= 2'd0; rq_pack_word <= 32'd0;
@@ -2141,6 +2180,13 @@ module npu_top #(
                         fc_tile_outputs_next;
                     fc_in_base <= 16'd0;
                     fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
+                    // Phase 3a: init streaming K-chunk state (this state entered once per task)
+                    if (gemm_row_streaming_en) begin
+                        gemm_stream_k_base       <= 16'd0;
+                        gemm_stream_k_chunk_idx  <= 16'd0;
+                        gemm_stream_first_chunk  <= 1'b1;
+                        gemm_stream_last_chunk   <= (input_c <= PE_ROWS_16);
+                    end
                     dma_rd_ptr <= 0;
                     // Phase 1a+: GEMM weight retention — skip reload
                     if (gemm_weight_hit) begin
@@ -3045,29 +3091,81 @@ module npu_top #(
                     stream_capture_count <= 16'd0;
                     stream_active <= 1'b0;
                     stream_a_tile_loaded <= 1'b0;
+                    gemm_a_load_done <= 1'b0;
                     comp_feed_cnt <= 7'd0;
-                    begin
+                    // Phase 3a: clear c_tile only for first K-chunk
+                    if (gemm_stream_first_chunk) begin
                         integer ci, cj;
                         for (ci = 0; ci < 8; ci = ci + 1)
                             for (cj = 0; cj < 64; cj = cj + 1) begin
                                 c_tile[ci][cj] <= 32'sd0;
                                 c_tile_valid[ci][cj] <= 1'b0;
                             end
+                        // First chunk: load a_tile from act_buffer
+                        fsm_state <= FSM_GEMM_STREAM_LOAD_A;
+                    end else begin
+                        // Subsequent chunks: a_tile already loaded in ACCUM→LOAD_A path.
+                        // Skip LOAD_A and go directly to RUN.
+                        fsm_state <= FSM_GEMM_STREAM_RUN;
                     end
-                    fsm_state <= FSM_GEMM_STREAM_LOAD_A;
+                    $display("[KCHUNK] PREP k_base=%0d k_chunk_idx=%0d first=%0d last=%0d",
+                        gemm_stream_k_base, gemm_stream_k_chunk_idx,
+                        gemm_stream_first_chunk, gemm_stream_last_chunk);
                 end
 
+                // ============================================================
+                // Phase 3c: input-tile-loader micro-sequencer
+                // Reads a_tile[row][kk] = A[row][gemm_stream_k_base+kk]
+                // from act_buffer via raw byte-level beat access.
+                // Byte index: row * input_c + gemm_stream_k_base + kk
+                // Beat addr: byte_idx >> 5   Byte lane: byte_idx & 0x1F
+                // ============================================================
                 FSM_GEMM_STREAM_LOAD_A: begin
-                    if (!stream_a_tile_loaded) begin
-                        stream_a_tile_loaded <= 1'b1;
-                        stream_capture_count <= 16'd0;
-                    end else if (stream_capture_count < (gemm_M_val * {16'd0, input_c})) begin
-                        a_tile[stream_capture_count / {16'd0, input_c}][stream_capture_count % {16'd0, input_c}] <= cf_act_data;
-                        stream_capture_count <= stream_capture_count + 16'd1;
+                    if (gemm_a_load_done) begin
+                        // Micro-sequencer finished loading a_tile.
+                        // Route: chunk0 → RUN (weights already loaded);
+                        //        chunk1+ → LOAD_ARRAY (reload B weights).
+                        if (gemm_stream_first_chunk)
+                            fsm_state <= FSM_GEMM_STREAM_RUN;
+                        else
+                            fsm_state <= FSM_LOAD_ARRAY;
                     end else begin
-                        stream_active <= 1'b1;
-                        stream_cycle <= 16'd0;
-                        fsm_state <= FSM_GEMM_STREAM_RUN;
+                        // Micro-sequencer: 4-phase byte-by-byte load
+                        case (gemm_a_load_phase)
+                            A_LOAD_IDLE: begin
+                                gemm_a_load_row   <= 3'd0;
+                                gemm_a_load_col   <= 7'd0;
+                                gemm_a_load_phase <= A_LOAD_REQ;
+                            end
+                            A_LOAD_REQ: begin
+                                // act_rd_addr already driven by combinational mux;
+                                // wait one cycle for synchronous buffer read latency.
+                                gemm_a_load_phase <= A_LOAD_WAIT;
+                            end
+                            A_LOAD_WAIT: begin
+                                // Data appears next cycle.
+                                gemm_a_load_phase <= A_LOAD_CAPTURE;
+                            end
+                            A_LOAD_CAPTURE: begin
+                                // Capture byte from act_buffer beat
+                                a_tile[gemm_a_load_row][gemm_a_load_col] <=
+                                    act_rd_data[gemm_a_load_byte_sel * 8 +: 8];
+                                // Advance to next column / row
+                                if (gemm_a_load_col + 7'd1 < fc_chunk_inputs) begin
+                                    gemm_a_load_col   <= gemm_a_load_col + 7'd1;
+                                    gemm_a_load_phase <= A_LOAD_REQ;
+                                end else if (gemm_a_load_row + 3'd1 < gemm_M_val) begin
+                                    gemm_a_load_row   <= gemm_a_load_row + 3'd1;
+                                    gemm_a_load_col   <= 7'd0;
+                                    gemm_a_load_phase <= A_LOAD_REQ;
+                                end else begin
+                                    // All done: signal completion, return to IDLE
+                                    gemm_a_load_done  <= 1'b1;
+                                    gemm_a_load_phase <= A_LOAD_IDLE;
+                                end
+                            end
+                            default: gemm_a_load_phase <= A_LOAD_IDLE;
+                        endcase
                     end
                 end
 
@@ -3080,9 +3178,16 @@ module npu_top #(
                                 reg signed [31:0] str_m;
                                 str_m = $signed({16'd0, stream_cycle}) - $signed({16'd0, active_k}) - $signed({16'd0, str_n}) - $signed({16'd0, stream_pipe_offset});
                                 if (!str_m[31] && str_m < gemm_M_val && str_n < gemm_N_val) begin
-                                    if (!c_tile_valid[str_m][str_n]) begin
-                                        c_tile[str_m][str_n] <= array_sum_out[str_n*32 +: 32];
-                                        c_tile_valid[str_m][str_n] <= 1'b1;
+                                    if (gemm_stream_first_chunk) begin
+                                        // First K-chunk: write-once (v1 behavior)
+                                        if (!c_tile_valid[str_m][str_n]) begin
+                                            c_tile[str_m][str_n] <= array_sum_out[str_n*32 +: 32];
+                                            c_tile_valid[str_m][str_n] <= 1'b1;
+                                        end
+                                    end else begin
+                                        // Subsequent K-chunk: accumulate
+                                        c_tile[str_m][str_n] <= $signed(c_tile[str_m][str_n])
+                                                              + $signed(array_sum_out[str_n*32 +: 32]);
                                     end
                                 end
                             end
@@ -3090,6 +3195,44 @@ module npu_top #(
                     end
                     if (stream_cycle >= (gemm_M_val + active_k + array_active_cols + stream_pipe_offset + 16'd10)) begin
                         stream_active <= 1'b0;
+                        fsm_state <= FSM_GEMM_STREAM_ACCUM;  // Phase 3a: check K-chunk loop
+                    end
+                end
+
+                // Phase 3a/3c: K-chunk accumulation loop check
+                // Phase 3c routing: ACCUM → LOAD_A → LOAD_ARRAY → WGT_LD → PREP → RUN → ACCUM
+                FSM_GEMM_STREAM_ACCUM: begin
+                    // Check if more K-chunks remain
+                    if (fc_in_base + fc_chunk_inputs < input_c) begin
+                        // More K-chunks: advance base, prepare next chunk
+                        gemm_stream_k_base       <= fc_in_base + fc_chunk_inputs;
+                        gemm_stream_k_chunk_idx  <= gemm_stream_k_chunk_idx + 16'd1;
+                        gemm_stream_first_chunk  <= 1'b0;
+                        gemm_stream_last_chunk   <= ((fc_in_base + fc_chunk_inputs + fc_chunk_inputs) >= input_c);
+                        // Invalidate weight cache for new chunk (k_base changed)
+                        if (is_gemm_mode)
+                            gemm_weight_valid <= 1'b0;
+                        fc_in_base <= fc_in_base + fc_chunk_inputs;
+                        fc_chunk_inputs <= ((input_c - (fc_in_base + fc_chunk_inputs)) > PE_ROWS_16) ?
+                                           PE_ROWS_16 :
+                                           (input_c - (fc_in_base + fc_chunk_inputs));
+                        // Phase 3c: clear a_tile done flag — LOAD_A will reload for new k_base
+                        gemm_a_load_done <= 1'b0;
+                        wgt_load_phase <= 32'd0;
+                        wgt_load_wait <= 1'b1;
+                        fc_shadow_active <= 1'b0;
+                        $display("[KCHUNK] ACCUM: advance to k_base=%0d k_chunk_idx=%0d k_tile=%0d",
+                            fc_in_base + fc_chunk_inputs,
+                            gemm_stream_k_chunk_idx + 16'd1,
+                            ((input_c - (fc_in_base + fc_chunk_inputs)) > PE_ROWS_16) ?
+                                PE_ROWS_16 : (input_c - (fc_in_base + fc_chunk_inputs)));
+                        // Phase 3c: LOAD_A first (reload A_tile from act_buffer),
+                        // then LOAD_ARRAY (reload B weights from memory).
+                        fsm_state <= FSM_GEMM_STREAM_LOAD_A;
+                    end else begin
+                        // All K-chunks done: proceed to STORE
+                        $display("[KCHUNK] ACCUM: all %0d chunks done, starting STORE",
+                            gemm_stream_k_chunk_idx + 16'd1);
                         fsm_state <= FSM_GEMM_STREAM_DONE;
                     end
                 end
