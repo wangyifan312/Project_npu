@@ -3838,7 +3838,6 @@ module npu_top #(
                                 ~input_compute_bank, nk_base, nk_tile, input_compute_bank);
                         end
                         // Phase 4b-2: also trigger background weight prefetch
-                        // Phase 4b bg weight prefetch: deferred (foreground path proven correct)
                         if (1'b0 && !wgt_pref_active && !wgt_pref_done &&
                             !(wgt_pref_valid &&
                               (wgt_pref_k_base == nk_base) &&
@@ -3936,8 +3935,8 @@ module npu_top #(
                                 wgt_pref_done  <= 1'b0;
                                 dbg_dual_hit_count <= dbg_dual_hit_count + 16'd1;
                                 dbg_accum_to_wgtld_direct <= dbg_accum_to_wgtld_direct + 16'd1;
-                                $display("[DUAL_HIT] bank0 + wgt_pref k_base=%0d (skip LOAD_A+LOAD_ARRAY → WGT_LD)",
-                                    next_kb);
+                                $display("[DUAL_HIT] bank0 + wgt_pref k_base=%0d n_base=%0d wgt[0]=%0d (skip LOAD_A+LOAD_ARRAY → WGT_LD)",
+                                    next_kb, gemm_tile_n_base, wgt_load_reg[7:0]);
                                 fsm_state <= FSM_WGT_LD;
                             end else begin
                                 // Input hit only: skip LOAD_A, go to LOAD_ARRAY
@@ -3972,8 +3971,8 @@ module npu_top #(
                                 wgt_pref_done  <= 1'b0;
                                 dbg_dual_hit_count <= dbg_dual_hit_count + 16'd1;
                                 dbg_accum_to_wgtld_direct <= dbg_accum_to_wgtld_direct + 16'd1;
-                                $display("[DUAL_HIT] bank1 + wgt_pref k_base=%0d (skip LOAD_A+LOAD_ARRAY → WGT_LD)",
-                                    next_kb);
+                                $display("[DUAL_HIT] bank1 + wgt_pref k_base=%0d n_base=%0d wgt[0]=%0d (skip LOAD_A+LOAD_ARRAY → WGT_LD)",
+                                    next_kb, gemm_tile_n_base, wgt_load_reg[7:0]);
                                 fsm_state <= FSM_WGT_LD;
                             end else begin
                                 wgt_load_phase <= 32'd0;
