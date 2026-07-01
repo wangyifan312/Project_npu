@@ -690,6 +690,21 @@ module npu_top #(
     reg        c_tile_valid_bank1 [0:7][0:63];
     reg        compute_c_bank;   // collector writes this bank
     reg        store_c_bank;     // STORE reads this bank
+    // Phase 5-3: output tile descriptor
+    reg [15:0] out_tile_m_base;
+    reg [15:0] out_tile_n_base;
+    reg [15:0] out_tile_M;
+    reg [15:0] out_tile_N;
+    reg [31:0] out_tile_base_addr;
+    reg [31:0] out_tile_row_stride;
+    // Phase 5-3: store descriptor locked at STORE start
+    reg [15:0] store_desc_m_base;
+    reg [15:0] store_desc_n_base;
+    reg [15:0] store_desc_M;
+    reg [15:0] store_desc_N;
+    reg [31:0] store_desc_base_addr;
+    reg [31:0] store_desc_row_stride;
+    reg        store_desc_bank;
     reg [15:0] stream_cycle;
     reg [15:0] stream_capture_count;
     reg        stream_active;
@@ -2180,6 +2195,9 @@ module npu_top #(
             gemm_tile_N      <= 16'd0;
             compute_c_bank   <= 1'b0;
             store_c_bank     <= 1'b0;
+            store_desc_bank   <= 1'b0;
+            store_desc_M      <= 16'd0;
+            store_desc_N      <= 16'd0;
             fc_store_addr <= 32'd0; fc_store_bytes <= 32'd0;
             rq_acc_wr_en_r <= 1'b0; rq_acc_wr_addr_r <= {BUF_ADDR_W{1'b0}}; rq_acc_wr_data_r <= 32'd0;
             rq_src_idx <= 32'd0; rq_src_wait <= 1'b0; rq_total_words <= 32'd0; rq_pack_idx <= 2'd0; rq_pack_word <= 32'd0;
@@ -4034,7 +4052,14 @@ module npu_top #(
                 end
 
                 FSM_GEMM_STREAM_DONE: begin
-                    // Start direct c_tile → DMA STORE
+                    // Phase 5-3: Lock store descriptor from live tile descriptor
+                    store_desc_m_base     <= gemm_tile_m_base;
+                    store_desc_n_base     <= gemm_tile_n_base;
+                    store_desc_M          <= gemm_tile_M;
+                    store_desc_N          <= gemm_tile_N;
+                    store_desc_base_addr  <= blk_out_addr;
+                    store_desc_row_stride <= (gemm_N_val * 32'd4 + 32'd31) & 32'hFFFF_FFE0;
+                    store_desc_bank       <= compute_c_bank;
                     store_c_bank <= compute_c_bank;
                     gemm_store_row_idx <= 16'd0;
                     gemm_store_beat_idx <= 16'd0;
@@ -4051,33 +4076,33 @@ module npu_top #(
                     reg [15:0]  this_beat_cols;
                     reg [31:0]  row_stride_bytes;
                     integer lane;
-                    row_stride_bytes = (gemm_N_val * 32'd4 + 32'd31) & 32'hFFFF_FFE0;
-                    base_col = gemm_store_beat_idx << 3;  // * 8
-                    remaining_cols = gemm_tile_N - base_col;
+                    // Phase 5-3: use locked store descriptor for STORE pack
+                    row_stride_bytes = store_desc_row_stride;
+                    base_col = gemm_store_beat_idx << 3;
+                    remaining_cols = store_desc_N - base_col;
                     this_beat_cols = (remaining_cols > 16'd8) ? 16'd8 : remaining_cols;
                     beat = 256'd0;
                     wstrb_val = 32'd0;
                     for (lane = 0; lane < this_beat_cols; lane = lane + 1) begin
-                        beat[lane*32 +: 32] = store_c_bank ?
+                        beat[lane*32 +: 32] = store_desc_bank ?
                             c_tile_bank1[gemm_store_row_idx][base_col + lane] :
                             c_tile_bank0[gemm_store_row_idx][base_col + lane];
                         wstrb_val[lane*4 +: 4] = 4'hF;
                     end
                     dma_wr_data_r <= beat;
                     dma_wr_valid_r <= 1'b1;
-                    // Setup DMA writer (one beat per transaction)
                     if (!dma_wr_started) begin
                         dma_wr_start <= 1'b1;
                         dma_wr_started <= 1'b1;
-                        dma_wr_addr <= blk_out_addr
-                            + ((gemm_tile_m_base + gemm_store_row_idx) * row_stride_bytes)
-                            + {12'd0, gemm_tile_n_base, 2'b0}
+                        dma_wr_addr <= store_desc_base_addr
+                            + ((store_desc_m_base + gemm_store_row_idx) * store_desc_row_stride)
+                            + {12'd0, store_desc_n_base, 2'b0}
                             + ({16'd0, gemm_store_beat_idx} << 5);
-                        dma_wr_bytes <= {16'd0, this_beat_cols} << 2;  // this_beat_cols * 4
+                        dma_wr_bytes <= {16'd0, this_beat_cols} << 2;
                     end
                     $display("[DIR_ST] row=%0d beat=%0d base_col=%0d cols=%0d addr=0x%08x bytes=%0d wstrb=0x%08x",
                         gemm_store_row_idx, gemm_store_beat_idx, base_col, this_beat_cols,
-                        blk_out_addr + ((gemm_tile_m_base + gemm_store_row_idx) * row_stride_bytes)
+                        store_desc_base_addr + ((store_desc_m_base + gemm_store_row_idx) * store_desc_row_stride)
                             + (gemm_store_beat_idx * 32),
                         this_beat_cols * 4, wstrb_val);
                     // Wait for DMA write to complete, then next beat or next row
@@ -4090,12 +4115,11 @@ module npu_top #(
                     if (dma_wr_done) begin
                         $display("[DIR_ST] row=%0d beat=%0d dma_done", gemm_store_row_idx, gemm_store_beat_idx);
                         dma_wr_started <= 1'b0;
-                        // beats_per_row = ceil(tile_N / 8)
-                        if (gemm_store_beat_idx + 16'd1 < ((gemm_tile_N + 16'd7) >> 3)) begin
-                            // More beats in current row
+                        // beats_per_row = ceil(store_desc_N / 8)
+                        if (gemm_store_beat_idx + 16'd1 < ((store_desc_N + 16'd7) >> 3)) begin
                             gemm_store_beat_idx <= gemm_store_beat_idx + 16'd1;
                             fsm_state <= FSM_GEMM_STREAM_STORE;
-                        end else if (gemm_store_row_idx + 16'd1 < gemm_tile_M) begin
+                        end else if (gemm_store_row_idx + 16'd1 < store_desc_M) begin
                             // Next row
                             gemm_store_row_idx <= gemm_store_row_idx + 16'd1;
                             gemm_store_beat_idx <= 16'd0;
