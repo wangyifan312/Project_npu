@@ -2694,6 +2694,9 @@ module npu_top #(
                     wgt_dma_bytes <= gemm_row_streaming_en ?
                         (output_c * input_c) + {27'd0, fc_wgt_dma_base[4:0]} :
                         (fc_tile_outputs * input_c) + {27'd0, fc_wgt_dma_base[4:0]};
+                    if (gemm_row_streaming_en)
+                        $display("[WGT_DMA] full B: K=%0d N=%0d bytes=%0d", input_c, output_c,
+                            output_c * input_c);
                     wgt_load_start <= 1'b1;
                     wgt_load_bank <= block_bank;
                     fsm_state <= FSM_FC_LOAD_WAIT;
@@ -2869,8 +2872,11 @@ module npu_top #(
                                     wgt_stage_valid_k_base, fc_in_base,
                                     wgt_stage_valid_k_tile, fc_chunk_inputs);
                             end
-                            $display("[WGT_STG] DONE beats=%0d bytes=%0d",
-                                wgt_stage_beat_count, wgt_stage_byte_count);
+                            $display("[WGT_STG] DONE beats=%0d bytes=%0d wgt[0..3]=%0d,%0d,%0d,%0d n_base=%0d",
+                                wgt_stage_beat_count, wgt_stage_byte_count,
+                                wgt_load_reg[7:0], wgt_load_reg[15:8],
+                                wgt_load_reg[23:16], wgt_load_reg[31:24],
+                                gemm_tile_n_base);
                             wgt_stage_done <= 1'b0;
                             wgt_load_done_r <= 1'b1;
                             fsm_state <= FSM_WGT_LD;
@@ -3668,10 +3674,10 @@ module npu_top #(
                         //        first K-chunk of subsequent M tile → LOAD_ARRAY
                         //        (clear first_chunk so PREP doesn't re-clear c_tile);
                         //        K-chunk1+ → LOAD_ARRAY or WGT_LD if prefetched.
-                        if (gemm_stream_first_chunk && (gemm_tile_m_base == 16'd0))
+                        if (gemm_stream_first_chunk && (gemm_tile_m_base == 16'd0) && (gemm_tile_n_base == 16'd0))
                             fsm_state <= FSM_GEMM_STREAM_RUN;
                         else if (gemm_stream_first_chunk) begin
-                            // Subsequent M tile: need weight reload, clear first_chunk
+                            // New M or N tile: need weight reload, clear first_chunk
                             gemm_stream_first_chunk <= 1'b0;
                             wgt_load_phase <= 32'd0;
                             wgt_load_wait <= 1'b1;
