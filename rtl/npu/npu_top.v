@@ -1165,14 +1165,21 @@ module npu_top #(
     wire [BUF_ADDR_W-1:0] input_prefetch_beat_addr = input_prefetch_byte_idx[BUF_ADDR_W+4:5];
     wire [4:0] input_prefetch_lane_start = input_prefetch_byte_idx[4:0];
     // Phase 4b: weight staging byte-level address computation
-    // Same formula as legacy FSM_LOAD_ARRAY fc_weight_dma_byte_idx
+    // GEMM streaming: K-major layout B[k][n] at byte_idx = k * N_tile + n
+    // FC / non-streaming GEMM: N-major layout W[n][k] at byte_idx = n * K + k
     wire [31:0] wgt_stage_out_idx  = (wgt_stage_k_tile == 16'd0) ? 32'd0 :
                                       (wgt_stage_lane_idx / {16'd0, wgt_stage_k_tile});
     wire [31:0] wgt_stage_row_idx  = (wgt_stage_k_tile == 16'd0) ? 32'd0 :
                                       (wgt_stage_lane_idx % {16'd0, wgt_stage_k_tile});
-    wire [31:0] wgt_stage_buf_byte_idx = wgt_stage_out_idx * {16'd0, input_c}
-                                        + {16'd0, wgt_stage_k_base}
-                                        + wgt_stage_row_idx;
+    wire [31:0] wgt_stage_buf_byte_idx_fc = wgt_stage_out_idx * {16'd0, input_c}
+                                           + {16'd0, wgt_stage_k_base}
+                                           + wgt_stage_row_idx;
+    wire [31:0] wgt_stage_buf_byte_idx_gemm = ({16'd0, wgt_stage_k_base} + wgt_stage_row_idx)
+                                             * {16'd0, wgt_stage_n_tile}
+                                             + wgt_stage_out_idx;
+    wire [31:0] wgt_stage_buf_byte_idx = gemm_row_streaming_en ?
+                                          wgt_stage_buf_byte_idx_gemm :
+                                          wgt_stage_buf_byte_idx_fc;
     wire [31:0] wgt_stage_abs_byte_idx = wgt_stage_buf_byte_idx
                                         + {27'd0, wgt_dma_byte_offset};
     wire [BUF_ADDR_W-1:0] wgt_stage_beat_addr = wgt_stage_abs_byte_idx[BUF_ADDR_W+4:5];

@@ -248,5 +248,35 @@ Full regression: 7/7 UVM tests
 
 1. **Phase 4b-0** (this document): audit complete → 方案 A recommended
 2. **Phase 4b-1**: weight staging sequential (verify correctness)
-3. **Phase 4b-2**: RUN || LOAD_B(next) overlap
+3. **Phase 4b-1.5**: fix K-major B weight addressing for streaming GEMM
+4. **Phase 4b-2**: RUN || LOAD_B(next) overlap
+5. **Phase 4b-3**: ACCUM hit skip LOAD_ARRAY
+
+## 7. GEMM B Weight Layout (Phase 4b-1.5)
+
+### Pre-existing bug
+The legacy FSM_LOAD_ARRAY uses an FC-style N-major weight address formula:
+```
+buf_byte_idx = n * input_c + k
+```
+This is correct for FC (W[n][k]) but WRONG for GEMM (B[k][n]).
+
+Standard GEMM B layout is K-major:
+```
+B[k][n] at byte_offset = k * N + n
+```
+
+In wgt_buffer (DMA loads K × N_tile bytes):
+```
+wgt_buffer[k * N_tile + n] = B[k][n_start + n]
+```
+
+### Fix (streaming GEMM only)
+```
+buf_byte_idx_gemm = (k_base + local_k) * n_tile + local_n
+buf_byte_idx_fc   = out_idx * K + k_base + row_idx
+buf_byte_idx = gemm_row_streaming_en ? buf_byte_idx_gemm : buf_byte_idx_fc
+```
+
+### Verified by RS17-RS19 (non-uniform B across K chunks)
 4. **Phase 4b-3**: ACCUM hit skip LOAD_ARRAY
