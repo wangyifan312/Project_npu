@@ -713,6 +713,7 @@ module npu_top #(
     localparam GST_ADVANCE    = 3'd4;
     reg        gemm_store_eng_active;
     reg [2:0]  gemm_store_eng_phase;
+    reg        gemm_store_pending;   // Phase 4c-3: tile STORE pending launch
     reg [15:0] stream_cycle;
     reg [15:0] stream_capture_count;
     reg        stream_active;
@@ -1750,10 +1751,10 @@ module npu_top #(
                                         vec_relu_read_done &&
                                         vec_relu_proc_done);
 
-    // Phase 4c-2: gemm_store_eng_active driven by main FSM in GEMM_STREAM_STORE
+    // Phase 4c-2/4c-3: gemm_store_eng_active driven by main FSM; GST runs as background tick.
+    // Phase 4c-3: removed fsm_state guard — GST can run during RUN/PREP/LOAD_A etc.
     wire gemm_store_eng_producer_done;
-    assign gemm_store_eng_producer_done = (fsm_state == FSM_GEMM_STREAM_STORE) &&
-                                           gemm_store_eng_active &&
+    assign gemm_store_eng_producer_done = gemm_store_eng_active &&
                                            (gemm_store_eng_phase == GST_START);
 
     // Final producer_done: legacy paths OR GEMM streaming store engine
@@ -2219,6 +2220,7 @@ module npu_top #(
             store_desc_N      <= 16'd0;
             gemm_store_eng_active <= 1'b0;
             gemm_store_eng_phase  <= GST_PUSH_BEAT;
+            gemm_store_pending    <= 1'b0;
             fc_store_addr <= 32'd0; fc_store_bytes <= 32'd0;
             rq_acc_wr_en_r <= 1'b0; rq_acc_wr_addr_r <= {BUF_ADDR_W{1'b0}}; rq_acc_wr_data_r <= 32'd0;
             rq_src_idx <= 32'd0; rq_src_wait <= 1'b0; rq_total_words <= 32'd0; rq_pack_idx <= 2'd0; rq_pack_word <= 32'd0;
@@ -4073,161 +4075,168 @@ module npu_top #(
                 end
 
                 FSM_GEMM_STREAM_DONE: begin
-                    // Phase 5-3: Lock store descriptor from live tile descriptor
-                    store_desc_m_base     <= gemm_tile_m_base;
-                    store_desc_n_base     <= gemm_tile_n_base;
-                    store_desc_M          <= gemm_tile_M;
-                    store_desc_N          <= gemm_tile_N;
-                    store_desc_base_addr  <= blk_out_addr;
-                    store_desc_row_stride <= (gemm_N_val * 32'd4 + 32'd31) & 32'hFFFF_FFE0;
-                    store_desc_bank       <= compute_c_bank;
                     store_c_bank <= compute_c_bank;
-                    gemm_store_row_idx <= 16'd0;
-                    gemm_store_beat_idx <= 16'd0;
-                    // Phase 4c-2: launch STORE micro-FSM (runs inside FSM_GEMM_STREAM_STORE)
-                    gemm_store_eng_active <= 1'b1;
-                    gemm_store_eng_phase  <= GST_PUSH_BEAT;
-                    fsm_state <= FSM_GEMM_STREAM_STORE;
+                    // Phase 4c-3: STORE overlap — launch immediately if writer idle.
+                    // Only lock store_desc_* when GST is idle, to avoid corrupting
+                    // an active background STORE's descriptor.
+                    if (!gemm_store_eng_active) begin
+                        // Lock store descriptor from current tile
+                        store_desc_m_base     <= gemm_tile_m_base;
+                        store_desc_n_base     <= gemm_tile_n_base;
+                        store_desc_M          <= gemm_tile_M;
+                        store_desc_N          <= gemm_tile_N;
+                        store_desc_base_addr  <= blk_out_addr;
+                        store_desc_row_stride <= (gemm_N_val * 32'd4 + 32'd31) & 32'hFFFF_FFE0;
+                        store_desc_bank       <= compute_c_bank;
+                        // Launch current tile STORE
+                        gemm_store_row_idx <= 16'd0;
+                        gemm_store_beat_idx <= 16'd0;
+                        gemm_store_eng_active <= 1'b1;
+                        gemm_store_eng_phase  <= GST_PUSH_BEAT;
+                        gemm_store_pending <= 1'b0;
+                        $display("[GST_LAUNCH] m_base=%0d n_base=%0d M=%0d N=%0d bank=%0d",
+                            gemm_tile_m_base, gemm_tile_n_base,
+                            gemm_tile_M, gemm_tile_N, compute_c_bank);
+                        // Check for next tile
+                        if (gemm_tile_n_base + gemm_tile_N < gemm_N_val) begin
+                            // N-tile advance: overlap STORE with next tile compute
+                            automatic integer next_n_base;
+                            next_n_base = gemm_tile_n_base + gemm_tile_N;
+                            gemm_tile_n_base <= next_n_base;
+                            gemm_tile_N <= (gemm_N_val - next_n_base > PE_COLS_16) ?
+                                           PE_COLS_16 : (gemm_N_val - next_n_base);
+                            fc_tile_outputs <= (gemm_N_val - next_n_base > PE_COLS_16) ?
+                                               PE_COLS_16 : (gemm_N_val - next_n_base);
+                            gemm_stream_k_base       <= 16'd0;
+                            gemm_stream_k_chunk_idx  <= 16'd0;
+                            gemm_stream_first_chunk  <= 1'b1;
+                            gemm_stream_last_chunk   <= (input_c <= PE_ROWS_16);
+                            fc_in_base <= 16'd0;
+                            fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
+                            input_prefetch_active <= 1'b0;
+                            input_prefetch_done  <= 1'b0;
+                            wgt_pref_active <= 1'b0;
+                            wgt_pref_done  <= 1'b0;
+                            wgt_pref_valid <= 1'b0;
+                            $display("[N_TILE_OV] next tile: n_base=%0d N=%0d (STORE overlap)",
+                                next_n_base, gemm_tile_N);
+                            compute_c_bank <= ~compute_c_bank;
+                            fsm_state <= FSM_GEMM_STREAM_PREP;
+                        end else if (gemm_tile_m_base + gemm_tile_M < gemm_M_val) begin
+                            // M-tile advance: overlap STORE with next tile compute
+                            automatic integer next_m_base;
+                            next_m_base = gemm_tile_m_base + gemm_tile_M;
+                            gemm_tile_m_base <= next_m_base;
+                            gemm_tile_M <= (gemm_M_val - next_m_base > 16'd8) ?
+                                           16'd8 : (gemm_M_val - next_m_base);
+                            gemm_tile_n_base <= 16'd0;
+                            gemm_tile_N <= (gemm_N_val > PE_COLS_16) ? PE_COLS_16 : gemm_N_val;
+                            fc_tile_outputs <= (gemm_N_val > PE_COLS_16) ? PE_COLS_16 : gemm_N_val;
+                            gemm_stream_k_base       <= 16'd0;
+                            gemm_stream_k_chunk_idx  <= 16'd0;
+                            gemm_stream_first_chunk  <= 1'b1;
+                            gemm_stream_last_chunk   <= (input_c <= PE_ROWS_16);
+                            fc_in_base <= 16'd0;
+                            fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
+                            input_prefetch_active <= 1'b0;
+                            input_prefetch_done  <= 1'b0;
+                            wgt_pref_active <= 1'b0;
+                            wgt_pref_done  <= 1'b0;
+                            wgt_pref_valid <= 1'b0;
+                            $display("[M_TILE_OV] next tile: m_base=%0d M=%0d n_reset (STORE overlap)",
+                                next_m_base, gemm_tile_M);
+                            compute_c_bank <= ~compute_c_bank;
+                            fsm_state <= FSM_GEMM_STREAM_PREP;
+                        end else begin
+                            // Final tile: wait for STORE to complete
+                            $display("[GST_FINAL] final tile, waiting for STORE done");
+                            fsm_state <= FSM_GEMM_STREAM_STORE;
+                        end
+                    end else begin
+                        // Previous STORE still running — mark pending
+                        gemm_store_pending <= 1'b1;
+                        $display("[GST_PEND] store pending: previous STORE still active");
+                        fsm_state <= FSM_GEMM_STREAM_STORE;
+                    end
                 end
 
                 FSM_GEMM_STREAM_STORE: begin
-                    // Phase 4c-2: per-beat STORE micro-FSM.
-                    // Uses store_desc_* locked descriptor from Phase 5-3.
-                    // Relies on default dma_wr_start=0 (line ~2270) for 1→0 pulse.
-                    case (gemm_store_eng_phase)
-
-                        GST_PUSH_BEAT: begin
-                            reg [255:0] beat;
-                            reg [15:0]  base_col;
-                            reg [15:0]  this_beat_cols;
-                            integer lane;
-                            base_col = gemm_store_beat_idx << 3;
-                            this_beat_cols = (store_desc_N - base_col > 16'd8) ?
-                                              16'd8 : (store_desc_N - base_col);
-                            beat = 256'd0;
-                            for (lane = 0; lane < this_beat_cols; lane = lane + 1) begin
-                                beat[lane*32 +: 32] = store_desc_bank ?
-                                    c_tile_bank1[gemm_store_row_idx][base_col + lane] :
-                                    c_tile_bank0[gemm_store_row_idx][base_col + lane];
-                            end
-                            if (!wf_wr_full) begin
-                                dma_wr_data_r <= beat;
-                                dma_wr_valid_r <= 1'b1;
-                                dma_wr_addr <= store_desc_base_addr
-                                    + ((store_desc_m_base + gemm_store_row_idx) * store_desc_row_stride)
-                                    + {12'd0, store_desc_n_base, 2'b0}
-                                    + ({16'd0, gemm_store_beat_idx} << 5);
-                                dma_wr_bytes <= {16'd0, this_beat_cols} << 2;
-                                $display("[GST] row=%0d beat=%0d cols=%0d addr=0x%08x bytes=%0d",
-                                    gemm_store_row_idx, gemm_store_beat_idx, this_beat_cols,
-                                    store_desc_base_addr + ((store_desc_m_base + gemm_store_row_idx) * store_desc_row_stride)
-                                        + (gemm_store_beat_idx * 32),
-                                    this_beat_cols * 4);
-                                gemm_store_eng_phase <= GST_START;
-                            end
-                            // else: stall on FIFO full
-                        end
-
-                        GST_START: begin
-                            // 1-cycle pulse: dma_wr_start=1, producer_done valid this cycle
-                            dma_wr_valid_r <= 1'b0;
-                            dma_wr_start   <= 1'b1;
-                            dma_wr_started <= 1'b1;
-                            gemm_store_eng_phase <= GST_START_CLR;
-                        end
-
-                        GST_START_CLR: begin
-                            // dma_wr_start defaults to 0 (cleared for writer S_DONE→S_IDLE)
-                            gemm_store_eng_phase <= GST_WAIT_DONE;
-                        end
-
-                        GST_WAIT_DONE: begin
-                            dma_wr_valid_r <= 1'b0;
-                            if (dma_wr_done) begin
-                                $display("[GST] row=%0d beat=%0d dma_done",
-                                    gemm_store_row_idx, gemm_store_beat_idx);
-                                dma_wr_started <= 1'b0;
-                                gemm_store_eng_phase <= GST_ADVANCE;
-                            end else if (dma_wr_error) begin
-                                gemm_store_eng_active <= 1'b0;
-                                task_error_r <= 1'b1;
-                                task_error_code_r <= dma_wr_error_code;
-                                fsm_state <= FSM_ERROR;
-                            end
-                        end
-
-                        GST_ADVANCE: begin
-                            if (gemm_store_beat_idx + 16'd1 < ((store_desc_N + 16'd7) >> 3)) begin
-                                gemm_store_beat_idx <= gemm_store_beat_idx + 16'd1;
-                                gemm_store_eng_phase <= GST_PUSH_BEAT;
-                            end else if (gemm_store_row_idx + 16'd1 < store_desc_M) begin
-                                gemm_store_row_idx <= gemm_store_row_idx + 16'd1;
-                                gemm_store_beat_idx <= 16'd0;
-                                gemm_store_eng_phase <= GST_PUSH_BEAT;
-                            end else begin
-                                // All rows of current tile stored
-                                gemm_store_eng_active <= 1'b0;
-                                // Phase 5-2: N tile loop inside M tile loop
-                                if (gemm_tile_n_base + gemm_tile_N < gemm_N_val) begin
-                                    automatic integer next_n_base;
-                                    next_n_base = gemm_tile_n_base + gemm_tile_N;
-                                    gemm_tile_n_base <= next_n_base;
-                                    gemm_tile_N <= (gemm_N_val - next_n_base > PE_COLS_16) ?
+                    // Phase 4c-3: Wait for background STORE engine to finish current tile.
+                    // GST micro-FSM now runs as an after-case background tick, not here.
+                    if (!gemm_store_eng_active) begin
+                        if (gemm_store_pending) begin
+                            // Previous STORE finished — lock descriptor + launch pending STORE
+                            store_desc_m_base     <= gemm_tile_m_base;
+                            store_desc_n_base     <= gemm_tile_n_base;
+                            store_desc_M          <= gemm_tile_M;
+                            store_desc_N          <= gemm_tile_N;
+                            store_desc_base_addr  <= blk_out_addr;
+                            store_desc_row_stride <= (gemm_N_val * 32'd4 + 32'd31) & 32'hFFFF_FFE0;
+                            store_desc_bank       <= compute_c_bank;
+                            gemm_store_row_idx <= 16'd0;
+                            gemm_store_beat_idx <= 16'd0;
+                            gemm_store_eng_active <= 1'b1;
+                            gemm_store_eng_phase  <= GST_PUSH_BEAT;
+                            gemm_store_pending <= 1'b0;
+                            $display("[GST_LAUNCH_PEND] m_base=%0d n_base=%0d M=%0d N=%0d bank=%0d",
+                                store_desc_m_base, store_desc_n_base,
+                                store_desc_M, store_desc_N, store_desc_bank);
+                            // Check for next tile after pending launch
+                            if (gemm_tile_n_base + gemm_tile_N < gemm_N_val) begin
+                                automatic integer next_n_base;
+                                next_n_base = gemm_tile_n_base + gemm_tile_N;
+                                gemm_tile_n_base <= next_n_base;
+                                gemm_tile_N <= (gemm_N_val - next_n_base > PE_COLS_16) ?
+                                               PE_COLS_16 : (gemm_N_val - next_n_base);
+                                fc_tile_outputs <= (gemm_N_val - next_n_base > PE_COLS_16) ?
                                                    PE_COLS_16 : (gemm_N_val - next_n_base);
-                                    fc_tile_outputs <= (gemm_N_val - next_n_base > PE_COLS_16) ?
-                                                       PE_COLS_16 : (gemm_N_val - next_n_base);
-                                    gemm_stream_k_base       <= 16'd0;
-                                    gemm_stream_k_chunk_idx  <= 16'd0;
-                                    gemm_stream_first_chunk  <= 1'b1;
-                                    gemm_stream_last_chunk   <= (input_c <= PE_ROWS_16);
-                                    fc_in_base <= 16'd0;
-                                    fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
-                                    input_prefetch_active <= 1'b0;
-                                    input_prefetch_done  <= 1'b0;
-                                    wgt_pref_active <= 1'b0;
-                                    wgt_pref_done  <= 1'b0;
-                                    wgt_pref_valid <= 1'b0;
-                                    $display("[N_TILE] next tile: n_base=%0d N=%0d",
-                                        next_n_base, gemm_tile_N);
-                                    compute_c_bank <= ~compute_c_bank;
-                                    fsm_state <= FSM_GEMM_STREAM_PREP;
-                                end else if (gemm_tile_m_base + gemm_tile_M < gemm_M_val) begin
-                                    automatic integer next_m_base;
-                                    next_m_base = gemm_tile_m_base + gemm_tile_M;
-                                    gemm_tile_m_base <= next_m_base;
-                                    gemm_tile_M <= (gemm_M_val - next_m_base > 16'd8) ?
-                                                   16'd8 : (gemm_M_val - next_m_base);
-                                    gemm_tile_n_base <= 16'd0;
-                                    gemm_tile_N <= (gemm_N_val > PE_COLS_16) ? PE_COLS_16 : gemm_N_val;
-                                    fc_tile_outputs <= (gemm_N_val > PE_COLS_16) ? PE_COLS_16 : gemm_N_val;
-                                    gemm_stream_k_base       <= 16'd0;
-                                    gemm_stream_k_chunk_idx  <= 16'd0;
-                                    gemm_stream_first_chunk  <= 1'b1;
-                                    gemm_stream_last_chunk   <= (input_c <= PE_ROWS_16);
-                                    fc_in_base <= 16'd0;
-                                    fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
-                                    input_prefetch_active <= 1'b0;
-                                    input_prefetch_done  <= 1'b0;
-                                    wgt_pref_active <= 1'b0;
-                                    wgt_pref_done  <= 1'b0;
-                                    wgt_pref_valid <= 1'b0;
-                                    $display("[M_TILE] next tile: m_base=%0d M=%0d n_reset",
-                                        next_m_base, gemm_tile_M);
-                                    compute_c_bank <= ~compute_c_bank;
-                                    fsm_state <= FSM_GEMM_STREAM_PREP;
-                                end else begin
-                                    task_done_r <= 1'b1;
-                                    task_active_r <= 1'b0;
-                                    fsm_state <= FSM_DONE;
-                                end
+                                gemm_stream_k_base       <= 16'd0;
+                                gemm_stream_k_chunk_idx  <= 16'd0;
+                                gemm_stream_first_chunk  <= 1'b1;
+                                gemm_stream_last_chunk   <= (input_c <= PE_ROWS_16);
+                                fc_in_base <= 16'd0;
+                                fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
+                                input_prefetch_active <= 1'b0;
+                                input_prefetch_done  <= 1'b0;
+                                wgt_pref_active <= 1'b0;
+                                wgt_pref_done  <= 1'b0;
+                                wgt_pref_valid <= 1'b0;
+                                compute_c_bank <= ~compute_c_bank;
+                                fsm_state <= FSM_GEMM_STREAM_PREP;
+                            end else if (gemm_tile_m_base + gemm_tile_M < gemm_M_val) begin
+                                automatic integer next_m_base;
+                                next_m_base = gemm_tile_m_base + gemm_tile_M;
+                                gemm_tile_m_base <= next_m_base;
+                                gemm_tile_M <= (gemm_M_val - next_m_base > 16'd8) ?
+                                               16'd8 : (gemm_M_val - next_m_base);
+                                gemm_tile_n_base <= 16'd0;
+                                gemm_tile_N <= (gemm_N_val > PE_COLS_16) ? PE_COLS_16 : gemm_N_val;
+                                fc_tile_outputs <= (gemm_N_val > PE_COLS_16) ? PE_COLS_16 : gemm_N_val;
+                                gemm_stream_k_base       <= 16'd0;
+                                gemm_stream_k_chunk_idx  <= 16'd0;
+                                gemm_stream_first_chunk  <= 1'b1;
+                                gemm_stream_last_chunk   <= (input_c <= PE_ROWS_16);
+                                fc_in_base <= 16'd0;
+                                fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
+                                input_prefetch_active <= 1'b0;
+                                input_prefetch_done  <= 1'b0;
+                                wgt_pref_active <= 1'b0;
+                                wgt_pref_done  <= 1'b0;
+                                wgt_pref_valid <= 1'b0;
+                                compute_c_bank <= ~compute_c_bank;
+                                fsm_state <= FSM_GEMM_STREAM_PREP;
+                            end else begin
+                                // Final tile STORE launched — wait for it
+                                fsm_state <= FSM_GEMM_STREAM_STORE;
                             end
+                        end else begin
+                            // All STOREs done — final tile complete
+                            task_done_r <= 1'b1;
+                            task_active_r <= 1'b0;
+                            fsm_state <= FSM_DONE;
                         end
-
-                        default: begin
-                            gemm_store_eng_phase <= GST_PUSH_BEAT;
-                        end
-
-                    endcase
+                    end
+                    // else: gemm_store_eng_active is 1 — background GST will handle it
                 end
 
                 FSM_DONE: begin
@@ -4406,6 +4415,97 @@ module npu_top #(
                     fsm_state <= FSM_ERROR;
                 end
             end
+
+            // ================================================================
+            // Phase 4c-3: background GEMM STORE engine tick.
+            // GST micro-FSM runs here (not inside FSM_GEMM_STREAM_STORE),
+            // allowing STORE to overlap with main FSM RUN/PREP/LOAD_A states.
+            // Still in the same always block — no multi-driver.
+            // ================================================================
+            if (gemm_store_eng_active) begin
+                case (gemm_store_eng_phase)
+
+                    GST_PUSH_BEAT: begin
+                        reg [255:0] beat;
+                        reg [15:0]  base_col;
+                        reg [15:0]  this_beat_cols;
+                        integer lane;
+                        base_col = gemm_store_beat_idx << 3;
+                        this_beat_cols = (store_desc_N - base_col > 16'd8) ?
+                                          16'd8 : (store_desc_N - base_col);
+                        beat = 256'd0;
+                        for (lane = 0; lane < this_beat_cols; lane = lane + 1) begin
+                            beat[lane*32 +: 32] = store_desc_bank ?
+                                c_tile_bank1[gemm_store_row_idx][base_col + lane] :
+                                c_tile_bank0[gemm_store_row_idx][base_col + lane];
+                        end
+                        if (!wf_wr_full) begin
+                            dma_wr_data_r <= beat;
+                            dma_wr_valid_r <= 1'b1;
+                            dma_wr_addr <= store_desc_base_addr
+                                + ((store_desc_m_base + gemm_store_row_idx) * store_desc_row_stride)
+                                + {12'd0, store_desc_n_base, 2'b0}
+                                + ({16'd0, gemm_store_beat_idx} << 5);
+                            dma_wr_bytes <= {16'd0, this_beat_cols} << 2;
+                            $display("[GST] row=%0d beat=%0d cols=%0d addr=0x%08x bytes=%0d",
+                                gemm_store_row_idx, gemm_store_beat_idx, this_beat_cols,
+                                store_desc_base_addr + ((store_desc_m_base + gemm_store_row_idx) * store_desc_row_stride)
+                                    + (gemm_store_beat_idx * 32),
+                                this_beat_cols * 4);
+                            gemm_store_eng_phase <= GST_START;
+                        end
+                        // else: stall on FIFO full
+                    end
+
+                    GST_START: begin
+                        dma_wr_valid_r <= 1'b0;
+                        dma_wr_start   <= 1'b1;
+                        dma_wr_started <= 1'b1;
+                        gemm_store_eng_phase <= GST_START_CLR;
+                    end
+
+                    GST_START_CLR: begin
+                        // dma_wr_start defaults to 0 (cleared for writer S_DONE→S_IDLE)
+                        gemm_store_eng_phase <= GST_WAIT_DONE;
+                    end
+
+                    GST_WAIT_DONE: begin
+                        dma_wr_valid_r <= 1'b0;
+                        if (dma_wr_done) begin
+                            $display("[GST] row=%0d beat=%0d dma_done",
+                                gemm_store_row_idx, gemm_store_beat_idx);
+                            dma_wr_started <= 1'b0;
+                            gemm_store_eng_phase <= GST_ADVANCE;
+                        end else if (dma_wr_error) begin
+                            gemm_store_eng_active <= 1'b0;
+                            task_error_r <= 1'b1;
+                            task_error_code_r <= dma_wr_error_code;
+                            fsm_state <= FSM_ERROR;
+                        end
+                    end
+
+                    GST_ADVANCE: begin
+                        if (gemm_store_beat_idx + 16'd1 < ((store_desc_N + 16'd7) >> 3)) begin
+                            gemm_store_beat_idx <= gemm_store_beat_idx + 16'd1;
+                            gemm_store_eng_phase <= GST_PUSH_BEAT;
+                        end else if (gemm_store_row_idx + 16'd1 < store_desc_M) begin
+                            gemm_store_row_idx <= gemm_store_row_idx + 16'd1;
+                            gemm_store_beat_idx <= 16'd0;
+                            gemm_store_eng_phase <= GST_PUSH_BEAT;
+                        end else begin
+                            // All rows of THIS tile stored — STORE engine done
+                            $display("[GST_DONE] tile STORE complete");
+                            gemm_store_eng_active <= 1'b0;
+                        end
+                    end
+
+                    default: begin
+                        gemm_store_eng_phase <= GST_PUSH_BEAT;
+                    end
+
+                endcase
+            end
+
         end
     end
 
