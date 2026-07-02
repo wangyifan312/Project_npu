@@ -249,6 +249,11 @@ package soc_top_uvm_pkg;
   //---------------------------------------------------------------------------
   `include "npu_fc_streaming_robustness_test.sv"
 
+  //---------------------------------------------------------------------------
+  // Phase U4-b: FC streaming ReLU test
+  //---------------------------------------------------------------------------
+  `include "npu_fc_streaming_relu_test.sv"
+
 endpackage
 
 `endif // SOC_TOP_UVM_PKG_SV
