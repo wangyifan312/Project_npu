@@ -73,10 +73,35 @@ store_desc_row_stride = int8_test_hook ?
 
 ## 3. INT8 Path Trigger
 
-- `conv_cfg[6]` = internal test hook (NOT a public CSR)
+- `conv_cfg[6]` = internal test hook (AXI-Lite R/W via register `0x98`, **not a production software interface**)
 - Only active when `fc_streaming_en=1` (FC mode, streaming enabled, no bias)
 - `conv_cfg` mask extended from `0x3F` to `0x7F` in `npu_ctrl.v`
-- Default: `conv_cfg[6]=0` → all paths remain INT32
+- **Default: `conv_cfg[6]=0`** → all paths remain INT32
+- Software that never writes bit[6] sees zero behavioral change
+- This bit is reserved for U4-d INT8 packing infrastructure validation only
+- Future phases (U4-e/U4-f) will define formal `store_desc_output_dtype` semantics
+
+### conv_cfg[6] Audit (2026-07-02)
+
+- **AXI-Lite visibility**: Yes — readable and writable via existing register `0x98`
+- **Default value**: 0 (backward compatible)
+- **Gating**: `int8_test_hook = fc_streaming_en && conv_cfg[6]` — only FC streaming can use it
+- **Production impact**: None — existing software doesn't set bit[6]
+- **Not a public CSR**: No new register address; existing register mask extended by 1 bit
+- **Future**: Will be superseded by formal `output_dtype` descriptor in U4-e/U4-f
+
+---
+
+### GST ReLU Audit (pre-solidification, 2026-07-02)
+
+**Both INT32 and INT8 GST paths use `store_desc_relu_en`, not raw `relu_en`.**
+
+```verilog
+// INT32: beat[lane*32 +: 32] = (store_desc_relu_en && gst_val[31]) ? 32'sd0 : gst_val;
+// INT8:  beat[lane*8 +: 8]  = (store_desc_relu_en && gst_val[31]) ? 8'd0  : gst_val[7:0];
+```
+
+No raw `relu_en` usage in GST. Post-op attribute is always latched from `store_desc_*` at STORE launch time, ensuring STORE/RUN overlap safety.
 
 ---
 
