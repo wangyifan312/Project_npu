@@ -272,6 +272,11 @@ package soc_top_uvm_pkg;
   //---------------------------------------------------------------------------
   `include "npu_gemm_ntile_nonuniform_diag_test.sv"
 
+  //---------------------------------------------------------------------------
+  // Phase U6-a: PE array clock gating verification
+  //---------------------------------------------------------------------------
+  `include "npu_pe_array_clock_gating_test.sv"
+
 endpackage
 
 `endif // SOC_TOP_UVM_PKG_SV
