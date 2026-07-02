@@ -259,6 +259,14 @@ package soc_top_uvm_pkg;
   //---------------------------------------------------------------------------
   `include "npu_fc_streaming_int8_pack_test.sv"
 
+  //---------------------------------------------------------------------------
+  // Phase U5-a: System baseline stabilization — stress tests
+  //---------------------------------------------------------------------------
+  `include "npu_gemm_kchunk_stress_test.sv"
+  `include "npu_matrixop_partial_beat_stress_test.sv"
+  `include "npu_int8_extreme_value_stress_test.sv"
+  `include "npu_back_to_back_task_stress_test.sv"
+
 endpackage
 
 `endif // SOC_TOP_UVM_PKG_SV

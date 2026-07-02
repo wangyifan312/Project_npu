@@ -12,7 +12,7 @@
 // +incdir+verif/uvm_top/env +incdir+verif/uvm_top/sequences/base
 // +incdir+verif/uvm_top/sequences/common +incdir+verif/uvm_top/sequences/tasks
 // +incdir+verif/uvm_top/sequences/networks
-// +incdir+verif/uvm_top/tests +incdir+verif/uvm_top/pkg +incdir+verif/uvm_top/ref_model
+// +incdir+verif/uvm_top/tests +incdir+verif/uvm_top/pkg +incdir+verif/uvm_top/ref_model +incdir+verif/uvm_top/checkers
 //=============================================================================
 
 //-----------------------------------------------------------------------------
@@ -96,6 +96,11 @@ verif/uvm_top/pkg/soc_top_uvm_pkg.sv
 // include +incdir+verif/uvm_top/ref_model for the header to be found.
 //-----------------------------------------------------------------------------
 verif/uvm_top/ref_model/npu_ref_model.c
+
+//-----------------------------------------------------------------------------
+// Phase U5-a: Lightweight MatrixOp pipeline checker (standalone module)
+//-----------------------------------------------------------------------------
+verif/uvm_top/checkers/npu_matrixop_pipeline_checker.sv
 
 //-----------------------------------------------------------------------------
 // Top-level testbench module

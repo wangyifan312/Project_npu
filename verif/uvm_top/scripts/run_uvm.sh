@@ -56,6 +56,7 @@ vcs -full64 -sverilog -timescale=1ns/1ps \
     +incdir+verif/uvm_top/tests \
     +incdir+verif/uvm_top/pkg \
     +incdir+verif/uvm_top/ref_model \
+    +incdir+verif/uvm_top/checkers \
     -top tb_soc_top_uvm \
     -o sim/simv_uvm_top \
     -f verif/uvm_top/filelist.f
