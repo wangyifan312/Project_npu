@@ -42,7 +42,18 @@ module array_top #(
     wire [((TILE_ROWS+1) * TILE_COLS * 4 * 32)-1:0] sum_tile_flat;
 
     // Gated clocks per tile
+    // Phase U6-a: low-phase latch for clean clock gating.
+    // RTL simulation: models standard ICG behavior where enable
+    // is stable during clk high.  ASIC: replace with library ICG cell.
+    // FPGA: replace with BUFGCE or clock-enable primitive.
     wire [N_TILES-1:0] gated_clk;
+    reg  [N_TILES-1:0] tile_clk_en_latched;
+
+    always @(*) begin
+        if (!clk) begin
+            tile_clk_en_latched = tile_clk_en_flat;
+        end
+    end
 
     // ============================================================
     // Generate tiles
@@ -58,8 +69,8 @@ module array_top #(
             localparam integer sum_out_base = ((tr + 1) * TILE_COLS + tc) * 4 * 32;
             localparam integer wt_base      = ti * 16 * 8;
 
-            // Gated clock
-            assign gated_clk[ti] = clk && tile_clk_en_flat[ti];
+            // Gated clock with latched enable (ICG-style)
+            assign gated_clk[ti] = clk & tile_clk_en_latched[ti];
 
             // Connections: first tile in row gets external activation
             if (tc == 0) begin : act_from_ext

@@ -871,7 +871,15 @@ module npu_top #(
                                 16'd5;
 
     assign array_sum_in = {PE_COLS{32'h0}};
-    assign array_clk_en = {N_TILES{1'b1}};
+    // Phase U6-a: dynamic PE array clock gating
+    // Enable PE array clock only when NPU is active (not IDLE/DONE/ERROR).
+    // Conservative: keeps clock on during all transitional and compute states.
+    // Primary power saving: long idle periods between tasks.
+    wire pe_array_clk_en_comb;
+    assign pe_array_clk_en_comb = (fsm_state != FSM_IDLE) &&
+                                  (fsm_state != FSM_DONE)  &&
+                                  (fsm_state != FSM_ERROR);
+    assign array_clk_en = {N_TILES{pe_array_clk_en_comb}};
     assign cluster_weight_ld_all = {CLUSTER_COUNT{array_weight_ld}};
     assign array_sum_out = cluster_arb_out_valid ? cluster_arb_sum_out : {CLUSTER_SUM_W{1'b0}};
 
