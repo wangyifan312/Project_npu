@@ -238,6 +238,12 @@ package soc_top_uvm_pkg;
   //---------------------------------------------------------------------------
   `include "npu_gemm_pipeline_bw_tops_test.sv"
 
+  //---------------------------------------------------------------------------
+  // Phase U1: FC streaming MatrixOp tests
+  //---------------------------------------------------------------------------
+  `include "npu_fc_streaming_smoke_test.sv"
+  `include "npu_fc_streaming_fallback_test.sv"
+
 endpackage
 
 `endif // SOC_TOP_UVM_PKG_SV

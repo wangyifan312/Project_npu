@@ -670,6 +670,10 @@ module npu_top #(
     wire is_vec_relu_mode = (task_type == 3'd6);
     wire is_gemm_mode    = (task_type == 3'd7);
     wire gemm_row_streaming_en = is_gemm_mode && conv_cfg[5];
+    // Phase U1: FC streaming mode — pure FC matmul (no bias/requant) routed
+    // through streaming GEMM pipeline.  Post-op FC falls back to legacy.
+    wire fc_streaming_en    = is_fc_mode && conv_cfg[5] && !bias_enabled;
+    wire matrix_streaming_en = gemm_row_streaming_en || fc_streaming_en;
     wire gemm_weight_hit = is_gemm_mode && gemm_weight_valid &&
         !gemm_row_streaming_en &&  // Phase 3b: streaming GEMM bypasses legacy cache
         (gemm_weight_k_base_cached == 16'd0) &&
@@ -911,7 +915,7 @@ module npu_top #(
         cluster_route_col_i = 0;
 
         // Phase 2b-1: streaming output routing
-        if (gemm_row_streaming_en && (fsm_state == FSM_GEMM_STREAM_RUN)) begin
+        if (matrix_streaming_en && (fsm_state == FSM_GEMM_STREAM_RUN)) begin
             if (perf_cluster_enable[0]) begin
                 integer s_col;
                 for (s_col = 0; s_col < PE_COLS; s_col = s_col + 1) begin
@@ -986,8 +990,8 @@ module npu_top #(
         .cluster_done(cluster_done),
         .any_cluster_busy(any_cluster_busy),
         .all_enabled_done(all_enabled_done),
-        .continuous_mode(gemm_row_streaming_en && (fsm_state == FSM_GEMM_STREAM_RUN)),
-        .stream_active(gemm_row_streaming_en && stream_active)
+        .continuous_mode(matrix_streaming_en && (fsm_state == FSM_GEMM_STREAM_RUN)),
+        .stream_active(matrix_streaming_en && stream_active)
     );
 
     output_arbiter #(
@@ -1226,13 +1230,13 @@ module npu_top #(
     wire [BUF_ADDR_W-1:0] input_prefetch_beat_addr = input_prefetch_byte_idx[BUF_ADDR_W+4:5];
     wire [4:0] input_prefetch_lane_start = input_prefetch_byte_idx[4:0];
     // Phase 4b: weight staging byte-level address computation
-    // GEMM streaming: N-major iteration (all N for each K) for strided full-B read.
+    // Streaming (GEMM/FC): K-major iteration (all N for each K) for strided full-B read.
     // row = idx / n_tile, out = idx % n_tile → contiguous within each K row.
     // FC / legacy: N-major layout W[n][k] at byte_idx = n * K + k
-    wire [31:0] wgt_stage_out_idx  = gemm_row_streaming_en ?
+    wire [31:0] wgt_stage_out_idx  = matrix_streaming_en ?
         ((wgt_stage_n_tile == 16'd0) ? 32'd0 : (wgt_stage_lane_idx % {16'd0, wgt_stage_n_tile})) :
         ((wgt_stage_k_tile == 16'd0) ? 32'd0 : (wgt_stage_lane_idx / {16'd0, wgt_stage_k_tile}));
-    wire [31:0] wgt_stage_row_idx  = gemm_row_streaming_en ?
+    wire [31:0] wgt_stage_row_idx  = matrix_streaming_en ?
         ((wgt_stage_n_tile == 16'd0) ? 32'd0 : (wgt_stage_lane_idx / {16'd0, wgt_stage_n_tile})) :
         ((wgt_stage_k_tile == 16'd0) ? 32'd0 : (wgt_stage_lane_idx % {16'd0, wgt_stage_k_tile}));
     wire [31:0] wgt_stage_buf_byte_idx_fc = wgt_stage_out_idx * {16'd0, input_c}
@@ -1242,7 +1246,7 @@ module npu_top #(
                                              * {16'd0, gemm_N_val}
                                              + {16'd0, gemm_tile_n_base}
                                              + wgt_stage_out_idx;
-    wire [31:0] wgt_stage_buf_byte_idx = gemm_row_streaming_en ?
+    wire [31:0] wgt_stage_buf_byte_idx = matrix_streaming_en ?
                                           wgt_stage_buf_byte_idx_gemm :
                                           wgt_stage_buf_byte_idx_fc;
     wire [31:0] wgt_stage_abs_byte_idx = wgt_stage_buf_byte_idx
@@ -1410,8 +1414,8 @@ module npu_top #(
     wire [31:0] fc_shadow_dma_byte_idx = fc_shadow_buf_byte_idx + {27'd0, wgt_dma_byte_offset};
     wire [BUF_ADDR_W-1:0] fc_shadow_beat_addr = fc_shadow_dma_byte_idx[BUF_ADDR_W+4:5];
 
-    assign wgt_rd_addr  = (gemm_row_streaming_en && (fsm_state == FSM_LOAD_ARRAY) && wgt_stage_active) ? wgt_stage_beat_addr :
-                          (gemm_row_streaming_en && (fsm_state == FSM_GEMM_STREAM_RUN) && wgt_pref_active && (wgt_pref_phase != WGT_PREF_IDLE)) ? wgt_pref_beat_addr :
+    assign wgt_rd_addr  = (matrix_streaming_en && (fsm_state == FSM_LOAD_ARRAY) && wgt_stage_active) ? wgt_stage_beat_addr :
+                          (matrix_streaming_en && (fsm_state == FSM_GEMM_STREAM_RUN) && wgt_pref_active && (wgt_pref_phase != WGT_PREF_IDLE)) ? wgt_pref_beat_addr :
                           (fsm_state == FSM_BIAS_EXTRACT) ? bias_beat_addr :
                           (fsm_state == FSM_ADD_COMPUTE) ? add_src_beat_addr :
                           (is_fc_mode && (fsm_state == FSM_LOAD_ARRAY)) ? fc_weight_beat_addr :
@@ -1449,7 +1453,7 @@ module npu_top #(
     // After feeding: drive held value (registered) for column propagation
     // ============================================================
     wire act_feed_en = compute_fsm_active && (comp_sub_state == CP_FEED_ACT);
-    wire stream_drive = gemm_row_streaming_en && (fsm_state == FSM_GEMM_STREAM_RUN);
+    wire stream_drive = matrix_streaming_en && (fsm_state == FSM_GEMM_STREAM_RUN);
     genvar ai;
     generate
         for (ai = 0; ai < PE_ROWS; ai = ai + 1) begin : act_map
@@ -2052,11 +2056,11 @@ module npu_top #(
                             reg [31:0] ws_lane_row;
                             reg [4:0]  ws_lane_bsel;
                             ws_lane_idx  = wgt_stage_lane_idx + ws_lane;
-                            // Phase 5-2: N-major for streaming GEMM full-B strided read
-                            ws_lane_out  = gemm_row_streaming_en ?
+                            // Phase 5-2: K-major for streaming (GEMM/FC) full-B strided read
+                            ws_lane_out  = matrix_streaming_en ?
                                 ((wgt_stage_n_tile == 16'd0) ? 32'd0 : (ws_lane_idx % {16'd0, wgt_stage_n_tile})) :
                                 ((wgt_stage_k_tile == 16'd0) ? 32'd0 : (ws_lane_idx / {16'd0, wgt_stage_k_tile}));
-                            ws_lane_row  = gemm_row_streaming_en ?
+                            ws_lane_row  = matrix_streaming_en ?
                                 ((wgt_stage_n_tile == 16'd0) ? 32'd0 : (ws_lane_idx / {16'd0, wgt_stage_n_tile})) :
                                 ((wgt_stage_k_tile == 16'd0) ? 32'd0 : (ws_lane_idx % {16'd0, wgt_stage_k_tile}));
                             ws_lane_bsel = wgt_stage_abs_byte_idx[4:0] + ws_lane;
@@ -2688,14 +2692,16 @@ module npu_top #(
                 end
 
                 FSM_FC_TILE_PREP: begin
-                    // GEMM: output columns per tile = min(64,N). Phase 5-2 N-tiling.
-                    fc_tile_outputs <= is_gemm_mode ?
-                        ((gemm_N_val > PE_COLS_16) ? PE_COLS_16 : gemm_N_val) :
-                        fc_tile_outputs_next;
+                    // Streaming (GEMM/FC) or legacy GEMM: use N-tile = min(N, PE_COLS)
+                    // Legacy FC only: uses fc_tile_outputs_next (capacity-based)
+                    if (is_gemm_mode || matrix_streaming_en)
+                        fc_tile_outputs <= (gemm_N_val > PE_COLS_16) ? PE_COLS_16 : gemm_N_val;
+                    else
+                        fc_tile_outputs <= fc_tile_outputs_next;
                     fc_in_base <= 16'd0;
                     fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
                     // Phase 3a: init streaming K-chunk state (this state entered once per task)
-                    if (gemm_row_streaming_en) begin
+                    if (matrix_streaming_en) begin
                         gemm_stream_k_base       <= 16'd0;
                         gemm_stream_k_chunk_idx  <= 16'd0;
                         gemm_stream_first_chunk  <= 1'b1;
@@ -2755,11 +2761,11 @@ module npu_top #(
                     wgt_dma_start <= 1'b1;
                     wgt_dma_addr <= {fc_wgt_dma_base[31:5], 5'b0};
                     wgt_dma_byte_offset <= fc_wgt_dma_base[4:0];
-                    // Phase 5-2: streaming GEMM loads full B[K,N] for N-tiling
-                    wgt_dma_bytes <= gemm_row_streaming_en ?
+                    // Phase 5-2: streaming (GEMM/FC) loads full B[K,N] for N-tiling
+                    wgt_dma_bytes <= matrix_streaming_en ?
                         (output_c * input_c) + {27'd0, fc_wgt_dma_base[4:0]} :
                         (fc_tile_outputs * input_c) + {27'd0, fc_wgt_dma_base[4:0]};
-                    if (gemm_row_streaming_en)
+                    if (matrix_streaming_en)
                         $display("[WGT_DMA] full B: K=%0d N=%0d bytes=%0d", input_c, output_c,
                             output_c * input_c);
                     wgt_load_start <= 1'b1;
@@ -2912,7 +2918,7 @@ module npu_top #(
                 // ============================================================
                 FSM_LOAD_ARRAY: begin
                     dbg_load_array_entry <= dbg_load_array_entry + 16'd1;
-                    if (gemm_row_streaming_en) begin
+                    if (matrix_streaming_en) begin
                         // Phase 4b-1: sequential weight staging
                         if (!wgt_stage_active && !wgt_stage_done) begin
                             wgt_stage_active   <= 1'b1;
@@ -3035,7 +3041,7 @@ module npu_top #(
                     // weight_ld pulsed → weights now in array PEs
                     comp_feed_cnt <= 7'd0;
                     comp_drain_cnt <= 16'd0;
-                    if (gemm_row_streaming_en) begin
+                    if (matrix_streaming_en) begin
                         fsm_state <= FSM_GEMM_STREAM_PREP;
                     end else begin
                         comp_sub_state <= fc_or_gemm ? CP_FEED_ACT : CP_WAIT_WIN;
@@ -3060,7 +3066,7 @@ module npu_top #(
                                                    (input_c - (fc_in_base + fc_chunk_inputs));
                         fc_shadow_wait <= 1'b1;
                     end
-                    if (!gemm_row_streaming_en)
+                    if (!matrix_streaming_en)
                         fsm_state <= FSM_COMPUTE;
                 end
 
