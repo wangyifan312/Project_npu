@@ -670,11 +670,10 @@ module npu_top #(
     wire is_vec_relu_mode = (task_type == 3'd6);
     wire is_gemm_mode    = (task_type == 3'd7);
     wire gemm_row_streaming_en = is_gemm_mode && conv_cfg[5];
-    // Phase U1: FC streaming mode — pure FC matmul (no bias/requant/relu) routed
-    // through streaming GEMM pipeline.  Post-op FC falls back to legacy.
-    // relu_en can fire without bias_enabled (array_relu_final at line 1550);
-    // streaming path bypasses that ReLU, so gate fc_streaming_en on !relu_en too.
-    wire fc_streaming_en    = is_fc_mode && conv_cfg[5] && !bias_enabled && !relu_en;
+    // Phase U4-b: FC streaming mode — FC matmul or matmul+ReLU routed through
+    // streaming GEMM pipeline.  ReLU handled via store_desc_relu_en in GST.
+    // FC with bias/requant still falls back to legacy.
+    wire fc_streaming_en    = is_fc_mode && conv_cfg[5] && !bias_enabled;
     wire matrix_streaming_en = gemm_row_streaming_en || fc_streaming_en;
     wire gemm_weight_hit = is_gemm_mode && gemm_weight_valid &&
         !gemm_row_streaming_en &&  // Phase 3b: streaming GEMM bypasses legacy cache
@@ -711,6 +710,8 @@ module npu_top #(
     reg [31:0] store_desc_base_addr;
     reg [31:0] store_desc_row_stride;
     reg        store_desc_bank;
+    // Phase U4-b: per-tile ReLU enable — latched with store_desc_* at STORE launch
+    reg        store_desc_relu_en;
     // Phase 4c-2: STORE micro-FSM inside FSM_GEMM_STREAM_STORE (single always block)
     localparam GST_PUSH_BEAT  = 3'd0;
     localparam GST_START      = 3'd1;
@@ -2222,6 +2223,7 @@ module npu_top #(
             compute_result_bank   <= 1'b0;
             store_result_bank     <= 1'b0;
             store_desc_bank   <= 1'b0;
+            store_desc_relu_en <= 1'b0;
             store_desc_M      <= 16'd0;
             store_desc_N      <= 16'd0;
             gemm_store_eng_active <= 1'b0;
@@ -4096,6 +4098,7 @@ module npu_top #(
                         store_desc_base_addr  <= blk_out_addr;
                         store_desc_row_stride <= (gemm_N_val * 32'd4 + 32'd31) & 32'hFFFF_FFE0;
                         store_desc_bank       <= compute_result_bank;
+                        store_desc_relu_en   <= fc_streaming_en && relu_en;
                         // Launch current tile STORE
                         gemm_store_row_idx <= 16'd0;
                         gemm_store_beat_idx <= 16'd0;
@@ -4181,6 +4184,7 @@ module npu_top #(
                             store_desc_base_addr  <= blk_out_addr;
                             store_desc_row_stride <= (gemm_N_val * 32'd4 + 32'd31) & 32'hFFFF_FFE0;
                             store_desc_bank       <= compute_result_bank;
+                            store_desc_relu_en   <= fc_streaming_en && relu_en;
                             gemm_store_row_idx <= 16'd0;
                             gemm_store_beat_idx <= 16'd0;
                             gemm_store_eng_active <= 1'b1;
@@ -4443,9 +4447,13 @@ module npu_top #(
                                           16'd8 : (store_desc_N - base_col);
                         beat = 256'd0;
                         for (lane = 0; lane < this_beat_cols; lane = lane + 1) begin
-                            beat[lane*32 +: 32] = store_desc_bank ?
+                            reg signed [31:0] gst_val;
+                            gst_val = store_desc_bank ?
                                 result_tile_bank1[gemm_store_row_idx][base_col + lane] :
                                 result_tile_bank0[gemm_store_row_idx][base_col + lane];
+                            // Phase U4-b: INT32 ReLU — zero negative values
+                            beat[lane*32 +: 32] = (store_desc_relu_en && gst_val[31])
+                                                  ? 32'sd0 : gst_val;
                         end
                         if (!wf_wr_full) begin
                             dma_wr_data_r <= beat;
