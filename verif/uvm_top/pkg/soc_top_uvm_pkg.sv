@@ -267,6 +267,11 @@ package soc_top_uvm_pkg;
   `include "npu_int8_extreme_value_stress_test.sv"
   `include "npu_back_to_back_task_stress_test.sv"
 
+  //---------------------------------------------------------------------------
+  // Phase U5-b: Bug B1 diagnosis — GEMM N-tile nonuniform data
+  //---------------------------------------------------------------------------
+  `include "npu_gemm_ntile_nonuniform_diag_test.sv"
+
 endpackage
 
 `endif // SOC_TOP_UVM_PKG_SV

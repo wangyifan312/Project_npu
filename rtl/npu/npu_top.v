@@ -1968,10 +1968,15 @@ module npu_top #(
                     integer wp_beatsz;
                     integer wp_count;
                     integer wp_lane;
+                    integer wp_lanes_in_beat;
                     wp_remain = (wgt_pref_n_tile * wgt_pref_k_tile) - wgt_pref_lane_idx;
                     wp_beatsz = 32'd32 - {27'd0, wgt_pref_abs_byte_idx[4:0]};
+                    // Phase U5-b: same n_tile lane-per-beat limit as weight staging
+                    wp_lanes_in_beat = (wgt_pref_n_tile == 16'd0) ? 32'd32 :
+                        {16'd0, wgt_pref_n_tile} - (wgt_pref_lane_idx % {16'd0, wgt_pref_n_tile});
                     wp_count  = (wp_remain > 32'd32) ? 32'd32 : wp_remain;
                     if (wp_beatsz < wp_count) wp_count = wp_beatsz;
+                    if (wp_lanes_in_beat < wp_count) wp_count = wp_lanes_in_beat;
                     for (wp_lane = 0; wp_lane < 32; wp_lane = wp_lane + 1) begin
                         if (wp_lane < wp_count) begin
                             reg [31:0] wp_lane_idx;
@@ -2053,10 +2058,19 @@ module npu_top #(
                     integer ws_beatsz;
                     integer ws_count;
                     integer ws_lane;
+                    integer ws_lanes_in_beat;
                     ws_remain = (wgt_stage_n_tile * wgt_stage_k_tile) - wgt_stage_lane_idx;
                     ws_beatsz = 32'd32 - {27'd0, wgt_stage_abs_byte_idx[4:0]};
+                    // Phase U5-b: limit lanes per beat to consecutive lanes within
+                    // the same B-matrix row.  For n_tile < 32, only n_tile lanes
+                    // fit in one 32-byte beat (each lane shift of n_tile adds N
+                    // bytes to the buffer index, crossing a beat boundary when
+                    // N > 32 or when lane wraps to next row).
+                    ws_lanes_in_beat = (wgt_stage_n_tile == 16'd0) ? 32'd32 :
+                        {16'd0, wgt_stage_n_tile} - (wgt_stage_lane_idx % {16'd0, wgt_stage_n_tile});
                     ws_count  = (ws_remain > 32'd32) ? 32'd32 : ws_remain;
                     if (ws_beatsz < ws_count) ws_count = ws_beatsz;
+                    if (ws_lanes_in_beat < ws_count) ws_count = ws_lanes_in_beat;
                     for (ws_lane = 0; ws_lane < 32; ws_lane = ws_lane + 1) begin
                         if (ws_lane < ws_count) begin
                             reg [31:0] ws_lane_idx;
