@@ -1122,7 +1122,8 @@ module npu_top #(
         ((comp_sub_state == CP_FEED_ACT) ||
          (comp_sub_state == CP_DRAIN) ||
          (comp_sub_state == CP_COLLECT));
-    assign perf_array_active_evt = perf_conv_array_active || perf_fc_array_active;
+    assign perf_array_active_evt = perf_conv_array_active || perf_fc_array_active
+                                   || (matrix_streaming_en && stream_active);
     assign perf_array_stall_evt = perf_conv_array_stall;
     assign perf_conv_window_count =
         conv_out_dim(input_h, conv_kernel_size, conv_stride, conv_same_pad) *
@@ -1131,9 +1132,10 @@ module npu_top #(
     assign perf_conv_mac_count = perf_conv_window_count * perf_conv_channel_work * conv_kernel_area;
     assign perf_fc_mac_count = input_bytes * output_c;
     assign perf_mac_lo = is_conv_mode ? perf_conv_mac_count[31:0] :
-                         is_fc_mode   ? perf_fc_mac_count[31:0] :
-                                        32'd0;
+                         is_fc_mode || is_gemm_mode ? perf_fc_mac_count[31:0] :
+                                                      32'd0;
     assign perf_mac_hi = is_conv_mode ? perf_conv_mac_count[63:32] :
+                         is_fc_mode || is_gemm_mode ? perf_fc_mac_count[63:32] :
                          is_fc_mode   ? perf_fc_mac_count[63:32] :
                                         32'd0;
     assign perf_cluster_cfg = {24'd0, cluster_mode_cfg, perf_cluster_enable};
@@ -1638,7 +1640,10 @@ module npu_top #(
     // ============================================================
 
     // --- Enhanced phase-level activity signals ---
-    assign perf_compute_active = compute_fsm_active;
+    // Phase U5-d: include GEMM/FC streaming states for perf counter coverage
+    wire perf_streaming_run   = (fsm_state == FSM_GEMM_STREAM_RUN);
+    wire perf_streaming_store = (fsm_state == FSM_GEMM_STREAM_STORE);
+    assign perf_compute_active = compute_fsm_active || perf_streaming_run;
     assign perf_load_active = (fsm_state == FSM_LOAD_ACT) || (fsm_state == FSM_CF_START) ||
         (fsm_state == FSM_PRE_COMP) || (fsm_state == FSM_CIN_START) ||
         (fsm_state == FSM_CIN_LOAD_WGT) || (fsm_state == FSM_CIN_LOAD_DONE) ||
@@ -1648,8 +1653,9 @@ module npu_top #(
         (fsm_state == FSM_LOAD_ADD_SRC1) || (fsm_state == FSM_ADD_SRC1_WAIT) ||
         (fsm_state == FSM_FC_TILE_PREP) || (fsm_state == FSM_FC_LOAD_WGT) ||
         (fsm_state == FSM_FC_LOAD_WAIT) || (fsm_state == FSM_CIN_RESTART);
-    assign perf_store_active = (fsm_state == FSM_STORE) || (pipe_mode && fsm_state == FSM_PIPE_RUN);
-    assign perf_collect_active = compute_fsm_active && (comp_sub_state == CP_COLLECT);
+    assign perf_store_active = (fsm_state == FSM_STORE) || (pipe_mode && fsm_state == FSM_PIPE_RUN)
+                               || perf_streaming_store;
+    assign perf_collect_active = (compute_fsm_active && (comp_sub_state == CP_COLLECT));
 
     // --- Read/Write valid byte counts ---
     assign perf_read_byte_cnt = 6'd32;  // all read beats are full 256-bit (32 bytes)
