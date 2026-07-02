@@ -2427,6 +2427,7 @@ module npu_top #(
                                 // P1: restore preload bank after bias extraction
                                 if (fc_use_preload)
                                     wgt_consume_bank <= fc_preload_bank;
+                                wgt_dma_start <= 1'b0;  // clear for next DMA edge
                                 fsm_state <= bias_return_state;
                             end
                         end else begin

@@ -20,6 +20,7 @@ class npu_fc_streaming_fallback_test extends soc_base_test;
     bit [31:0] rdata, cycle_lo, ctrl_val;
     int i, total_errs;
     int K_v, N_v;
+    int exp_int8;
 
     phase.raise_objection(this);
     m_seq = soc_base_seq::type_id::create("m_seq");
@@ -85,26 +86,26 @@ class npu_fc_streaming_fallback_test extends soc_base_test;
     `uvm_info("TEST", $sformatf("FALLBACK: CTRL=0x%08x STATUS=0x%08x done=%0d error=%0d",
       ctrl_val, rdata, ctrl_val[2], ctrl_val[3]), UVM_NONE)
 
+    // Always check output data regardless of error flag
+    // Legacy FC with bias: output is requantized INT8
+    // C[n] = requant(bias + sum_k A[k]*W[n][k])
+    // = requant(0 + sum_k 1*1) = requant(K) = clamp(K, -128, 127) = 4
+    exp_int8 = K_v;  // K=4, requant(mult=1,shift=0) = 4, no clamp needed
+    if (exp_int8 > 127) exp_int8 = 127;
+
+    // Read output as 32-bit words, extract byte
+    for (i=0; i<N_v; i++) begin
+      m_seq.axil_read32(32'h0002_0000 + i*4, rdata);
+      if ($signed(rdata[7:0]) != exp_int8) begin
+        if (total_errs<5)
+          `uvm_error("TEST",$sformatf("FALLBACK C[%0d]=%0d expected %0d",
+            i, $signed(rdata[7:0]), exp_int8))
+        total_errs++;
+      end
+    end
+
     if (ctrl_val[3]) begin
       `uvm_error("TEST",$sformatf("FALLBACK ERROR code=0x%02x",rdata[7:0]))
-    end else begin
-      // Legacy FC with bias: output is requantized INT8
-      // C[n] = requant(bias + sum_k A[k]*W[n][k])
-      // = requant(0 + sum_k 1*1) = requant(K) = clamp(K, -128, 127) = 4
-      int exp_int8;
-      exp_int8 = K_v;  // K=4, requant(mult=1,shift=0) = 4, no clamp needed
-      if (exp_int8 > 127) exp_int8 = 127;
-
-      // Read output as 32-bit words, extract byte
-      for (i=0; i<N_v; i++) begin
-        m_seq.axil_read32(32'h0002_0000 + i*4, rdata);
-        if ($signed(rdata[7:0]) != exp_int8) begin
-          if (total_errs<5)
-            `uvm_error("TEST",$sformatf("FALLBACK C[%0d]=%0d expected %0d",
-              i, $signed(rdata[7:0]), exp_int8))
-          total_errs++;
-        end
-      end
     end
 
     `uvm_info("TEST",$sformatf("FALLBACK: cycles=%0d errors=%0d %s",
