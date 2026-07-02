@@ -66,6 +66,9 @@ class npu_fc_streaming_fallback_test extends soc_base_test;
     // Bias configuration
     m_seq.axil_write32(`NPU_REG_BIAS_ADDR,   32'h0000_0400);
     m_seq.axil_write32(`NPU_REG_BIAS_BYTES,  N_v*4);
+    // Requant pass-through: mult=1, shift=0 preserves INT32 value
+    m_seq.axil_write32(`NPU_REG_REQUANT0_MULT,  32'd1);
+    m_seq.axil_write32(`NPU_REG_REQUANT0_SHIFT, 32'd0);
 
     // Start and poll
     m_seq.axil_write32(`NPU_REG_CTRL, 32'd1);
@@ -77,8 +80,12 @@ class npu_fc_streaming_fallback_test extends soc_base_test;
 
     m_seq.axil_read32(`NPU_REG_PERF_CYCLE_LO, cycle_lo);
 
+    // Read STATUS for detailed error info
+    m_seq.axil_read32(`NPU_REG_STATUS, rdata);
+    `uvm_info("TEST", $sformatf("FALLBACK: CTRL=0x%08x STATUS=0x%08x done=%0d error=%0d",
+      ctrl_val, rdata, ctrl_val[2], ctrl_val[3]), UVM_NONE)
+
     if (ctrl_val[3]) begin
-      m_seq.axil_read32(`NPU_REG_STATUS, rdata);
       `uvm_error("TEST",$sformatf("FALLBACK ERROR code=0x%02x",rdata[7:0]))
     end else begin
       // Legacy FC with bias: output is requantized INT8
