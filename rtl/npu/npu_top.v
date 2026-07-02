@@ -1122,7 +1122,8 @@ module npu_top #(
         ((comp_sub_state == CP_FEED_ACT) ||
          (comp_sub_state == CP_DRAIN) ||
          (comp_sub_state == CP_COLLECT));
-    assign perf_array_active_evt = perf_conv_array_active || perf_fc_array_active;
+    assign perf_array_active_evt = perf_conv_array_active || perf_fc_array_active
+                                   || (matrix_streaming_en && stream_active);
     assign perf_array_stall_evt = perf_conv_array_stall;
     assign perf_conv_window_count =
         conv_out_dim(input_h, conv_kernel_size, conv_stride, conv_same_pad) *
@@ -1131,9 +1132,10 @@ module npu_top #(
     assign perf_conv_mac_count = perf_conv_window_count * perf_conv_channel_work * conv_kernel_area;
     assign perf_fc_mac_count = input_bytes * output_c;
     assign perf_mac_lo = is_conv_mode ? perf_conv_mac_count[31:0] :
-                         is_fc_mode   ? perf_fc_mac_count[31:0] :
-                                        32'd0;
+                         is_fc_mode || is_gemm_mode ? perf_fc_mac_count[31:0] :
+                                                      32'd0;
     assign perf_mac_hi = is_conv_mode ? perf_conv_mac_count[63:32] :
+                         is_fc_mode || is_gemm_mode ? perf_fc_mac_count[63:32] :
                          is_fc_mode   ? perf_fc_mac_count[63:32] :
                                         32'd0;
     assign perf_cluster_cfg = {24'd0, cluster_mode_cfg, perf_cluster_enable};
@@ -1192,7 +1194,8 @@ module npu_top #(
         .array_fill_drain_cycles(perf_array_fill_drain)
     );
 
-    wire [15:0] fc_tile_capacity_raw = ((BUF_ENTRIES * HB_BEAT_BYTES) / input_c);
+    wire [31:0] fc_tile_capacity_raw_full = (BUF_ENTRIES * HB_BEAT_BYTES) / {16'd0, input_c};
+    wire [15:0] fc_tile_capacity_raw = (fc_tile_capacity_raw_full > 32'd65535) ? 16'd65535 : fc_tile_capacity_raw_full[15:0];
     wire [15:0] fc_tile_capacity_buf = (fc_tile_capacity_raw == 16'd0) ? 16'd1 : fc_tile_capacity_raw;
     wire [15:0] fc_tile_capacity = (fc_tile_capacity_buf > PE_COLS_16) ? PE_COLS_16 : fc_tile_capacity_buf;
     wire [15:0] fc_out_remaining = output_c - fc_out_start;
@@ -1638,7 +1641,10 @@ module npu_top #(
     // ============================================================
 
     // --- Enhanced phase-level activity signals ---
-    assign perf_compute_active = compute_fsm_active;
+    // Phase U5-d: include GEMM/FC streaming states for perf counter coverage
+    wire perf_streaming_run   = (fsm_state == FSM_GEMM_STREAM_RUN);
+    wire perf_streaming_store = (fsm_state == FSM_GEMM_STREAM_STORE);
+    assign perf_compute_active = compute_fsm_active || perf_streaming_run;
     assign perf_load_active = (fsm_state == FSM_LOAD_ACT) || (fsm_state == FSM_CF_START) ||
         (fsm_state == FSM_PRE_COMP) || (fsm_state == FSM_CIN_START) ||
         (fsm_state == FSM_CIN_LOAD_WGT) || (fsm_state == FSM_CIN_LOAD_DONE) ||
@@ -1648,8 +1654,9 @@ module npu_top #(
         (fsm_state == FSM_LOAD_ADD_SRC1) || (fsm_state == FSM_ADD_SRC1_WAIT) ||
         (fsm_state == FSM_FC_TILE_PREP) || (fsm_state == FSM_FC_LOAD_WGT) ||
         (fsm_state == FSM_FC_LOAD_WAIT) || (fsm_state == FSM_CIN_RESTART);
-    assign perf_store_active = (fsm_state == FSM_STORE) || (pipe_mode && fsm_state == FSM_PIPE_RUN);
-    assign perf_collect_active = compute_fsm_active && (comp_sub_state == CP_COLLECT);
+    assign perf_store_active = (fsm_state == FSM_STORE) || (pipe_mode && fsm_state == FSM_PIPE_RUN)
+                               || perf_streaming_store;
+    assign perf_collect_active = (compute_fsm_active && (comp_sub_state == CP_COLLECT));
 
     // --- Read/Write valid byte counts ---
     assign perf_read_byte_cnt = 6'd32;  // all read beats are full 256-bit (32 bytes)
@@ -2421,6 +2428,7 @@ module npu_top #(
                                 // P1: restore preload bank after bias extraction
                                 if (fc_use_preload)
                                     wgt_consume_bank <= fc_preload_bank;
+                                wgt_dma_start <= 1'b0;  // clear for next DMA edge
                                 fsm_state <= bias_return_state;
                             end
                         end else begin
@@ -4408,8 +4416,10 @@ module npu_top #(
                     end else if (fsm_state == FSM_STORE) begin
                         // Normal STORE completion
                         rq_mode_internal <= 1'b0;
+                        rq_mode_internal <= 1'b0;
                         rq_word_store_mode <= 1'b0;
                         dma_wr_valid_r <= 1'b0;
+                        dma_wr_start <= 1'b0;
                         dma_wr_started <= 1'b0;
                         dma_rd_ptr <= 0;
                         store_pack_state <= SP_IDLE;

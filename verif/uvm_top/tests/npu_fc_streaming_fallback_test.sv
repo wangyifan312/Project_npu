@@ -6,6 +6,11 @@
 //
 // fc_streaming_en = is_fc_mode && conv_cfg[5] && !bias_enabled
 // When bias is enabled, fc_streaming_en=0 → legacy path
+//
+// Phase U5-d3: Fixed output verification for PACKED INT8 mode.
+// Legacy FC+bias requant packs 4 INT8 outputs per 32-bit word
+// (rq_word_store_mode=0, dense packing). The test reads the
+// packed word and extracts individual byte values.
 //=============================================================================
 `timescale 1ns / 1ps
 
@@ -28,7 +33,7 @@ class npu_fc_streaming_fallback_test extends soc_base_test;
 
     K_v=4; N_v=4;
 
-    `uvm_info("TEST","=== FC_STREAMING FALLBACK (Phase U1) ===",UVM_NONE)
+    `uvm_info("TEST","=== FC_STREAMING FALLBACK (Phase U1 / U5-d3) ===",UVM_NONE)
     `uvm_info("TEST",$sformatf("-- FALLBACK: M=1 K=%0d N=%0d with bias & conv_cfg[5]=1 --",
       K_v,N_v),UVM_NONE)
 
@@ -37,15 +42,14 @@ class npu_fc_streaming_fallback_test extends soc_base_test;
       m_seq.axil_write32(32'h0000_0100+i, 32'h01010101);
 
     // Preload W[K][N] — legacy N-major: W[n][k] layout
-    // For N=4,K=4: each row n has K bytes, all 1s
     for (i=0; i<K_v*N_v; i=i+4)
       m_seq.axil_write32(32'h0001_0000+i, 32'h01010101);
 
-    // Preload bias: 4 INT32 = 0
+    // Preload bias: N INT32 = 0
     for (i=0; i<N_v*4; i=i+4)
       m_seq.axil_write32(32'h0000_0400+i, 32'd0);
 
-    // Clear output
+    // Clear output — N INT8 packed bytes (N bytes, not N*4)
     for (i=0; i<N_v*4; i=i+4)
       m_seq.axil_write32(32'h0002_0000+i, 32'hDEADBEEF);
 
@@ -66,6 +70,9 @@ class npu_fc_streaming_fallback_test extends soc_base_test;
     // Bias configuration
     m_seq.axil_write32(`NPU_REG_BIAS_ADDR,   32'h0000_0400);
     m_seq.axil_write32(`NPU_REG_BIAS_BYTES,  N_v*4);
+    // Requant pass-through: mult=1, shift=0 preserves INT32 value in INT8 range
+    m_seq.axil_write32(`NPU_REG_REQUANT0_MULT,  32'd1);
+    m_seq.axil_write32(`NPU_REG_REQUANT0_SHIFT, 32'd0);
 
     // Start and poll
     m_seq.axil_write32(`NPU_REG_CTRL, 32'd1);
@@ -77,31 +84,33 @@ class npu_fc_streaming_fallback_test extends soc_base_test;
 
     m_seq.axil_read32(`NPU_REG_PERF_CYCLE_LO, cycle_lo);
 
+    // Legacy FC with bias: requant output is PACKED INT8
+    // 4 INT8 outputs packed into 1 32-bit word (rq_word_store_mode=0)
+    // C[n] = requant(bias + sum_k A[k]*W[n][k])
+    // = requant(0 + sum_k 1*1) = requant(K) = clamp(K, -128, 127) = 4
+    total_errs = 0;
+    m_seq.axil_read32(32'h0002_0000, rdata);
+    `uvm_info("TEST", $sformatf("FALLBACK: CTRL=0x%08x packed_word=0x%08x cycles=%0d",
+      ctrl_val, rdata, cycle_lo), UVM_NONE)
+
     if (ctrl_val[3]) begin
       m_seq.axil_read32(`NPU_REG_STATUS, rdata);
       `uvm_error("TEST",$sformatf("FALLBACK ERROR code=0x%02x",rdata[7:0]))
-    end else begin
-      // Legacy FC with bias: output is requantized INT8
-      // C[n] = requant(bias + sum_k A[k]*W[n][k])
-      // = requant(0 + sum_k 1*1) = requant(K) = clamp(K, -128, 127) = 4
-      int exp_int8;
-      exp_int8 = K_v;  // K=4, requant(mult=1,shift=0) = 4, no clamp needed
-      if (exp_int8 > 127) exp_int8 = 127;
+    end
 
-      // Read output as 32-bit words, extract byte
-      for (i=0; i<N_v; i++) begin
-        m_seq.axil_read32(32'h0002_0000 + i*4, rdata);
-        if ($signed(rdata[7:0]) != exp_int8) begin
-          if (total_errs<5)
-            `uvm_error("TEST",$sformatf("FALLBACK C[%0d]=%0d expected %0d",
-              i, $signed(rdata[7:0]), exp_int8))
-          total_errs++;
-        end
+    // Verify packed INT8 output: each byte should be K_v = 4
+    m_seq.axil_read32(32'h0002_0000, rdata);
+    for (i=0; i<N_v; i++) begin
+      if (rdata[i*8 +: 8] != (K_v & 8'hFF)) begin
+        if (total_errs<8)
+          `uvm_error("TEST",$sformatf("FALLBACK C[%0d]=%0d expected %0d",
+            i, rdata[i*8 +: 8], K_v & 8'hFF))
+        total_errs++;
       end
     end
 
     `uvm_info("TEST",$sformatf("FALLBACK: cycles=%0d errors=%0d %s",
-      cycle_lo,total_errs, (total_errs==0)?"PASS":"FAIL"),UVM_NONE)
+      cycle_lo,total_errs, (total_errs==0 && $signed(ctrl_val[2])?"PASS":"FAIL")),UVM_NONE)
     phase.drop_objection(this);
   endtask
 endclass
