@@ -281,9 +281,32 @@ Phase U4-d (HIGHER risk):
   → Fallback to Option B bridge if GST packing proves unstable
 ```
 
+### U4-b Implementation Note: store_desc_relu_en
+
+Do NOT use the raw global `relu_en` wire directly in GST. GST is a background STORE engine that may overlap with the NEXT tile's compute (STORE/RUN overlap). The post-op setting must belong to the tile being stored, not to a live global control register.
+
+**Recommended approach**: Latch `relu_en` when locking `store_desc_*`:
+
+```verilog
+// New field in store descriptor:
+reg store_desc_relu_en;
+
+// In FSM_GEMM_STREAM_DONE (where store_desc_* is locked):
+store_desc_relu_en <= fc_streaming_en && relu_en;
+
+// In GST_PUSH_BEAT:
+for (lane = 0; lane < this_beat_cols; lane = lane + 1) begin
+    int32_val = store_desc_bank ? result_tile_bank1[row][base_col + lane]
+                                 : result_tile_bank0[row][base_col + lane];
+    beat[lane*32 +: 32] = (store_desc_relu_en && int32_val[31]) ? 32'sd0 : int32_val;
+end
+```
+
+This ensures the ReLU setting for each tile is snapshot at STORE launch time, consistent with `store_desc_bank`, `store_desc_base_addr`, etc.
+
 ---
 
-## 11. Test Plan (U4-b through U4-d)
+## 12. Test Plan (U4-b through U4-d)
 
 | Phase | Test | Output | Verification |
 |-------|------|--------|-------------|
@@ -297,7 +320,7 @@ Phase U4-d (HIGHER risk):
 
 ---
 
-## 12. Blockers and Preconditions
+## 13. Blockers and Preconditions
 
 ### No blockers for U4-b
 
@@ -321,7 +344,7 @@ Phase U4-d (HIGHER risk):
 
 ---
 
-## 13. Decision Matrix
+## 14. Decision Matrix
 
 | Option | Risk | RTL Change | Benefit | Recommended |
 |--------|:----:|:----------:|--------|:-----------:|
@@ -333,7 +356,7 @@ Phase U4-d (HIGHER risk):
 
 ---
 
-## 14. Conclusion
+## 15. Conclusion
 
 ```
 Phase U4-b recommended as next coding phase:
