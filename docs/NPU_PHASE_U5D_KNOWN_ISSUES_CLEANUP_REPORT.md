@@ -1,8 +1,9 @@
 # NPU Phase U5-d: Known Issues Cleanup Report
 
-**Date:** 2026-07-02  
+**Date:** 2026-07-02 (Updated U5-d3)  
 **Branch:** `feature/npu-known-issue-cleanup-u5d`  
-**Phase:** U5-d (Known Issues Cleanup and Verification Hardening)
+**Phase:** U5-d (Known Issues Cleanup and Verification Hardening)  
+**Final tag:** `npu-matrixop-final-baseline-u5d`
 
 ---
 
@@ -45,7 +46,32 @@ The task still reports `CTRL=0x00000008` (error bit=1, done bit=0) with `STATUS=
 
 **Recommendation:** Defer to future work. Not blocking for final baseline.
 
-### 3.4 K1 Status: **Partial fix applied, residual issue documented**
+### 3.4 K1-b: fc_tile_capacity_raw 16-bit Overflow — Fixed (Phase U5-d3)
+
+**Root cause (Code):** `fc_tile_capacity_raw` at `npu_top.v:1195` is declared as 16-bit:
+```verilog
+wire [15:0] fc_tile_capacity_raw = ((BUF_ENTRIES * HB_BEAT_BYTES) / input_c);
+```
+With `BUF_ENTRIES=16384` (real project parameter) and `HB_BEAT_BYTES=32`:
+- `16384 * 32 = 524288` → requires 20 bits
+- 16-bit truncation → `fc_tile_capacity_raw = 0`
+- `fc_tile_capacity_buf` falls back to default 1
+- `fc_tile_outputs = min(4, 1) = 1`
+- `rq_store_bytes = 1` → `dma_wr_bytes = 1`
+- DMA writer WSTRB=0x01 → only 1 byte written
+
+**Why only small input_c triggers it:** For K=64, `524288/64=8192` fits in 16 bits. For K=4, `524288/4=131072` overflows.
+
+**Fix:** Compute as 32-bit, clamp to 65535 before 16-bit assignment:
+```verilog
+wire [31:0] fc_tile_capacity_raw_full = (BUF_ENTRIES * HB_BEAT_BYTES) / {16'd0, input_c};
+wire [15:0] fc_tile_capacity_raw = (fc_tile_capacity_raw_full > 32'd65535) ? 16'd65535 : fc_tile_capacity_raw_full[15:0];
+```
+
+**Also fixed:** Fallback test now correctly reads PACKED INT8 output (4 bytes per 32-bit word, matching `rq_word_store_mode=0`).
+
+### 3.5 K1 Status: **Fully Fixed** ✅  
+`npu_fc_streaming_fallback_test` PASS, UVM_ERROR=0, output_c=1/4/8/9 boundary verified.
 
 ---
 
@@ -215,22 +241,25 @@ Defer to future work after K1 is fully resolved. The MatrixOp streaming fast pat
 
 ## 13. U5-d Merge Recommendation
 
-**RECOMMEND: Merge K2 fix only.**
+**RECOMMEND: Merge all U5-d commits.**
 
-Justification:
-- K2 fix (enhanced perf counters) is a safe 12-line change with clear benefit (counters now work for streaming workloads)
-- K1 partial fix (requant parameters) is a test-side change only
-- K3-K5 are documentation-only or deferred
-- No new regressions introduced
-- MatrixOp fast path unaffected
+All 5 U5-d commits are verified and regression-tested:
+- K1 fully fixed (requant params + fc_tile_capacity_raw overflow)
+- K2 fully fixed (enhanced perf counters for GEMM/FC streaming)
+- K3-K5 documented or deferred
+- MatrixOp fast path: no regression
+- UVM_FATAL=0, UVM_ERROR=0
 
-**If merged, recommend new tag: `npu-matrixop-final-baseline-u5d`**
+**New tag: `npu-matrixop-final-baseline-u5d`**
 
 ---
 
 ## 14. Commit Summary
 
 ```
-781d776 — fix: add requant parameters and diagnostics to FC fallback test (K1 partial)
-2f5bc87 — fix: enable enhanced NPU performance counters for GEMM/FC streaming (K2)
+08c3d73 — fix: K1-b: correct 16-bit overflow in fc_tile_capacity_raw (FINAL)
+dfe5773 — fix: K1-b diagnostic: wgt_dma_start edge + output verification
+c9a8796 — docs: add U5-d known issues cleanup report
+2f5bc87 — fix: K2: enable enhanced NPU performance counters
+781d776 — fix: K1-a: add requant parameters to fallback test
 ```
