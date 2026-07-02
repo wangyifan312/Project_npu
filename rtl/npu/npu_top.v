@@ -670,9 +670,11 @@ module npu_top #(
     wire is_vec_relu_mode = (task_type == 3'd6);
     wire is_gemm_mode    = (task_type == 3'd7);
     wire gemm_row_streaming_en = is_gemm_mode && conv_cfg[5];
-    // Phase U1: FC streaming mode — pure FC matmul (no bias/requant) routed
+    // Phase U1: FC streaming mode — pure FC matmul (no bias/requant/relu) routed
     // through streaming GEMM pipeline.  Post-op FC falls back to legacy.
-    wire fc_streaming_en    = is_fc_mode && conv_cfg[5] && !bias_enabled;
+    // relu_en can fire without bias_enabled (array_relu_final at line 1550);
+    // streaming path bypasses that ReLU, so gate fc_streaming_en on !relu_en too.
+    wire fc_streaming_en    = is_fc_mode && conv_cfg[5] && !bias_enabled && !relu_en;
     wire matrix_streaming_en = gemm_row_streaming_en || fc_streaming_en;
     wire gemm_weight_hit = is_gemm_mode && gemm_weight_valid &&
         !gemm_row_streaming_en &&  // Phase 3b: streaming GEMM bypasses legacy cache
