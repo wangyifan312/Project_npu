@@ -1194,7 +1194,8 @@ module npu_top #(
         .array_fill_drain_cycles(perf_array_fill_drain)
     );
 
-    wire [15:0] fc_tile_capacity_raw = ((BUF_ENTRIES * HB_BEAT_BYTES) / input_c);
+    wire [31:0] fc_tile_capacity_raw_full = (BUF_ENTRIES * HB_BEAT_BYTES) / {16'd0, input_c};
+    wire [15:0] fc_tile_capacity_raw = (fc_tile_capacity_raw_full > 32'd65535) ? 16'd65535 : fc_tile_capacity_raw_full[15:0];
     wire [15:0] fc_tile_capacity_buf = (fc_tile_capacity_raw == 16'd0) ? 16'd1 : fc_tile_capacity_raw;
     wire [15:0] fc_tile_capacity = (fc_tile_capacity_buf > PE_COLS_16) ? PE_COLS_16 : fc_tile_capacity_buf;
     wire [15:0] fc_out_remaining = output_c - fc_out_start;
@@ -4415,8 +4416,10 @@ module npu_top #(
                     end else if (fsm_state == FSM_STORE) begin
                         // Normal STORE completion
                         rq_mode_internal <= 1'b0;
+                        rq_mode_internal <= 1'b0;
                         rq_word_store_mode <= 1'b0;
                         dma_wr_valid_r <= 1'b0;
+                        dma_wr_start <= 1'b0;
                         dma_wr_started <= 1'b0;
                         dma_rd_ptr <= 0;
                         store_pack_state <= SP_IDLE;
