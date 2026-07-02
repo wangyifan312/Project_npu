@@ -1730,15 +1730,27 @@ module npu_top #(
     // producer_done: asserted when producer finishes producing all data for the
     // current phase. The DMA writer uses this to avoid hanging in S_WAIT_DATA
     // when the remaining FIFO data is less than the calculated burst size.
-    // Covered: store_pack (all task types), vec_relu streaming path.
-    assign dma_producer_done = (((fsm_state == FSM_STORE) || (fsm_state == FSM_PIPE_RUN) || pipe_mode) &&
-                                 (store_pack_state == SP_IDLE) &&
-                                 dma_wr_started &&
-                                 (store_word_idx >= store_words_active)) ||
-                               ((fsm_state == FSM_VEC_RELU_PROC) &&
-                                 dma_wr_started &&
-                                 vec_relu_read_done &&
-                                 vec_relu_proc_done);
+    // Covered: store_pack (all task types), vec_relu streaming path,
+    //          GEMM streaming background STORE engine (Phase 4c-2, placeholder).
+    wire dma_producer_done_legacy;
+    assign dma_producer_done_legacy = (((fsm_state == FSM_STORE) || (fsm_state == FSM_PIPE_RUN) || pipe_mode) &&
+                                        (store_pack_state == SP_IDLE) &&
+                                        dma_wr_started &&
+                                        (store_word_idx >= store_words_active)) ||
+                                      ((fsm_state == FSM_VEC_RELU_PROC) &&
+                                        dma_wr_started &&
+                                        vec_relu_read_done &&
+                                        vec_relu_proc_done);
+
+    // Phase 4c-2 placeholder: gemm_store_eng_active will be driven by STORE engine FSM
+    wire gemm_store_eng_active = 1'b0;
+    wire gemm_store_eng_producer_done;
+    assign gemm_store_eng_producer_done = (fsm_state == FSM_GEMM_STREAM_STORE) &&
+                                           gemm_store_eng_active &&
+                                           dma_wr_started;
+
+    // Final producer_done: legacy paths OR GEMM streaming store engine
+    assign dma_producer_done = gemm_store_eng_producer_done || dma_producer_done_legacy;
 
     // ============================================================
     // 32-lane INT8 ReLU: combinational vector postprocess
