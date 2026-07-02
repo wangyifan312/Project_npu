@@ -254,6 +254,11 @@ package soc_top_uvm_pkg;
   //---------------------------------------------------------------------------
   `include "npu_fc_streaming_relu_test.sv"
 
+  //---------------------------------------------------------------------------
+  // Phase U4-d: FC streaming INT8 packing test
+  //---------------------------------------------------------------------------
+  `include "npu_fc_streaming_int8_pack_test.sv"
+
 endpackage
 
 `endif // SOC_TOP_UVM_PKG_SV
