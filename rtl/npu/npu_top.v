@@ -712,6 +712,11 @@ module npu_top #(
     reg        store_desc_bank;
     // Phase U4-b: per-tile ReLU enable — latched with store_desc_* at STORE launch
     reg        store_desc_relu_en;
+    // Phase U4-d: output dtype — 0=INT32 (default), 1=INT8 (internal test hook only)
+    reg        store_desc_output_dtype;
+    // Internal test hook (NOT a public CSR): conv_cfg[6] enables INT8 output format
+    // for FC streaming.  Default 0 → all existing paths remain INT32.
+    wire       int8_test_hook = fc_streaming_en && conv_cfg[6];
     // Phase 4c-2: STORE micro-FSM inside FSM_GEMM_STREAM_STORE (single always block)
     localparam GST_PUSH_BEAT  = 3'd0;
     localparam GST_START      = 3'd1;
@@ -2224,6 +2229,7 @@ module npu_top #(
             store_result_bank     <= 1'b0;
             store_desc_bank   <= 1'b0;
             store_desc_relu_en <= 1'b0;
+            store_desc_output_dtype <= 1'b0;
             store_desc_M      <= 16'd0;
             store_desc_N      <= 16'd0;
             gemm_store_eng_active <= 1'b0;
@@ -4096,18 +4102,22 @@ module npu_top #(
                         store_desc_M          <= gemm_tile_M;
                         store_desc_N          <= gemm_tile_N;
                         store_desc_base_addr  <= blk_out_addr;
-                        store_desc_row_stride <= (gemm_N_val * 32'd4 + 32'd31) & 32'hFFFF_FFE0;
+                        store_desc_row_stride <= int8_test_hook ?
+                            ((gemm_N_val + 32'd31) & 32'hFFFF_FFE0) :
+                            ((gemm_N_val * 32'd4 + 32'd31) & 32'hFFFF_FFE0);
                         store_desc_bank       <= compute_result_bank;
                         store_desc_relu_en   <= fc_streaming_en && relu_en;
+                        store_desc_output_dtype <= int8_test_hook;
                         // Launch current tile STORE
                         gemm_store_row_idx <= 16'd0;
                         gemm_store_beat_idx <= 16'd0;
                         gemm_store_eng_active <= 1'b1;
                         gemm_store_eng_phase  <= GST_PUSH_BEAT;
                         gemm_store_pending <= 1'b0;
-                        $display("[GST_LAUNCH] m_base=%0d n_base=%0d M=%0d N=%0d bank=%0d",
+                        $display("[GST_LAUNCH] m_base=%0d n_base=%0d M=%0d N=%0d bank=%0d dtype=%0d",
                             gemm_tile_m_base, gemm_tile_n_base,
-                            gemm_tile_M, gemm_tile_N, compute_result_bank);
+                            gemm_tile_M, gemm_tile_N, compute_result_bank,
+                            int8_test_hook);
                         // Check for next tile
                         if (gemm_tile_n_base + gemm_tile_N < gemm_N_val) begin
                             // N-tile advance: overlap STORE with next tile compute
@@ -4182,9 +4192,12 @@ module npu_top #(
                             store_desc_M          <= gemm_tile_M;
                             store_desc_N          <= gemm_tile_N;
                             store_desc_base_addr  <= blk_out_addr;
-                            store_desc_row_stride <= (gemm_N_val * 32'd4 + 32'd31) & 32'hFFFF_FFE0;
+                            store_desc_row_stride <= int8_test_hook ?
+                                ((gemm_N_val + 32'd31) & 32'hFFFF_FFE0) :
+                                ((gemm_N_val * 32'd4 + 32'd31) & 32'hFFFF_FFE0);
                             store_desc_bank       <= compute_result_bank;
                             store_desc_relu_en   <= fc_streaming_en && relu_en;
+                            store_desc_output_dtype <= int8_test_hook;
                             gemm_store_row_idx <= 16'd0;
                             gemm_store_beat_idx <= 16'd0;
                             gemm_store_eng_active <= 1'b1;
@@ -4441,33 +4454,64 @@ module npu_top #(
                         reg [255:0] beat;
                         reg [15:0]  base_col;
                         reg [15:0]  this_beat_cols;
+                        reg [5:0]   beat_cols_max;
+                        reg [31:0]  n_base_addr;      // n_base offset in bytes
+                        reg [31:0]  beat_addr_offset;  // beat_idx offset in bytes
                         integer lane;
-                        base_col = gemm_store_beat_idx << 3;
-                        this_beat_cols = (store_desc_N - base_col > 16'd8) ?
-                                          16'd8 : (store_desc_N - base_col);
+                        // Phase U4-d: output-dtype-dependent packing
+                        if (store_desc_output_dtype == 1'b0) begin
+                            // INT32: 8 columns per beat, 4 bytes per column
+                            beat_cols_max   = 6'd8;
+                            base_col        = gemm_store_beat_idx << 3;
+                            n_base_addr     = {12'd0, store_desc_n_base, 2'b0};
+                            beat_addr_offset = ({16'd0, gemm_store_beat_idx} << 5);
+                        end else begin
+                            // INT8: 32 columns per beat, 1 byte per column
+                            beat_cols_max   = 6'd32;
+                            base_col        = gemm_store_beat_idx << 5;
+                            n_base_addr     = {16'd0, store_desc_n_base};
+                            beat_addr_offset = ({16'd0, gemm_store_beat_idx} << 5);
+                        end
+                        this_beat_cols = (store_desc_N - base_col > {10'd0, beat_cols_max}) ?
+                                          {10'd0, beat_cols_max} : (store_desc_N - base_col);
                         beat = 256'd0;
-                        for (lane = 0; lane < this_beat_cols; lane = lane + 1) begin
-                            reg signed [31:0] gst_val;
-                            gst_val = store_desc_bank ?
-                                result_tile_bank1[gemm_store_row_idx][base_col + lane] :
-                                result_tile_bank0[gemm_store_row_idx][base_col + lane];
-                            // Phase U4-b: INT32 ReLU — zero negative values
-                            beat[lane*32 +: 32] = (store_desc_relu_en && gst_val[31])
-                                                  ? 32'sd0 : gst_val;
+                        if (store_desc_output_dtype == 1'b0) begin
+                            // INT32 packing: 8 values × 32-bit
+                            for (lane = 0; lane < this_beat_cols; lane = lane + 1) begin
+                                reg signed [31:0] gst_val;
+                                gst_val = store_desc_bank ?
+                                    result_tile_bank1[gemm_store_row_idx][base_col + lane] :
+                                    result_tile_bank0[gemm_store_row_idx][base_col + lane];
+                                beat[lane*32 +: 32] = (store_desc_relu_en && gst_val[31])
+                                                      ? 32'sd0 : gst_val;
+                            end
+                        end else begin
+                            // INT8 packing: 32 values × 8-bit (infrastructure only, no requant)
+                            for (lane = 0; lane < this_beat_cols; lane = lane + 1) begin
+                                reg signed [31:0] gst_val;
+                                gst_val = store_desc_bank ?
+                                    result_tile_bank1[gemm_store_row_idx][base_col + lane] :
+                                    result_tile_bank0[gemm_store_row_idx][base_col + lane];
+                                beat[lane*8 +: 8] = (store_desc_relu_en && gst_val[31])
+                                                    ? 8'd0 : gst_val[7:0];
+                            end
                         end
                         if (!wf_wr_full) begin
                             dma_wr_data_r <= beat;
                             dma_wr_valid_r <= 1'b1;
                             dma_wr_addr <= store_desc_base_addr
                                 + ((store_desc_m_base + gemm_store_row_idx) * store_desc_row_stride)
-                                + {12'd0, store_desc_n_base, 2'b0}
-                                + ({16'd0, gemm_store_beat_idx} << 5);
-                            dma_wr_bytes <= {16'd0, this_beat_cols} << 2;
-                            $display("[GST] row=%0d beat=%0d cols=%0d addr=0x%08x bytes=%0d",
+                                + n_base_addr
+                                + beat_addr_offset;
+                            dma_wr_bytes <= store_desc_output_dtype ?
+                                {16'd0, this_beat_cols} :
+                                ({16'd0, this_beat_cols} << 2);
+                            $display("[GST] row=%0d beat=%0d cols=%0d addr=0x%08x bytes=%0d dtype=%0d",
                                 gemm_store_row_idx, gemm_store_beat_idx, this_beat_cols,
                                 store_desc_base_addr + ((store_desc_m_base + gemm_store_row_idx) * store_desc_row_stride)
-                                    + (gemm_store_beat_idx * 32),
-                                this_beat_cols * 4);
+                                    + n_base_addr + beat_addr_offset,
+                                store_desc_output_dtype ? this_beat_cols : (this_beat_cols * 4),
+                                store_desc_output_dtype);
                             gemm_store_eng_phase <= GST_START;
                         end
                         // else: stall on FIFO full
@@ -4501,7 +4545,12 @@ module npu_top #(
                     end
 
                     GST_ADVANCE: begin
-                        if (gemm_store_beat_idx + 16'd1 < ((store_desc_N + 16'd7) >> 3)) begin
+                        // Phase U4-d: beats per row depends on output dtype
+                        // INT32: ceil(N/8), INT8: ceil(N/32)
+                        if (gemm_store_beat_idx + 16'd1 <
+                            (store_desc_output_dtype ?
+                             ((store_desc_N + 16'd31) >> 5) :
+                             ((store_desc_N + 16'd7) >> 3))) begin
                             gemm_store_beat_idx <= gemm_store_beat_idx + 16'd1;
                             gemm_store_eng_phase <= GST_PUSH_BEAT;
                         end else if (gemm_store_row_idx + 16'd1 < store_desc_M) begin

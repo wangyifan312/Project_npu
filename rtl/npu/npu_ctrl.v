@@ -527,7 +527,7 @@ module npu_ctrl #(
                 ADDR_REQUANT3_SHIFT:cfg_requant_shift[3] <= apply_wstrb(cfg_requant_shift[3], write_data, write_strb);
                 ADDR_CLUSTER_MODE:  cfg_cluster_mode      <= apply_wstrb(cfg_cluster_mode, write_data, write_strb) & 32'h0000_0003;
                 ADDR_CLUSTER_MASK:  cfg_cluster_mask      <= apply_wstrb(cfg_cluster_mask, write_data, write_strb) & 32'h0000_003f;
-                ADDR_CONV_CFG:      cfg_conv_cfg          <= apply_wstrb(cfg_conv_cfg, write_data, write_strb) & 32'h0000_003f;
+                ADDR_CONV_CFG:      cfg_conv_cfg          <= apply_wstrb(cfg_conv_cfg, write_data, write_strb) & 32'h0000_007f; // bit[6]: U4-d INT8 test hook
                 ADDR_BIAS_ADDR:     cfg_bias_addr         <= apply_wstrb(cfg_bias_addr, write_data, write_strb);
                 ADDR_BIAS_BYTES:    cfg_bias_bytes        <= apply_wstrb(cfg_bias_bytes, write_data, write_strb);
                 ADDR_SRC1_ADDR:     cfg_src1_addr         <= apply_wstrb(cfg_src1_addr, write_data, write_strb);
