@@ -72,7 +72,8 @@ class npu_pe_array_clock_gating_test extends soc_base_test;
     repeat(100) begin
       m_seq.axil_read32(`NPU_REG_CTRL, ctrl_val);
       if (ctrl_val[1]) begin  // busy=1
-        check_gating({label,"_BUSY"}, , saw_active);
+        bit dummy_zero;
+        check_gating({label,"_BUSY"}, dummy_zero, saw_active);
       end
       if (ctrl_val[2] || ctrl_val[3]) break;
       #10;
@@ -80,8 +81,12 @@ class npu_pe_array_clock_gating_test extends soc_base_test;
 
     m_seq.axil_read32(`NPU_REG_PERF_CYCLE_LO, cycle_lo);
 
-    // Sample after done
-    check_gating({label,"_POST"}, , saw_done_zero);
+    // Sample after done — allow small settle delay for FSM transition
+    #10000;
+    begin
+      bit dummy_active;
+      check_gating({label,"_POST"}, saw_done_zero, dummy_active);
+    end
 
     // Verify output
     if (ctrl_val[3]) begin
@@ -141,7 +146,7 @@ class npu_pe_array_clock_gating_test extends soc_base_test;
 
     // ---- Test 3: IDLE again after task ----
     #100000;
-    check_gating("POST_GEMM_IDLE", , saw_any_active);
+    begin bit d; check_gating("POST_GEMM_IDLE", d, saw_any_active); end
     if (!saw_any_active)
       `uvm_info("CLK_GATE", "POST_GEMM idle: tile_clk_en = 0 PASS", UVM_NONE)
 
