@@ -4,8 +4,8 @@
 
 | 项目 | 数量 |
 |------|------|
-| active registered tests | **57** |
-| archived tests | **5** |
+| active registered tests | **58** |
+| archived tests | **6** |
 | orphan tests | **0** |
 | UVM_ERROR | **0** |
 | UVM_FATAL | **0** |
@@ -23,14 +23,14 @@
 | Back-to-back / pipeline | 2 | Sequential tasks, store/compute overlap |
 | Low-power / clock gating | 1 | PE array idle clock disable (U6-a) |
 | Performance / bandwidth | 7 | Counters, throughput, TOPS |
-| Error path | 3 | Invalid task, misaligned addr, start-while-busy |
+| Error path | 2 | Misaligned addr, start-while-busy |
 | Cluster / array structural | 2 | Full-array activation, multi-window diag |
 | Diagnostic | 5 | Conv single/multi-window, 5×5 kernel diag |
 | **NPU IRQ (U8-a)** | **1** | BFM-level IRQ protocol verification |
 | **CPU-running smoke (U8-b)** | **3** | PicoRV32 boot/polling/IRQ smoke |
 | **DMA read partial mask (U9-a1)** | **2** | DMA read-side data_strb partial beat zero-padding |
 | **DMA buffer capacity guard (U9-a2)** | **1** | task_checker rejects input/weight exceeding buffer bank capacity |
-| **Total active** | **57** | — |
+| **Total active** | **58** | — |
 
 ## 3. Smoke / Basic Tests
 
@@ -110,9 +110,10 @@
 
 | Test | Purpose | Expected Error | Result |
 |------|---------|---------------|--------|
-| `npu_error_invalid_task_test` | Invalid task_type triggers error | ERR_INVALID_TASK_TYPE (0x01) | PASS |
 | `npu_error_misaligned_addr_test` | Non-64B-aligned address triggers error | ERR_ADDR_ALIGN (0x04) | PASS |
 | `npu_start_while_busy_test` | CTRL.start while busy → error | ERR_START_WHILE_BUSY | PASS |
+
+**注**: `npu_error_invalid_task_test` 已在 U9-a2 归档。`ERR_INVALID_TASK_TYPE (0x01)` 不可触发——硬件在 `npu_ctrl.v:526` 将 `cfg_task_type` 掩码至 `[2:0]`，所有 8 个值 (0-7) 均合法。
 
 ## 11. Cluster / Array Structural Tests
 
@@ -209,6 +210,7 @@
 | `npu_perf_counter_scaling_test` | 1/2/6 cluster scaling; meaningless for CLUSTER_COUNT=1 |
 | `npu_conv_1x1_dual_32oc_diag_test` | Dual-cluster Conv diagnostic; CLUSTER_COUNT=1 |
 | `npu_fc_b1_diag` | Historical FC B1 multi-tile mismatch diagnostic; pre-fix fingerprint |
+| `npu_error_invalid_task_test` (U9-a2) | ERR_INVALID_TASK_TYPE (0x01) unreachable: hardware masks cfg_task_type to [2:0], all 0-7 valid |
 
 存档位置: `verif/uvm_top/tests/archive/`
 
@@ -224,7 +226,7 @@
 | CPU-running smoke | 3 | `+TB_AXIL_ENABLE=0`（由 run_uvm.sh 透传至 simv） |
 | DMA read partial mask (U9-a1) | 2 | 默认 BFM mode |
 | DMA buffer capacity guard (U9-a2) | 1 | 默认 BFM mode |
-| Full active regression | 57 | 全部 |
+| Full active regression | 58 | 全部 |
 
 **CPU-running test 运行注意：**
 - `soc_cpu_npu_irq_smoke_test` 必须使用 `+TB_AXIL_ENABLE=0`
