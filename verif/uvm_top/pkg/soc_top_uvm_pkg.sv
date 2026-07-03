@@ -291,6 +291,11 @@ package soc_top_uvm_pkg;
   `include "npu_dma_read_partial_poison_test.sv"
   `include "npu_dma_read_partial_mask_test.sv"
 
+  //---------------------------------------------------------------------------
+  // Phase U9-a2: DMA buffer capacity guard test
+  //---------------------------------------------------------------------------
+  `include "npu_dma_buffer_capacity_guard_test.sv"
+
 endpackage
 
 `endif // SOC_TOP_UVM_PKG_SV
