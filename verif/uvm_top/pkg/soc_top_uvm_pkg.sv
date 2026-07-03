@@ -285,6 +285,12 @@ package soc_top_uvm_pkg;
 
   `include "soc_cpu_npu_irq_smoke_test.sv"
 
+  //---------------------------------------------------------------------------
+  // Phase U9-a1: DMA read-side partial beat valid mask tests
+  //---------------------------------------------------------------------------
+  `include "npu_dma_read_partial_poison_test.sv"
+  `include "npu_dma_read_partial_mask_test.sv"
+
 endpackage
 
 `endif // SOC_TOP_UVM_PKG_SV
