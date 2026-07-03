@@ -15,7 +15,7 @@
 
 | Directory | Contents | Count |
 |-----------|----------|-------|
-| `verif/uvm_top/tests/` | UVM test classes (active) | 51 registered tests |
+| `verif/uvm_top/tests/` | UVM test classes (active) | 54 registered tests |
 | `verif/uvm_top/tests/archive/` | Archived legacy tests (U7-a) | 5 files (not in regression) |
 | `verif/uvm_top/sequences/` | Reusable test sequences | 13 files |
 | `verif/uvm_top/pkg/` | UVM package (includes all) | 1 file |
@@ -41,7 +41,7 @@
 | H. Error path | 3 | Invalid task, misaligned addr, start-while-busy |
 | I. Cluster / array structural | 6 | Cluster mode, mask, full array, probe verification |
 | J. Diagnostic / debug | 5 | Conv multi-cluster, frontend hang diag |
-| **Total active** | **50 registered** | — |
+| **Total active** | **54 registered** | — |
 | Archived (U7-a) | 5 | Legacy multi-cluster / diagnostic tests |
 
 ---
@@ -173,9 +173,19 @@
 |---|-----------|---------|------|--------|---------------|--------|
 | 48 | `npu_irq_reporting_test` | BFM-level IRQ: done/error pending, enable gating, W1C clear, B2B (7 sub-tests) | GEMM=7, error test | streaming=0x20 | **U8-a** | **PASS** |
 
-**Note:** U8-a is BFM-level verification only. No CPU-running interrupt firmware is implemented. IRQ CSRs at 0x100/0x104/0x108 in extended NPU CSR space (512B window).
+**Note:** U8-a is BFM-level verification only. IRQ CSRs at 0x100/0x104/0x108.
 
-### 5.13 Archived Tests (Phase U7-a, not in active regression)
+### 5.13 PicoRV32 CPU-Running Smoke Tests (Phase U8-b)
+
+| # | Test Name | Purpose | Task | Mode | Related Phase | Status |
+|---|-----------|---------|------|------|---------------|--------|
+| 49 | `soc_cpu_boot_magic_smoke_test` | CPU boot: fetch from shared_ram, write MAGIC_BOOT | — | CPU (+TB_AXIL_ENABLE=0) | **U8-b0** | **PASS** |
+| 50 | `soc_cpu_npu_polling_smoke_test` | CPU NPU polling: config GEMM, poll CTRL.done | GEMM=7 | CPU mode | **U8-b1** | **PASS** |
+| 51 | `soc_cpu_npu_irq_smoke_test` | CPU NPU IRQ: receive irq[4], handler clear, write MAGIC | GEMM=7 | CPU mode | **U8-b2** | **PASS** |
+
+**Note:** U8-b is minimal bare-metal firmware smoke verification. Not a full software stack. CPU mode uses `+TB_AXIL_ENABLE=0`; BFM does not write NPU CSR. Firmware compiled with `riscv64-unknown-elf-gcc 8.1.0 -march=rv32i`.
+
+### 5.14 Archived Tests (Phase U7-a, not in active regression)
 
 | # | Test Name | Archive Reason |
 |---|-----------|----------------|
@@ -229,7 +239,7 @@ npu_pe_array_clock_gating_test
 npu_irq_reporting_test
 ```
 
-### 6.6 Full Stress Regression (all 51 registered tests)
+### 6.6 Full Stress Regression (all 54 registered tests)
 
 Run time: ~2-3 hours at 200MHz simulation.
 
@@ -298,8 +308,8 @@ vcs -full64 -sverilog -timescale=1ns/1ps -ntb_opts uvm-1.2 \
 
 | Metric | Value |
 |--------|-------|
-| Total test files | 55 (50 active + 5 archived) |
-| Active registered tests | 50 |
+| Total test files | 59 (54 active + 5 archived) |
+| Active registered tests | 54 |
 | Archived tests (U7-a, not in regression) | 5 |
 | Orphan tests (not in package) | 0 |
 | Base test class | 1 (`soc_base_test`) |
