@@ -43,10 +43,20 @@ module weight_read_path #(
     wire [AXI_DATA_W-1:0] dma_data_out;
     wire                  dma_data_valid;
     wire                  dma_data_ready;
+    wire [(AXI_DATA_W/8)-1:0] dma_data_strb;
 
     reg [BUF_ADDR_W-1:0] wr_addr_cnt;
 
     assign dma_data_ready = 1'b1;
+
+    // Expand byte-level strb to bit-level mask for zeroing invalid bytes
+    wire [BUF_DATA_W-1:0] strb_mask;
+    genvar gi;
+    generate
+        for (gi = 0; gi < AXI_DATA_W/8; gi = gi + 1) begin : gen_strb_expand
+            assign strb_mask[gi*8 +: 8] = {8{dma_data_strb[gi]}};
+        end
+    endgenerate
 
     dma_axi_reader #(
         .AXI_DATA_WIDTH(AXI_DATA_W),
@@ -64,6 +74,7 @@ module weight_read_path #(
         .data_out   (dma_data_out),
         .data_valid (dma_data_valid),
         .data_ready (dma_data_ready),
+        .data_strb  (dma_data_strb),
         .m_axi_araddr  (m_axi_araddr),
         .m_axi_arvalid (m_axi_arvalid),
         .m_axi_arready (m_axi_arready),
@@ -88,7 +99,7 @@ module weight_read_path #(
     end
 
     assign buf_wr_addr = wr_addr_cnt;
-    assign buf_wr_data = dma_data_out;
+    assign buf_wr_data = dma_data_out & strb_mask;
     assign buf_wr_en   = dma_data_valid && dma_data_ready;
 
 endmodule

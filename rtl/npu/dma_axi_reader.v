@@ -24,6 +24,7 @@ module dma_axi_reader #(
     output wire [AXI_DATA_WIDTH-1:0]   data_out,
     output wire                        data_valid,
     input  wire                        data_ready,
+    output wire [(AXI_DATA_WIDTH/8)-1:0] data_strb,
 
     // === AXI4 Read Master ===
     output wire [AXI_ADDR_WIDTH-1:0]   m_axi_araddr,
@@ -44,6 +45,7 @@ module dma_axi_reader #(
     // Derived parameters
     // ============================================================
     localparam BEAT_BYTES = AXI_DATA_WIDTH / 8;  // bytes per beat
+    localparam STRB_WIDTH = AXI_DATA_WIDTH / 8;  // byte-enable width
     localparam BEAT_BYTES_LOG2 = (AXI_DATA_WIDTH == 32)  ? 2 :
                                  (AXI_DATA_WIDTH == 64)  ? 3 :
                                  (AXI_DATA_WIDTH == 128) ? 4 :
@@ -81,6 +83,27 @@ module dma_axi_reader #(
     // Output data stage (registered, handles backpressure)
     reg         data_valid_r;
     reg  [AXI_DATA_WIDTH-1:0] data_out_r;
+    reg  [STRB_WIDTH-1:0]     data_strb_r;
+
+    // ============================================================
+    // Byte strobe generation — transfer-level, not burst-level
+    // bytes_before_beat = bytes remaining in ENTIRE transfer before THIS beat
+    // ============================================================
+    wire [31:0] bytes_before_beat;
+    assign bytes_before_beat = bytes_remaining - ({24'h0, beat_counter} * BEAT_BYTES);
+
+    // Generate strb: full beat → all 1's; partial final beat → low N bytes only
+    function [STRB_WIDTH-1:0] gen_strb;
+        input [31:0] valid_bytes;
+        integer i;
+        begin
+            gen_strb = {STRB_WIDTH{1'b0}};
+            for (i = 0; i < STRB_WIDTH; i = i + 1) begin
+                if (i < valid_bytes)
+                    gen_strb[i] = 1'b1;
+            end
+        end
+    endfunction
 
     // ============================================================
     // Next burst calculation: compute from explicit byte count input
@@ -141,6 +164,7 @@ module dma_axi_reader #(
             ar_done         <= 1'b0;
             data_valid_r    <= 1'b0;
             data_out_r      <= 0;
+            data_strb_r     <= 0;
         end else begin
             case (state)
 
@@ -185,6 +209,7 @@ module dma_axi_reader #(
                             // Receive a data beat
                             data_valid_r <= 1'b1;
                             data_out_r   <= m_axi_rdata;
+                            data_strb_r  <= gen_strb(bytes_before_beat);
                             beat_counter <= beat_counter + 8'h1;
 
                             // Check if last beat in burst
@@ -272,6 +297,7 @@ module dma_axi_reader #(
 
     assign data_out   = data_out_r;
     assign data_valid = data_valid_r;
+    assign data_strb  = data_strb_r;
     assign busy       = (state != S_IDLE);
     assign done       = done_r;
     assign error      = error_r;
