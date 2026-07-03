@@ -60,7 +60,8 @@ module tb_soc_top_uvm;
     .tb_rresp       (axil_vif.rresp),
 
     .cpu_trap       (),
-    .npu_status     (probe_vif.npu_status)
+    .npu_status     (probe_vif.npu_status),
+    .npu_irq        (probe_vif.npu_irq)
   );
 
   //-----------------------------------------------------------------------------

@@ -250,4 +250,14 @@
 `define NPU_STATUS_DONE   2  // bit[2]
 `define NPU_STATUS_ERROR  3  // bit[3]
 
+//-----------------------------------------------------------------------------
+// Phase U8-a: IRQ registers (extended 7-bit address space, 0x100-0x10C)
+//-----------------------------------------------------------------------------
+`define NPU_REG_IRQ_EN       (`SOC_NPU_REG_BASE + 32'h100)
+`define NPU_REG_IRQ_STATUS   (`SOC_NPU_REG_BASE + 32'h104)
+`define NPU_REG_IRQ_CLEAR    (`SOC_NPU_REG_BASE + 32'h108)
+
+`define NPU_IRQ_DONE    0  // bit[0]: done interrupt
+`define NPU_IRQ_ERROR   1  // bit[1]: error interrupt
+
 `endif // SOC_TOP_DEFINES_SVH
