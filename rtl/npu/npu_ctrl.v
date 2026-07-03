@@ -75,6 +75,9 @@ module npu_ctrl #(
     output wire [31:0]                 add_out_multiplier,
     output wire [5:0]                  add_out_shift,
 
+    // === IRQ output (Phase U8-a) ===
+    output wire                        npu_irq,
+
     // === Task status inputs (from NPU internals) ===
     input  wire                        task_done_i,
     input  wire                        task_error_i,
@@ -178,6 +181,12 @@ module npu_ctrl #(
     localparam ADDR_ADD_CFG             = 6'd43;  // 0xAC: future residual ADD config
     localparam ADDR_GAP_CFG             = 6'd44;  // 0xB0: future GAP config
     localparam ADDR_POSTPROC_CFG        = 6'd45;  // 0xB4: future extended postproc config
+
+    // Phase U8-a: IRQ registers (extended 7-bit address space, 0x100-0x10C)
+    localparam ADDR_IRQ_EN              = 7'd64;  // 0x100: [1:0]=irq_en (bit0=done, bit1=error)
+    localparam ADDR_IRQ_STATUS          = 7'd65;  // 0x104: [1:0]=irq_status R/O
+    localparam ADDR_IRQ_CLEAR           = 7'd66;  // 0x108: [1:0]=irq_clear W1C
+
     localparam ADDR_ADD_SRC0_MULT       = 6'd46;  // 0xB8: R1d ADD src0 pre-align multiplier
     localparam ADDR_ADD_SRC0_SHIFT      = 6'd47;  // 0xBC: R1d ADD src0 pre-align shift
     localparam ADDR_ADD_SRC1_MULT       = 6'd48;  // 0xC0: R1d ADD src1 pre-align multiplier
@@ -215,7 +224,7 @@ module npu_ctrl #(
     endfunction
 
     function is_write_addr_valid;
-        input [5:0] addr;
+        input [6:0] addr;
         begin
             case (addr)
                 ADDR_CTRL,
@@ -233,7 +242,9 @@ module npu_ctrl #(
                 ADDR_ADD_CFG, ADDR_GAP_CFG, ADDR_POSTPROC_CFG,
                 ADDR_ADD_SRC0_MULT, ADDR_ADD_SRC0_SHIFT,
                 ADDR_ADD_SRC1_MULT, ADDR_ADD_SRC1_SHIFT,
-                ADDR_ADD_OUT_MULT, ADDR_ADD_OUT_SHIFT:
+                ADDR_ADD_OUT_MULT, ADDR_ADD_OUT_SHIFT,
+                // Phase U8-a: IRQ registers
+                ADDR_IRQ_EN, ADDR_IRQ_CLEAR:
                     is_write_addr_valid = 1'b1;
                 default:
                     is_write_addr_valid = 1'b0;
@@ -242,7 +253,7 @@ module npu_ctrl #(
     endfunction
 
     function is_read_addr_valid;
-        input [5:0] addr;
+        input [6:0] addr;
         begin
             case (addr)
                 ADDR_CTRL, ADDR_STATUS,
@@ -273,7 +284,9 @@ module npu_ctrl #(
                 ADDR_ADD_CFG, ADDR_GAP_CFG, ADDR_POSTPROC_CFG,
                 ADDR_ADD_SRC0_MULT, ADDR_ADD_SRC0_SHIFT,
                 ADDR_ADD_SRC1_MULT, ADDR_ADD_SRC1_SHIFT,
-                ADDR_ADD_OUT_MULT, ADDR_ADD_OUT_SHIFT:
+                ADDR_ADD_OUT_MULT, ADDR_ADD_OUT_SHIFT,
+                // Phase U8-a: IRQ registers
+                ADDR_IRQ_EN, ADDR_IRQ_STATUS:
                     is_read_addr_valid = 1'b1;
                 default:
                     is_read_addr_valid = 1'b0;
@@ -302,7 +315,7 @@ module npu_ctrl #(
     wire [31:0] write_addr = aw_hs ? s_axi_awaddr : stored_awaddr;
     wire [31:0] write_data = w_hs  ? s_axi_wdata  : stored_wdata;
     wire [3:0]  write_strb = w_hs  ? s_axi_wstrb  : stored_wstrb;
-    wire [5:0]  wr_addr = write_addr[7:2];
+    wire [6:0]  wr_addr = write_addr[8:2];  // Phase U8-a: extended to 7 bits for IRQ CSRs
     wire [31:0] ctrl_write_data = apply_wstrb(32'h0, write_data, write_strb);
 
     always @(posedge clk or negedge rst_n) begin
@@ -360,7 +373,7 @@ module npu_ctrl #(
     reg         rvalid;
     reg  [31:0] rdata_reg;
     reg  [1:0]  rresp_reg;
-    wire [5:0]  rd_addr = stored_araddr[7:2];
+    wire [6:0]  rd_addr = stored_araddr[8:2];  // Phase U8-a: extended to 7 bits for IRQ CSRs
 
     assign s_axi_arready = !ar_stored;
 
@@ -430,6 +443,10 @@ module npu_ctrl #(
     reg         done;
     reg         error;
     reg  [7:0]  error_code;
+
+    // Phase U8-a: IRQ registers
+    reg  [1:0]  irq_en;       // bit0=done_irq_en, bit1=error_irq_en
+    reg  [1:0]  irq_status;   // bit0=done_pending, bit1=error_pending
 
     // Task latched outputs
     reg         task_start_r;
@@ -541,6 +558,9 @@ module npu_ctrl #(
                 ADDR_ADD_SRC1_SHIFT:cfg_add_src1_shift    <= apply_wstrb(cfg_add_src1_shift, write_data, write_strb) & 32'h0000_003f;
                 ADDR_ADD_OUT_MULT:  cfg_add_out_mult      <= apply_wstrb(cfg_add_out_mult, write_data, write_strb);
                 ADDR_ADD_OUT_SHIFT: cfg_add_out_shift     <= apply_wstrb(cfg_add_out_shift, write_data, write_strb) & 32'h0000_003f;
+                // Phase U8-a: IRQ registers
+                ADDR_IRQ_EN:    irq_en      <= write_data[1:0];
+                ADDR_IRQ_CLEAR: irq_status  <= irq_status & ~write_data[1:0];  // W1C
                 default: ;
             endcase
         end
@@ -562,6 +582,8 @@ module npu_ctrl #(
             done       <= 1'b0;
             error      <= 1'b0;
             error_code <= 8'h0;
+            irq_en     <= 2'b00;
+            irq_status <= 2'b00;
             checking   <= 1'b0;
 
             task_start_r    <= 1'b0;
@@ -607,9 +629,11 @@ module npu_ctrl #(
                 busy       <= 1'b0;
                 error      <= 1'b1;
                 error_code <= task_error_code_i;
+                irq_status[1] <= 1'b1;  // Phase U8-a: error pending
             end else if (task_done_i && busy && !done) begin
                 busy  <= 1'b0;
                 done  <= 1'b1;
+                irq_status[0] <= 1'b1;  // Phase U8-a: done pending
                 error <= 1'b0;
             end else if (checking && check_done_i) begin
                 checking <= 1'b0;
@@ -729,6 +753,9 @@ module npu_ctrl #(
     assign add_out_multiplier = add_out_mult_r;
     assign add_out_shift = add_out_shift_r;
 
+    // Phase U8-a: NPU IRQ output
+    assign npu_irq = |(irq_status & irq_en);
+
     // ============================================================
     // AXI read data generation
     // ============================================================
@@ -800,6 +827,9 @@ module npu_ctrl #(
         (rd_addr == ADDR_ADD_SRC1_SHIFT)      ? cfg_add_src1_shift    :
         (rd_addr == ADDR_ADD_OUT_MULT)        ? cfg_add_out_mult      :
         (rd_addr == ADDR_ADD_OUT_SHIFT)       ? cfg_add_out_shift     :
+        // Phase U8-a: IRQ registers
+        (rd_addr == ADDR_IRQ_EN)              ? {30'h0, irq_en}       :
+        (rd_addr == ADDR_IRQ_STATUS)          ? {30'h0, irq_status}   :
         32'h0;
 
     always @(posedge clk) begin

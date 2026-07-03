@@ -71,7 +71,8 @@ module npu_top #(
     output wire                        npu_busy,
     output wire                        npu_done,
     output wire                        npu_error,
-    output wire [7:0]                  npu_error_code
+    output wire [7:0]                  npu_error_code,
+    output wire                        npu_irq       // Phase U8-a: IRQ output
 );
 
     localparam PE_ROWS = TILE_ROWS * 4;
@@ -229,6 +230,7 @@ module npu_top #(
     wire [5:0]  add_src1_shift;
     wire [31:0] add_out_multiplier;
     wire [5:0]  add_out_shift;
+    wire        npu_irq;
     wire [1:0]  conv_kernel_sel = conv_cfg[1:0];
     wire        conv_stride2 = conv_cfg[2];
     wire        conv_same_pad = conv_cfg[3];
@@ -341,7 +343,8 @@ module npu_top #(
         .perf_stall_wgt_i(perf_stall_wgt),
         .perf_stall_acc_i(perf_stall_acc),
         .perf_stall_store_i(perf_stall_store),
-        .perf_array_fill_drain_i(perf_array_fill_drain)
+        .perf_array_fill_drain_i(perf_array_fill_drain),
+        .npu_irq(npu_irq)
     );
 
     assign npu_busy = ctrl_busy;

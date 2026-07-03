@@ -38,7 +38,8 @@ module top #(
 
     // Debug/trace outputs
     output wire        cpu_trap,
-    output wire [31:0] npu_status  // {error, done, busy, 1'b0} for quick debug
+    output wire [31:0] npu_status,  // {error, done, busy, 1'b0} for quick debug
+    output wire        npu_irq       // Phase U8-a: NPU IRQ output
 );
 
     // ============================================================
@@ -58,6 +59,12 @@ module top #(
     wire        cpu_core_rvalid, cpu_core_rready;
     wire [31:0] cpu_core_rdata;
     wire [1:0]  cpu_core_rresp;
+
+    // Phase U8-a: NPU IRQ
+    wire [31:0] cpu_irq;
+    wire        npu_irq_int;
+    assign cpu_irq = {27'h0, npu_irq_int, 4'h0};  // npu_irq → cpu irq[4]
+    assign npu_irq = npu_irq_int;
 
     wire        cpu_awvalid, cpu_awready;
     wire [31:0] cpu_awaddr;
@@ -113,7 +120,7 @@ module top #(
         .pcpi_rd        (32'h0),
         .pcpi_wait      (1'b0),
         .pcpi_ready     (1'b0),
-        .irq            (32'h0),
+        .irq            (cpu_irq),    // Phase U8-a: NPU irq[4] = done/error
         .eoi            ()
     );
 
@@ -464,7 +471,8 @@ module top #(
         .npu_busy          (npu_busy),
         .npu_done          (npu_done),
         .npu_error         (npu_error),
-        .npu_error_code    (npu_error_code)
+        .npu_error_code    (npu_error_code),
+        .npu_irq           (npu_irq_int)
     );
 
     // Status output for debug
