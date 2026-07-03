@@ -4,7 +4,9 @@
 
 module task_checker #(
     parameter [31:0] MEM_BASE  = 32'h0000_0000,  // valid memory region base
-    parameter [31:0] MEM_SIZE  = 32'h0010_0000   // valid memory region size (1MB default)
+    parameter [31:0] MEM_SIZE  = 32'h0010_0000,  // valid memory region size (1MB default)
+    parameter integer BUF_ENTRIES = 16384,        // entries per buffer bank
+    parameter integer DMA_DATA_W = 256            // AXI DMA data width in bits
 ) (
     input  wire        clk,
     input  wire        rst_n,
@@ -65,6 +67,7 @@ module task_checker #(
     localparam ERR_UNSUPPORTED_TASK  = 8'h0A;
     localparam ERR_NUMERIC_PARAM     = 8'h0B;
     localparam ERR_BIAS_PARAM        = 8'h0C;
+    localparam ERR_BUF_OVERFLOW      = 8'h0D;
 
     localparam [2:0] TASK_CONV       = 3'd0;
     localparam [2:0] TASK_FC         = 3'd1;
@@ -74,6 +77,12 @@ module task_checker #(
     localparam [2:0] TASK_GAP        = 3'd5;
     localparam [2:0] TASK_VECTOR_RELU = 3'd6;
     localparam [2:0] TASK_GEMM        = 3'd7;
+
+    // ============================================================
+    // Buffer capacity: single bank max capacity in bytes
+    // ============================================================
+    localparam integer DMA_BEAT_BYTES = DMA_DATA_W / 8;
+    localparam integer BUF_BANK_BYTES = BUF_ENTRIES * DMA_BEAT_BYTES;
 
     // ============================================================
     // Internal registers (latch inputs on task_start)
@@ -220,6 +229,12 @@ module task_checker #(
     wire addr_range_ok_sig = addr_range_ok(input_addr_r,  input_bytes_r) &&
                              addr_range_ok(output_addr_r, output_bytes_r) &&
                              (weight_unused || addr_range_ok(weight_addr_r, weight_bytes_r));
+
+    // Buffer capacity: each DMA load must fit within one buffer bank
+    // input_bytes and weight_bytes each independently must not exceed
+    // one bank's capacity.  The DMA loads a single bank per task stage.
+    wire buf_capacity_ok = (input_bytes_r <= BUF_BANK_BYTES) &&
+                           (weight_unused || (weight_bytes_r <= BUF_BANK_BYTES));
 
     // Check task_type
     wire task_type_known = (task_type_r == TASK_CONV)    ||
@@ -399,6 +414,8 @@ module task_checker #(
             error_code_comb = ERR_ADDR_BOUNDS;
         else if (!addr_range_ok_sig)
             error_code_comb = ERR_ADDR_OVERFLOW;
+        else if (!buf_capacity_ok)
+            error_code_comb = ERR_BUF_OVERFLOW;
         else if (!conv_check)
             error_code_comb = ERR_CONV_PARAM;
         else if (!pool_check)

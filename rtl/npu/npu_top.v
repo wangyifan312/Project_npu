@@ -246,6 +246,7 @@ module npu_top #(
 
     wire        task_done_fb;
     wire        task_error_fb;
+    wire [7:0]  checker_error_code;    // from task_checker (NOT task_error_code_fb from FSM)
     wire [7:0]  task_error_code_fb;
     wire        check_done_fb;
     wire        checks_pass_fb;
@@ -314,7 +315,7 @@ module npu_top #(
         .add_src1_multiplier(add_src1_multiplier), .add_src1_shift(add_src1_shift),
         .add_out_multiplier(add_out_multiplier), .add_out_shift(add_out_shift),
         .task_done_i(task_done_fb), .task_error_i(task_error_fb),
-        .task_error_code_i(task_error_code_fb),
+        .task_error_code_i(checker_error_code),
         .check_done_i(check_done_fb), .checks_pass_i(checks_pass_fb),
         .perf_cycle_lo_i(perf_cycle_lo), .perf_cycle_hi_i(perf_cycle_hi),
         .perf_read_beats_i(perf_read_beats), .perf_write_beats_i(perf_write_beats),
@@ -354,7 +355,10 @@ module npu_top #(
     // ============================================================
     // task_checker
     // ============================================================
-    task_checker u_checker (
+    task_checker #(
+        .BUF_ENTRIES(BUF_ENTRIES),
+        .DMA_DATA_W(AXI_DMA_DATA_W)
+    ) u_checker (
         .clk(clk), .rst_n(rst_n), .task_start(task_start),
         .task_type(task_type), .input_addr(input_addr), .weight_addr(weight_addr),
         .output_addr(output_addr), .input_bytes(input_bytes), .weight_bytes(weight_bytes),
@@ -368,7 +372,7 @@ module npu_top #(
         .add_src0_multiplier(add_src0_multiplier), .add_src0_shift(add_src0_shift),
         .add_src1_multiplier(add_src1_multiplier), .add_src1_shift(add_src1_shift),
         .add_out_multiplier(add_out_multiplier), .add_out_shift(add_out_shift),
-        .checks_pass(checks_pass_fb), .error_code(task_error_code_fb), .check_done(check_done_fb)
+        .checks_pass(checks_pass_fb), .error_code(checker_error_code), .check_done(check_done_fb)
     );
 
     // ============================================================
