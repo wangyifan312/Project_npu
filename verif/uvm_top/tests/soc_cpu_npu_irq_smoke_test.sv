@@ -3,7 +3,7 @@
 //
 // PicoRV32 configures NPU, enables done IRQ, starts task.
 // Verifies IRQ handler: reads IRQ_STATUS, writes MAGIC_IRQ_SEEN,
-// clears IRQ (npu_irq deasserted). Backdoor preload + monitor.
+// 清除s IRQ (npu_irq deasserted). Backdoor preload + monitor.
 //=============================================================================
 `timescale 1ns / 1ps
 
@@ -27,7 +27,7 @@ class soc_cpu_npu_irq_smoke_test extends soc_base_test;
     `uvm_info("CPU_IRQ", $sformatf("FW[0x00]=0x%08h FW[0x10]=0x%08h",
       bd_if.read32(0), bd_if.read32(32'h10)), UVM_NONE)
 
-    // Preload input/weight with all-ones
+    // 预加载 input/weight with all-ones
     begin int fd;
       fd = $fopen("/tmp/u8b2_ones.memh", "w");
       $fwrite(fd, "01010101\n");
@@ -36,7 +36,7 @@ class soc_cpu_npu_irq_smoke_test extends soc_base_test;
     bd_if.load_memh("/tmp/u8b2_ones.memh", 32'h00010000, 1);
     bd_if.load_memh("/tmp/u8b2_ones.memh", 32'h00020000, 1);
 
-    // Clear output + magic
+    // 清除 output + magic
     begin int fd;
       fd = $fopen("/tmp/u8b2_zero.memh", "w");
       for (i=0; i<16; i=i+1) $fwrite(fd, "00000000\n");

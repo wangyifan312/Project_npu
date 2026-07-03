@@ -4,7 +4,7 @@
 // 目的： BASELINE — verify single-cluster 3x3 Conv works for 16 output channels.
 // If this fails, multi-cluster diagnosis is moot.
 //
-// Configuration:
+// 配置uration:
 //   input:  3x3 spatial, Cin=1, all 0x01 (9 bytes)
 //   weight: 3x3 kernel, Cin=1, Cout=16, all 0x01 (9*1*16 = 144 bytes)
 //   conv_cfg = 32'd2 (3x3 kernel, stride1, valid)
@@ -43,12 +43,12 @@ class npu_conv_1x1_single_16oc_diag_test extends soc_base_test;
     #200;
 
     // --- Build test data ---
-    // Input: 3x3 spatial, Cin=1, all 0x01 (9 bytes)
+    // 输入: 3x3 spatial, Cin=1, all 0x01 (9 bytes)
     input_bytes = new[9];
     for (i = 0; i < 9; i++)
       input_bytes[i] = 8'h01;
 
-    // Weight: 3x3 kernel, Cin=1, Cout=16, all 0x01 (9*16 = 144 bytes)
+    // 权重: 3x3 kernel, Cin=1, Cout=16, all 0x01 (9*16 = 144 bytes)
     weight_bytes = new[144];
     for (i = 0; i < 144; i++)
       weight_bytes[i] = 8'h01;

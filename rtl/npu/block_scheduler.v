@@ -1,7 +1,7 @@
 // block_scheduler：将 Conv/FC/Pool 任务拆分为多个 block that fit in on-chip buffers
 // Computes per-block addresses, byte counts, and dimensions
 // Conv: splits by output rows (horizontal stripes with kernel overlap)
-// Pool: splits by output rows (2 input rows per 1 output row)
+// 池化: splits by output rows (2 input rows per 1 output row)
 // FC: splits by output neurons (column groups)
 // Multi-channel: blocks sized by acc_buffer capacity (output bytes bottleneck)
 `timescale 1ns / 1ps
@@ -14,7 +14,7 @@ module block_scheduler #(
     input  wire        clk,
     input  wire        rst_n,
 
-    // Task parameters (from npu_ctrl)
+    // 任务 parameters (from npu_ctrl)
     input  wire        task_start,
     input  wire [2:0]  task_type,     // 0=Conv, 1=FC, 2=Pool, 3=Requant, 4=ADD, 5=GAP
     input  wire [31:0] input_addr,
@@ -48,7 +48,7 @@ module block_scheduler #(
     output wire [15:0] blk_cin_total
 );
 
-    // State
+    // 状态
     localparam S_IDLE   = 2'd0;
     localparam S_ACTIVE = 2'd1;
     localparam S_DONE   = 2'd2;
@@ -230,7 +230,7 @@ module block_scheduler #(
 
     always @(*) begin
         if (task_type == TASK_POOL) begin  // Pool: per-block slicing
-            // Input: INT32, HWC layout. Each output row needs 2 input rows
+            // 输入: INT32, HWC layout. Each output row needs 2 input rows
             blk_input_addr_r  = input_addr  + curr_out_row * 2 * input_w * input_c * 32'd4;
             blk_input_bytes_r = this_in_rows * input_w * input_c * 32'd4;
             blk_weight_addr_r  = weight_addr;

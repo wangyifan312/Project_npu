@@ -1,7 +1,7 @@
 //=============================================================================
 // npu_fc_streaming_robustness_test.sv — Phase U2 FC Streaming Robustness
 //
-// Boundary, signed/non-uniform, legacy-vs-streaming, post-op fallback.
+// 边界, signed/non-uniform, legacy-vs-streaming, post-op fallback.
 // All streaming: task_type=FC(1), conv_cfg[5]=1, K-major B[k][n] layout.
 //=============================================================================
 `timescale 1ns / 1ps
@@ -146,7 +146,7 @@ class npu_fc_streaming_robustness_test extends soc_base_test;
   endtask
 
   //============================================================================
-  // Preload helpers
+  // 预加载 helpers
   //============================================================================
   task preload_all_ones(soc_base_seq m_seq, bit [31:0] a_addr, int a_bytes,
                         bit [31:0] b_addr, int b_bytes);

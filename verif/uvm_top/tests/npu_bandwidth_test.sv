@@ -4,11 +4,11 @@
 // Runs a small Conv task (16x16 input, 5x5 valid, Cin=1, Cout=1,
 // 12x12 output = 576 bytes = 18 beats) to generate DMA read/write traffic,
 // then verifies that AXI4 INCR burst utilization is >= 60% for both read and
-// write directions.
+// 写 directions.
 //
 // The DMA monitor (axi4_dma_monitor) tracks per-burst data_cycles vs
 // txn_cycles and aggregates totals.  This test reads those aggregate
-// counters after the Conv task completes and asserts the thresholds.
+// 计数器s after the Conv task completes and asserts the thresholds.
 //=============================================================================
 
 `timescale 1ns / 1ps
@@ -45,7 +45,7 @@ class npu_bandwidth_test extends soc_base_test;
 
     //-----------------------------------------------------------------------
     // Build 16x16 Conv test data: 16x16 input, 3x3 valid, Cin=1, Cout=4
-    // Output: 14x14x4 = 784 INT32 = 3136 bytes = 98 beats (256-bit)
+    // 输出: 14x14x4 = 784 INT32 = 3136 bytes = 98 beats (256-bit)
     // Random-but-known: ensures no all-zero/trivial traffic
     //-----------------------------------------------------------------------
     // 16x16 input, 3x3 valid, Cin=1, Cout=4 -> 14x14x4x4=3136 bytes = 98 beats
@@ -112,7 +112,7 @@ class npu_bandwidth_test extends soc_base_test;
     // The DMA monitor aggregates read/write data_cycles and total_cycles
     // across all bursts.  Utilization = data_cycles / total_cycles * 100%.
     //
-    // data_cycles: clock cycles where RVALID&RREADY (read) or WVALID&WREADY
+    // 数据_cycles: clock cycles where RVALID&RREADY (read) or WVALID&WREADY
     //              (write) were both asserted during an active transaction.
     // total_cycles: clock cycles from AR/AW handshake to RLAST/BVALID for
     //               each burst, summed across all bursts.

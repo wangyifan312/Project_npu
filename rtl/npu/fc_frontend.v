@@ -3,7 +3,7 @@
 // cluster_scheduler -> compute_core -> output_arbiter path.
 // Passes activations through as a 1D vector stream for vector-matrix multiply.
 // Supports tiling: if output neurons > array columns, iterates over column blocks.
-// Weights for output column j go to array column j; activations stream through rows.
+// 权重s for output column j go to array column j; activations stream through rows.
 `timescale 1ns / 1ps
 
 module fc_frontend #(
@@ -12,12 +12,12 @@ module fc_frontend #(
     input  wire        clk,
     input  wire        rst_n,
 
-    // Input: streaming activation data from act_buffer
+    // 输入: streaming activation data from act_buffer
     input  wire [7:0]  act_data,
     input  wire        act_valid,
     output wire        act_ready,
 
-    // Output: activation stream (1D vector, same data, gated by state)
+    // 输出: activation stream (1D vector, same data, gated by state)
     output wire [7:0]  act_out,
     output wire        act_valid_o,
 
@@ -95,7 +95,7 @@ module fc_frontend #(
     end
 
     // ============================================================
-    // Outputs
+    // 输出s
     // ============================================================
     assign act_ready  = (state == S_STREAM);
     assign act_out    = act_data;

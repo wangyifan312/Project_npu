@@ -4,7 +4,7 @@
 // Uses the new VECTOR_RELU_256B task (task_type=6) — a 256-bit streaming
 // vector INT8 ReLU that bypasses the 32-bit acc_buffer/store_pack slow path.
 //
-// Data flow:
+// 数据 flow:
 //   DMA read 256-bit beat → act_buffer
 //   act_buffer read → 32-lane INT8 ReLU → write_beat_fifo → DMA write
 //
@@ -28,7 +28,7 @@ class npu_bandwidth_60pct_stress_test extends soc_base_test;
   localparam int INPUT_BYTES = 16384;  // 16KB
   localparam int EXPECTED_BEATS = INPUT_BYTES / 32;
 
-  // Testbench sequencer handle
+  // 测试bench sequencer handle
   soc_base_seq m_seq;
 
   function new(string name = "npu_bandwidth_60pct_stress_test", uvm_component parent = null);
@@ -76,7 +76,7 @@ class npu_bandwidth_60pct_stress_test extends soc_base_test;
     // Pattern: input[i] = (i * 13 + 7) & 0xFF
     // This produces signed values in [-128, 127], ensuring ~50% negative.
     //
-    // Golden: golden[i] = input[i] < 0 ? 0 : input[i]
+    // 黄金参考: golden[i] = input[i] < 0 ? 0 : input[i]
     // =====================================================================
     input_bytes_arr  = new[INPUT_BYTES];
     golden_bytes_arr = new[INPUT_BYTES];
@@ -102,9 +102,9 @@ class npu_bandwidth_60pct_stress_test extends soc_base_test;
     `uvm_info("SYS_BUS_60", "############################################################################", UVM_NONE)
 
     // =====================================================================
-    // Write input data to shared RAM via AXI-Lite
+    // 写 input data to shared RAM via AXI-Lite
     //
-    // Memory layout (shared RAM 1 MB, base 0x0000_0000):
+    // 内存 layout (shared RAM 1 MB, base 0x0000_0000):
     //   input_base  = 0x0000_0100
     //   output_base = 0x0001_0000 (far enough past input: 64KB apart)
     // =====================================================================
@@ -120,9 +120,9 @@ class npu_bandwidth_60pct_stress_test extends soc_base_test;
     `uvm_info("SYS_BUS_60", $sformatf("[SYS_BUS_60] Wrote %0d bytes input to 0x0000_0100", INPUT_BYTES), UVM_NONE)
 
     // =====================================================================
-    // Configure NPU for VECTOR_RELU_256B task (task_type=6)
+    // 配置 NPU for VECTOR_RELU_256B task (task_type=6)
     //
-    // Register setup:
+    // 寄存器 setup:
     //   TASK_TYPE    = 6
     //   INPUT_ADDR   = 0x0000_0100
     //   OUTPUT_ADDR  = 0x0001_0000
@@ -155,14 +155,14 @@ class npu_bandwidth_60pct_stress_test extends soc_base_test;
     `uvm_info("SYS_BUS_60", $sformatf("[SYS_BUS_60] DEBUG: readback task_type=%0d", rdata), UVM_NONE)
 
     // =====================================================================
-    // Start NPU task
+    // 启动 NPU task
     //   CTRL[0]=1 starts the task; back-to-back fix auto-clears done/error
     // =====================================================================
     `uvm_info("SYS_BUS_60", "[SYS_BUS_60] Starting NPU task (CTRL=0x01)...", UVM_NONE)
     m_seq.axil_write32(`NPU_REG_CTRL, 32'h1);
 
     // =====================================================================
-    // Poll for completion (done=bit[2]=1, error=bit[3]=1)
+    // 轮询等待完成 (done=bit[2]=1, error=bit[3]=1)
     // =====================================================================
     fork
       begin
@@ -185,7 +185,7 @@ class npu_bandwidth_60pct_stress_test extends soc_base_test;
     join
 
     // =====================================================================
-    // Read performance counters
+    // 读 performance counters
     // =====================================================================
     m_seq.axil_read32(`NPU_REG_PERF_CYCLE_LO,      task_cycles);
     m_seq.axil_read32(`NPU_REG_PERF_READ_BEATS,    read_data_cycles);
@@ -209,7 +209,7 @@ class npu_bandwidth_60pct_stress_test extends soc_base_test;
     end
 
     // =====================================================================
-    // Read output from shared RAM
+    // 读取输出 from shared RAM
     // =====================================================================
     `uvm_info("SYS_BUS_60", "[SYS_BUS_60] Reading output data from shared RAM...", UVM_NONE)
 
@@ -221,7 +221,7 @@ class npu_bandwidth_60pct_stress_test extends soc_base_test;
     end
 
     // =====================================================================
-    // Compare output vs golden
+    // 比对输出 vs golden
     // =====================================================================
     `uvm_info("SYS_BUS_60", "[SYS_BUS_60] Comparing output vs golden...", UVM_NONE)
 

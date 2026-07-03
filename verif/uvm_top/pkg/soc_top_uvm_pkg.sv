@@ -14,7 +14,7 @@ package soc_top_uvm_pkg;
   import uvm_pkg::*;
 
   //---------------------------------------------------------------------------
-  // Register address macros — needed by sequences
+  // 寄存器 address macros — needed by sequences
   //---------------------------------------------------------------------------
   `include "soc_top_defines.svh"
 
@@ -24,12 +24,12 @@ package soc_top_uvm_pkg;
   `include "npu_ref_dpi.sv"
 
   //---------------------------------------------------------------------------
-  // Agent configuration — no dependencies beyond uvm
+  // 代理 configuration — no dependencies beyond uvm
   //---------------------------------------------------------------------------
   `include "axil_agent_cfg.sv"
 
   //---------------------------------------------------------------------------
-  // Sequence item — no dependencies beyond uvm
+  // 序列 item — no dependencies beyond uvm
   //---------------------------------------------------------------------------
   `include "axil_seq_item.sv"
 
@@ -44,27 +44,27 @@ package soc_top_uvm_pkg;
   `include "axi4_dma_txn.sv"
 
   //---------------------------------------------------------------------------
-  // Sequencer — depends on seq_item
+  // 序列器 — depends on seq_item
   //---------------------------------------------------------------------------
   `include "axil_sequencer.sv"
 
   //---------------------------------------------------------------------------
-  // Driver — depends on seq_item, interface virtual if
+  // 驱动器 — depends on seq_item, interface virtual if
   //---------------------------------------------------------------------------
   `include "axil_driver.sv"
 
   //---------------------------------------------------------------------------
-  // Monitor — depends on seq_item, interface virtual if
+  // 监控器 — depends on seq_item, interface virtual if
   //---------------------------------------------------------------------------
   `include "axil_monitor.sv"
 
   //---------------------------------------------------------------------------
-  // Agent — depends on all above
+  // 代理 — depends on all above
   //---------------------------------------------------------------------------
   `include "axil_agent.sv"
 
   //---------------------------------------------------------------------------
-  // Environment configuration
+  // 环境 configuration
   //---------------------------------------------------------------------------
   `include "soc_top_env_cfg.sv"
 
@@ -84,31 +84,31 @@ package soc_top_uvm_pkg;
   `include "soc_perf_checker.sv"
 
   //---------------------------------------------------------------------------
-  // Memory model — receives AXI-Lite transactions from monitor
+  // 内存 model — receives AXI-Lite transactions from monitor
   // (must be before soc_top_env which references it)
   //---------------------------------------------------------------------------
   `include "soc_mem_model.sv"
 
   //---------------------------------------------------------------------------
-  // Scoreboard — checks AXI-Lite responses + output golden compare
+  // 记分板 — checks AXI-Lite responses + output golden compare
   // (must be before soc_top_env which references it)
   //---------------------------------------------------------------------------
   `include "soc_scoreboard.sv"
 
   //---------------------------------------------------------------------------
-  // Golden reference model — DPI-C based bit-accurate reference
+  // 黄金参考 reference model — DPI-C based bit-accurate reference
   // (must be before soc_top_env which may reference it)
   //---------------------------------------------------------------------------
   `include "soc_golden_model.sv"
 
   //---------------------------------------------------------------------------
-  // Virtual sequencer — holds handles to sub-sequencers
+  // 虚拟 sequencer — holds handles to sub-sequencers
   // (must be before soc_top_env which references it)
   //---------------------------------------------------------------------------
   `include "soc_virtual_sequencer.sv"
 
   //---------------------------------------------------------------------------
-  // Environment — depends on all component types above
+  // 环境 — depends on all component types above
   //---------------------------------------------------------------------------
   `include "soc_top_env.sv"
 
@@ -126,7 +126,7 @@ package soc_top_uvm_pkg;
   `include "npu_output_read_seq.sv"
 
   //---------------------------------------------------------------------------
-  // Task sequences — composed from common sequences
+  // 任务 sequences — composed from common sequences
   //---------------------------------------------------------------------------
   `include "npu_conv_task_seq.sv"
   `include "npu_pool_task_seq.sv"
@@ -142,7 +142,7 @@ package soc_top_uvm_pkg;
   `include "npu_lenet_seq.sv"
 
   //---------------------------------------------------------------------------
-  // Tests
+  // 测试s
   //---------------------------------------------------------------------------
   `include "soc_base_test.sv"
   `include "soc_shared_ram_rw_test.sv"
@@ -160,14 +160,14 @@ package soc_top_uvm_pkg;
   `include "npu_gap_smoke_test.sv"
 
   //---------------------------------------------------------------------------
-  // Channel / bias / add variant tests
+  // 通道 / bias / add variant tests
   //---------------------------------------------------------------------------
   `include "npu_conv_multichannel_test.sv"
   `include "npu_conv_bias_requant_test.sv"
   `include "npu_add_requant_test.sv"
 
   //---------------------------------------------------------------------------
-  // Error-path tests
+  // 错误-path tests
   //---------------------------------------------------------------------------
   `include "npu_error_misaligned_addr_test.sv"
   `include "npu_error_invalid_task_test.sv"
@@ -208,7 +208,7 @@ package soc_top_uvm_pkg;
   `include "npu_bandwidth_60pct_stress_test.sv"
 
   //---------------------------------------------------------------------------
-  // Agent B: Conv frontend hang diagnostic tests
+  // 代理 B: Conv frontend hang diagnostic tests
   //---------------------------------------------------------------------------
   `include "npu_conv_1x1_multiwindow_diag_test.sv"
   `include "npu_conv_3x3_multiwindow_diag_test.sv"
@@ -234,28 +234,28 @@ package soc_top_uvm_pkg;
   `include "npu_gemm_pipeline_bw_tops_test.sv"
 
   //---------------------------------------------------------------------------
-  // Phase U1: FC streaming MatrixOp tests
+  // 阶段 U1: FC streaming MatrixOp tests
   //---------------------------------------------------------------------------
   `include "npu_fc_streaming_smoke_test.sv"
   `include "npu_fc_streaming_fallback_test.sv"
 
   //---------------------------------------------------------------------------
-  // Phase U2: FC streaming robustness tests
+  // 阶段 U2: FC streaming robustness tests
   //---------------------------------------------------------------------------
   `include "npu_fc_streaming_robustness_test.sv"
 
   //---------------------------------------------------------------------------
-  // Phase U4-b: FC streaming ReLU test
+  // 阶段 U4-b: FC streaming ReLU test
   //---------------------------------------------------------------------------
   `include "npu_fc_streaming_relu_test.sv"
 
   //---------------------------------------------------------------------------
-  // Phase U4-d: FC streaming INT8 packing test
+  // 阶段 U4-d: FC streaming INT8 packing test
   //---------------------------------------------------------------------------
   `include "npu_fc_streaming_int8_pack_test.sv"
 
   //---------------------------------------------------------------------------
-  // Phase U5-a: System baseline stabilization — stress tests
+  // 阶段 U5-a: System baseline stabilization — stress tests
   //---------------------------------------------------------------------------
   `include "npu_gemm_kchunk_stress_test.sv"
   `include "npu_matrixop_partial_beat_stress_test.sv"
@@ -263,12 +263,12 @@ package soc_top_uvm_pkg;
   `include "npu_back_to_back_task_stress_test.sv"
 
   //---------------------------------------------------------------------------
-  // Phase U5-b: Bug B1 diagnosis — GEMM N-tile nonuniform data
+  // 阶段 U5-b: Bug B1 diagnosis — GEMM N-tile nonuniform data
   //---------------------------------------------------------------------------
   `include "npu_gemm_ntile_nonuniform_diag_test.sv"
 
   //---------------------------------------------------------------------------
-  // Phase U6-a: PE array clock gating verification
+  // 阶段 U6-a: PE array clock gating verification
   //---------------------------------------------------------------------------
   `include "npu_pe_array_clock_gating_test.sv"
 
@@ -278,7 +278,7 @@ package soc_top_uvm_pkg;
   `include "npu_irq_reporting_test.sv"
 
   //---------------------------------------------------------------------------
-  // Phase U8-b: CPU-running boot magic smoke test (minimal PicoRV32 validation)
+  // 阶段 U8-b: CPU-running boot magic smoke test (minimal PicoRV32 validation)
   //---------------------------------------------------------------------------
   `include "soc_cpu_boot_magic_smoke_test.sv"
   `include "soc_cpu_npu_polling_smoke_test.sv"

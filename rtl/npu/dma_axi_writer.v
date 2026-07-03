@@ -77,7 +77,7 @@ module dma_axi_writer #(
     reg [2:0] state, next_state;
 
     // ============================================================
-    // Burst 计算
+    // burst 计算
     // ============================================================
     function [7:0] calc_burst_beats;
         input [31:0] bytes;
@@ -163,7 +163,7 @@ module dma_axi_writer #(
 
     wire w_hs = m_axi_wvalid && m_axi_wready;
 
-    // data_ready: accept upstream data when next buffer is free, OR when w_hs
+    // 数据_ready: accept upstream data when next buffer is free, OR when w_hs
     // will consume the current beat and free up the pipeline this cycle.
     assign data_ready = (state == S_WDATA) && !w_done && (!next_valid || w_hs);
 
@@ -171,7 +171,7 @@ module dma_axi_writer #(
     // Used by w_hs to decide whether to keep WVALID high after handshake.
     wire next_ready = next_valid || (data_valid && data_ready);
 
-    // Valid bytes for the beat AFTER the current one (used for next wstrb/wlast)
+    // 有效 bytes for the beat AFTER the current one (used for next wstrb/wlast)
     wire [31:0] bytes_sent_next = {24'h0, beat_counter + 8'h1} * BEAT_BYTES;
     wire [31:0] bytes_left_next = (bytes_remaining <= bytes_sent_next)
                                   ? 32'h0
@@ -284,7 +284,7 @@ module dma_axi_writer #(
                     // Load from FIFO: two-stage check allows loading main+next in 1 cycle.
                     // P0-1 FIX: promote_now gates main-load to prevent overwrite
                     // when Step 1 just promoted next→main (wvalid_r still 0 PRE-NBA).
-                    // Preload condition also widened to (wvalid_r || promote_now) so
+                    // 预加载 condition also widened to (wvalid_r || promote_now) so
                     // new-burst first-cycle preload isn't starved.
                     if (data_valid) begin
                         if (!wvalid_r && !promote_now) begin
@@ -385,7 +385,7 @@ module dma_axi_writer #(
     end
 
     // ============================================================
-    // Error detection (latched on entering S_ERROR)
+    // 错误 detection (latched on entering S_ERROR)
     // ============================================================
     reg         error_r;
     reg  [7:0]  error_code_r;
@@ -413,7 +413,7 @@ module dma_axi_writer #(
     end
 
     // ============================================================
-    // Done strobe (only in S_DONE, never in S_ERROR)
+    // 完成 strobe (only in S_DONE, never in S_ERROR)
     // ============================================================
     reg done_r;
     always @(posedge clk or negedge rst_n) begin

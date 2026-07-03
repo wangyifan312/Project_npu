@@ -5,7 +5,7 @@
 //   If hangs → issue is in downstream pipeline (DMA writer tail, Hang B)
 //   If passes → conv_frontend correctly handles 1x1 multi-window
 //
-// Configuration:
+// 配置uration:
 //   input:  4x4 spatial, Cin=1, all 0x01 (16 bytes)
 //   weight: 1x1 kernel, Cin=1, Cout=1, all 0x01 (1 byte)
 //   conv_cfg = 32'd1 (1x1 kernel, stride1, valid)
@@ -43,12 +43,12 @@ class npu_conv_1x1_multiwindow_diag_test extends soc_base_test;
     #200;
 
     // --- Build test data ---
-    // Input: 4x4 spatial, Cin=1, all 0x01 (16 bytes)
+    // 输入: 4x4 spatial, Cin=1, all 0x01 (16 bytes)
     input_bytes = new[16];
     for (i = 0; i < 16; i++)
       input_bytes[i] = 8'h01;
 
-    // Weight: 1x1 kernel, Cin=1, Cout=1, all 0x01 (1 byte)
+    // 权重: 1x1 kernel, Cin=1, Cout=1, all 0x01 (1 byte)
     weight_bytes = new[1];
     weight_bytes[0] = 8'h01;
 

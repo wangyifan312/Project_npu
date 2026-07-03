@@ -1,7 +1,7 @@
 //=============================================================================
 // npu_conv_1x1_full_array_multiwindow_diag_test.sv — Agent B Diagnostic Test 1b
 //
-// Phase U7-a: renamed from npu_conv_1x1_fullcluster_multiwindow_diag_test.
+// 阶段 U7-a: renamed from npu_conv_1x1_fullcluster_multiwindow_diag_test.
 // CLUSTER_COUNT=1 final baseline — single 64×64 PE cluster.
 //
 // 目的： Test 1x1 Conv with multi-window (4x4) output in full-array mode.

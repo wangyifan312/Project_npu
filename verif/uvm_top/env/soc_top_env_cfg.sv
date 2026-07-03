@@ -15,7 +15,7 @@ class soc_top_env_cfg extends uvm_object;
   // Global timeout in clock cycles (5M cycles @ 200 MHz = 25 ms)
   int unsigned timeout_cycles = 5000000;
 
-  // Data directory for golden-reference files
+  // 数据 directory for golden-reference files
   string data_dir = ".";
 
   // Human-readable test name for log filtering

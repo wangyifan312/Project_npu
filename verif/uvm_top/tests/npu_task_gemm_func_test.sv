@@ -42,14 +42,14 @@ class npu_task_gemm_func_test extends soc_base_test;
       else `uvm_info("TEST",$sformatf("-- G%d: M=%0d K=%0d N=%0d expected=%0d --",
         lvl-2, M_v,K_v,N_v,exp_val),UVM_NONE)
 
-      // Preload A[M×K] all-1
+      // 预加载 A[M×K] all-1
       for(i=0; i<M_v*K_v; i=i+4) m_seq.axil_write32(32'h0000_0100+i, 32'h01010101);
-      // Preload B[K×N] all-1
+      // 预加载 B[K×N] all-1
       for(i=0; i<K_v*N_v; i=i+4) m_seq.axil_write32(32'h0001_0000+i, 32'h01010101);
-      // Clear output
+      // 清除 output
       for(i=0; i<M_v*N_v*4; i=i+4) m_seq.axil_write32(32'h0002_0000+i, 32'hDEADBEEF);
 
-      // Config: TASK_GEMM=7
+      // 配置: TASK_GEMM=7
       m_seq.axil_write32(`NPU_REG_TASK_TYPE,    32'd7);
       m_seq.axil_write32(`NPU_REG_INPUT_ADDR,   32'h0000_0100);
       m_seq.axil_write32(`NPU_REG_WEIGHT_ADDR,  32'h0001_0000);
@@ -63,7 +63,7 @@ class npu_task_gemm_func_test extends soc_base_test;
       m_seq.axil_write32(`NPU_REG_CLUSTER_MODE, 32'd0);
       m_seq.axil_write32(`NPU_REG_CLUSTER_MASK, 32'd1);
 
-      // Start/poll
+      // 启动/poll
       m_seq.axil_write32(`NPU_REG_CTRL, 32'd1);
       repeat(200000) begin
         m_seq.axil_read32(`NPU_REG_CTRL, rdata);

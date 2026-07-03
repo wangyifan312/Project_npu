@@ -12,12 +12,12 @@ module conv_frontend #(
     input  wire        clk,
     input  wire        rst_n,
 
-    // Input: streaming activation data from act_buffer (HWC layout, INT8 per byte)
+    // 输入: streaming activation data from act_buffer (HWC layout, INT8 per byte)
     input  wire [7:0]  act_data,
     input  wire        act_valid,
     output wire        act_ready,
 
-    // Output: 5x5 window as 25-element vector (row-major: w[r*5+c])
+    // 输出: 5x5 window as 25-element vector (row-major: w[r*5+c])
     // Window values are for the currently selected input channel
     output wire [7:0]  window_00, window_01, window_02, window_03, window_04,
     output wire [7:0]  window_10, window_11, window_12, window_13, window_14,
@@ -26,7 +26,7 @@ module conv_frontend #(
     output wire [7:0]  window_40, window_41, window_42, window_43, window_44,
     output wire        window_valid,
 
-    // Channel selection: which input channel to extract (0..C_in-1)
+    // 通道 selection: which input channel to extract (0..C_in-1)
     input  wire [5:0]  channel_sel,   // selected input channel
 
     // Control
@@ -165,7 +165,7 @@ module conv_frontend #(
                 state          <= S_LOAD_FIRST_5;
             end else case (state)
                 S_IDLE: begin
-                    // start handled with priority above
+                    // 启动 handled with priority above
                 end
 
                 S_LOAD_FIRST_5: begin

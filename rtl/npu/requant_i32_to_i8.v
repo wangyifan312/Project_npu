@@ -1,4 +1,4 @@
-// requant_i32_to_i8: signed INT32 -> INT8 requant with layer-wise multiplier/shift
+// 重量化_i32_to_i8: signed INT32 -> INT8 requant with layer-wise multiplier/shift
 // Arithmetic:
 //   q = clamp( round_to_nearest( acc * multiplier / 2^shift ), -128, 127 )
 // Rounding rule is symmetric "round half away from zero" to match Python utilities.

@@ -97,7 +97,7 @@ module postproc #(
             processed <= processed + 32'd1;
         end
 
-        // Done detection
+        // 完成 detection
         if (pool_en)
             done_r <= (processed >= total_out) && (total_out > 0);
         else

@@ -4,7 +4,7 @@
 // 目的： Prove a single cluster's full 16×16 PE array (4×4 tiles, 256 PEs)
 // is completely enabled during FC compute.  Uses deterministic input/weight
 // patterns and verifies output correctness, cluster activity, and tile
-// enable coverage via hierarchical probes.
+// 使能 coverage via hierarchical probes.
 //
 // 检查：
 //   1. Output compare: 16 INT32 outputs matched golden
@@ -38,12 +38,12 @@ class npu_fc_16x16_full_array_test extends soc_base_test;
     #200;
 
     // --- Build test data: 16→16 FC ---
-    // Input: 16 INT8 values {1, 2, ..., 16}
+    // 输入: 16 INT8 values {1, 2, ..., 16}
     input_bytes = new[16];
     for (i = 0; i < 16; i++)
       input_bytes[i] = 8'(i + 1);
 
-    // Weight: 16x16 INT8 identity-like: row[i] = {i+1, i+1, ..., i+1}
+    // 权重: 16x16 INT8 identity-like: row[i] = {i+1, i+1, ..., i+1}
     // So output[i] = sum(inputs) * (i+1) = 136 * (i+1)
     weight_bytes = new[16 * 16];
     for (i = 0; i < 16; i++) begin
@@ -77,7 +77,7 @@ class npu_fc_16x16_full_array_test extends soc_base_test;
 
     `uvm_info("TEST", "=== npu_fc_16x16_full_array_test: Single Cluster 16→16 FC ===", UVM_NONE)
 
-    // Clear sticky probes before task start
+    // 清除 sticky probes before task start
     clear_probe_sticky();
     fc_seq.start(env.axil_ag.seqr);
 
@@ -136,13 +136,13 @@ class npu_fc_16x16_full_array_test extends soc_base_test;
     // --- Check 3: Perf counters ---
     `uvm_info("TEST", "=== Perf Counter Check ===", UVM_NONE)
 
-    // Read cycle count
+    // 读 cycle count
     fc_seq.axil_read32(`NPU_REG_PERF_CYCLE_LO, rd_val);
     `uvm_info("TEST", $sformatf("cycle_count_lo   = %0d", rd_val), UVM_NONE)
     if (rd_val == 32'd0)
       `uvm_error("TEST", "FAIL: cycle_count is zero")
 
-    // Read beats
+    // 读 beats
     fc_seq.axil_read32(`NPU_REG_PERF_READ_BEATS, rd_val);
     `uvm_info("TEST", $sformatf("read_beats       = %0d", rd_val), UVM_NONE)
     if (rd_val == 32'd0)
@@ -153,11 +153,11 @@ class npu_fc_16x16_full_array_test extends soc_base_test;
     if (rd_val == 32'd0)
       `uvm_error("TEST", "FAIL: write_beats is zero")
 
-    // Read cluster activity
+    // 读 cluster activity
     fc_seq.axil_read32(`NPU_REG_PERF_CLUSTER_ACTIVE, rd_val);
     `uvm_info("TEST", $sformatf("cluster_active   = %0d", rd_val), UVM_NONE)
 
-    // Write DMA perf counters now on dedicated addresses 0xD0/0xD4
+    // 写 DMA perf counters now on dedicated addresses 0xD0/0xD4
     fc_seq.axil_read32(`NPU_REG_PERF_WRITE_DATA_CYC, rd_val);
     `uvm_info("TEST", $sformatf("write_data_cycles = %0d (via 0xD0)", rd_val), UVM_NONE)
     fc_seq.axil_read32(`NPU_REG_PERF_WRITE_TXN_CYC, rd_val);

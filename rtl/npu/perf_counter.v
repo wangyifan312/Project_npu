@@ -18,17 +18,17 @@ module perf_counter (
     input  wire        write_active,   // DMA writer is actively transferring
 
     // --- Enhanced event inputs ---
-    // Phase-level activity signals
+    // 阶段-level activity signals
     input  wire        compute_active,  // high during COMPUTE/PIPE_RUN states
     input  wire        load_active,     // high during LOAD states (act/wgt DMA + LOAD_ARRAY)
     input  wire        store_active,    // high during STORE state
     input  wire        collect_active,  // high during COLLECT phase
 
-    // Read valid bytes (per beat: actual payload, handles partial last beat)
-    // NOTE: 6 bits needed because max is 32 (0x20), which overflows 5 bits
+    // 读 valid bytes (per beat: actual payload, handles partial last beat)
+    // 注意：6 bits needed because max is 32 (0x20), which overflows 5 bits
     input  wire [5:0]  read_byte_cnt,   // valid bytes in this read beat (1-32)
 
-    // Write valid bytes (per beat: WSTRB popcount, handles partial last beat)
+    // 写 valid bytes (per beat: WSTRB popcount, handles partial last beat)
     input  wire [5:0]  write_byte_cnt,  // valid bytes in this write beat (1-32)
 
     // MAC count event (pulse with count of MACs completed this cycle)
@@ -44,13 +44,13 @@ module perf_counter (
     // Array fill/drain phase
     input  wire        array_fill_drain, // array is filling or draining (not at steady state)
 
-    // Legacy array inputs
+    // 传统 array inputs
     input  wire        array_active,   // array is computing (window_valid)
     input  wire        array_stall,    // array is stalled waiting for data
     input  wire [2:0]  cluster_active_inc,
     input  wire [2:0]  cluster_stall_inc,
 
-    // Write transaction-level counter inputs
+    // 写 transaction-level counter inputs
     input  wire        write_data_cycle,     // WVALID && WREADY (per AXI W beat)
     input  wire        write_txn_active,     // AW handshake -> B handshake window
 
@@ -60,7 +60,7 @@ module perf_counter (
     input  wire        b_active,             // BVALID && BREADY
     input  wire        bus_active,           // union of AR/R/AW/W/B handshake
 
-    // Counter outputs (frozen on done/error)
+    // 计数器 outputs (frozen on done/error)
     output wire [31:0] total_cycle_lo,
     output wire [31:0] total_cycle_hi,
     output wire [31:0] read_beat_count,
@@ -97,10 +97,10 @@ module perf_counter (
     // 64-bit cycle counter
     reg [31:0] cycle_lo, cycle_hi;
 
-    // Beat counters
+    // beat counters
     reg [31:0] read_beats, write_beats;
 
-    // Active cycle counters
+    // 活动 cycle counters
     reg [31:0] rd_active_cyc, wr_active_cyc;
     reg [31:0] arr_active_cyc, arr_stall_cyc;
     reg [31:0] cl_active_cyc, cl_stall_cyc;
@@ -133,7 +133,7 @@ module perf_counter (
             task_active_d <= task_active;
     end
 
-    // Cycle counter
+    // 周期 counter
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             cycle_lo <= 32'h0;
@@ -147,7 +147,7 @@ module perf_counter (
         end
     end
 
-    // Read beat counter
+    // 读 beat counter
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             read_beats <= 32'h0;
@@ -159,7 +159,7 @@ module perf_counter (
         end
     end
 
-    // Write beat counter
+    // 写 beat counter
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             write_beats <= 32'h0;
@@ -171,7 +171,7 @@ module perf_counter (
         end
     end
 
-    // Read active cycles
+    // 读 active cycles
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             rd_active_cyc <= 32'h0;
@@ -183,7 +183,7 @@ module perf_counter (
         end
     end
 
-    // Write active cycles
+    // 写 active cycles
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             wr_active_cyc <= 32'h0;
@@ -195,7 +195,7 @@ module perf_counter (
         end
     end
 
-    // Write data cycles (WVALID && WREADY)
+    // 写 data cycles (WVALID && WREADY)
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             wr_data_cyc <= 32'h0;
@@ -207,7 +207,7 @@ module perf_counter (
         end
     end
 
-    // Write transaction cycles (AW handshake to B handshake window)
+    // 写 transaction cycles (AW handshake to B handshake window)
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             wr_txn_cyc <= 32'h0;
@@ -367,7 +367,7 @@ module perf_counter (
         end
     end
 
-    // read_valid_bytes: accumulate actual payload bytes from read beats
+    // 读_valid_bytes: accumulate actual payload bytes from read beats
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             rd_valid_bytes <= 32'h0;
@@ -379,7 +379,7 @@ module perf_counter (
         end
     end
 
-    // write_valid_bytes: accumulate actual payload bytes from write beats (WSTRB-based)
+    // 写_valid_bytes: accumulate actual payload bytes from write beats (WSTRB-based)
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             wr_valid_bytes <= 32'h0;
@@ -465,7 +465,7 @@ module perf_counter (
     end
 
     // ============================================================
-    // Output assignments
+    // 输出 assignments
     // ============================================================
     assign total_cycle_lo    = cycle_lo;
     assign total_cycle_hi    = cycle_hi;

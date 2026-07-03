@@ -12,24 +12,24 @@ module npu_ctrl #(
     input  wire        rst_n,
 
     // === AXI4-Lite 从设备接口 ===
-    // Write address channel
+    // 写 address channel
     input  wire                        s_axi_awvalid,
     output wire                        s_axi_awready,
     input  wire [AXI_ADDR_WIDTH-1:0]   s_axi_awaddr,
-    // Write data channel
+    // 写 data channel
     input  wire                        s_axi_wvalid,
     output wire                        s_axi_wready,
     input  wire [AXI_DATA_WIDTH-1:0]   s_axi_wdata,
     input  wire [3:0]                  s_axi_wstrb,
-    // Write response channel
+    // 写 response channel
     output wire                        s_axi_bvalid,
     input  wire                        s_axi_bready,
     output wire [1:0]                  s_axi_bresp,
-    // Read address channel
+    // 读 address channel
     input  wire                        s_axi_arvalid,
     output wire                        s_axi_arready,
     input  wire [AXI_ADDR_WIDTH-1:0]   s_axi_araddr,
-    // Read data channel
+    // 读 data channel
     output wire                        s_axi_rvalid,
     input  wire                        s_axi_rready,
     output wire [AXI_DATA_WIDTH-1:0]   s_axi_rdata,
@@ -243,7 +243,7 @@ module npu_ctrl #(
                 ADDR_ADD_SRC0_MULT, ADDR_ADD_SRC0_SHIFT,
                 ADDR_ADD_SRC1_MULT, ADDR_ADD_SRC1_SHIFT,
                 ADDR_ADD_OUT_MULT, ADDR_ADD_OUT_SHIFT,
-                // Phase U8-a: IRQ registers
+                // 阶段 U8-a: IRQ registers
                 ADDR_IRQ_EN, ADDR_IRQ_CLEAR:
                     is_write_addr_valid = 1'b1;
                 default:
@@ -285,7 +285,7 @@ module npu_ctrl #(
                 ADDR_ADD_SRC0_MULT, ADDR_ADD_SRC0_SHIFT,
                 ADDR_ADD_SRC1_MULT, ADDR_ADD_SRC1_SHIFT,
                 ADDR_ADD_OUT_MULT, ADDR_ADD_OUT_SHIFT,
-                // Phase U8-a: IRQ registers
+                // 阶段 U8-a: IRQ registers
                 ADDR_IRQ_EN, ADDR_IRQ_STATUS:
                     is_read_addr_valid = 1'b1;
                 default:
@@ -444,11 +444,11 @@ module npu_ctrl #(
     reg         error;
     reg  [7:0]  error_code;
 
-    // Phase U8-a: IRQ registers
+    // 阶段 U8-a: IRQ registers
     reg  [1:0]  irq_en;       // bit0=done_irq_en, bit1=error_irq_en
     reg  [1:0]  irq_status;   // bit0=done_pending, bit1=error_pending
 
-    // Task latched outputs
+    // 任务 latched outputs
     reg         task_start_r;
     reg  [2:0]  task_type_r;
     reg  [31:0] input_addr_r;
@@ -483,7 +483,7 @@ module npu_ctrl #(
 
     wire wr_allowed = !busy || error;
 
-    // Register write: use the transaction payload selected from live or stored channels.
+    // 寄存器 write: use the transaction payload selected from live or stored channels.
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             cfg_task_type    <= 32'h0;
@@ -558,7 +558,7 @@ module npu_ctrl #(
                 ADDR_ADD_SRC1_SHIFT:cfg_add_src1_shift    <= apply_wstrb(cfg_add_src1_shift, write_data, write_strb) & 32'h0000_003f;
                 ADDR_ADD_OUT_MULT:  cfg_add_out_mult      <= apply_wstrb(cfg_add_out_mult, write_data, write_strb);
                 ADDR_ADD_OUT_SHIFT: cfg_add_out_shift     <= apply_wstrb(cfg_add_out_shift, write_data, write_strb) & 32'h0000_003f;
-                // Phase U8-a: IRQ registers
+                // 阶段 U8-a: IRQ registers
                 ADDR_IRQ_EN:    irq_en      <= write_data[1:0];
                 ADDR_IRQ_CLEAR: irq_status  <= irq_status & ~write_data[1:0];  // W1C
                 default: ;
@@ -828,7 +828,7 @@ module npu_ctrl #(
         (rd_addr == ADDR_ADD_SRC1_SHIFT)      ? cfg_add_src1_shift    :
         (rd_addr == ADDR_ADD_OUT_MULT)        ? cfg_add_out_mult      :
         (rd_addr == ADDR_ADD_OUT_SHIFT)       ? cfg_add_out_shift     :
-        // Phase U8-a: IRQ registers
+        // 阶段 U8-a: IRQ registers
         (rd_addr == ADDR_IRQ_EN)              ? {30'h0, irq_en}       :
         (rd_addr == ADDR_IRQ_STATUS)          ? {30'h0, irq_status}   :
         32'h0;

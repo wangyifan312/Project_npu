@@ -96,7 +96,7 @@
 `define NPU_REG_PERF_CLUSTER_CFG    (`SOC_NPU_REG_BASE + 32'h60)
 
 //-----------------------------------------------------------------------------
-// Requantization parameters (RW)
+// 重量化ization parameters (RW)
 //-----------------------------------------------------------------------------
 
 // Offset 25: Requantization select (RW)
@@ -147,7 +147,7 @@
 `define NPU_REG_CAPABILITY        (`SOC_NPU_REG_BASE + 32'h94)
 
 //-----------------------------------------------------------------------------
-// Write DMA performance counters (RO)
+// 写 DMA performance counters (RO)
 // Moved from 0x88/0x8C to 0xD0/0xD4 to resolve address conflict with
 // NPU_REG_CLUSTER_MODE (0x88) and NPU_REG_CLUSTER_MASK (0x8C).
 //-----------------------------------------------------------------------------

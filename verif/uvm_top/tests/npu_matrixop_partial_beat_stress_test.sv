@@ -48,7 +48,7 @@ class npu_matrixop_partial_beat_stress_test extends soc_base_test;
     m_seq = soc_base_seq::type_id::create("m_seq");
     m_seq.start(env.axil_ag.seqr);
 
-    // preload all-1
+    // 预加载 all-1
     for (i = 0; i < M_v * K_v; i = i + 4)
       m_seq.axil_write32(32'h0000_0100 + i, 32'h01010101);
     for (i = 0; i < K_v * N_v; i = i + 4)
@@ -61,7 +61,7 @@ class npu_matrixop_partial_beat_stress_test extends soc_base_test;
       m_seq.axil_write32(32'h0002_0000 + i, 32'hDEADBEEF);
     m_seq.axil_write32(32'h0002_0000 + M_v * row_stride, 32'hFEED_F00D);
 
-    // config GEMM streaming
+    // 配置 GEMM streaming
     m_seq.axil_write32(`NPU_REG_TASK_TYPE,    32'd7);
     m_seq.axil_write32(`NPU_REG_CONV_CFG,     32'h20);
     m_seq.axil_write32(`NPU_REG_POSTPROC,     32'd0);
@@ -132,18 +132,18 @@ class npu_matrixop_partial_beat_stress_test extends soc_base_test;
     m_seq = soc_base_seq::type_id::create("m_seq");
     m_seq.start(env.axil_ag.seqr);
 
-    // preload all-1
+    // 预加载 all-1
     for (i = 0; i < M_v * K_v; i = i + 4)
       m_seq.axil_write32(32'h0000_0100 + i, 32'h01010101);
     for (i = 0; i < K_v * N_v; i = i + 4)
       m_seq.axil_write32(32'h0001_0000 + i, 32'h01010101);
 
-    // clear output
+    // 清除 output
     row_stride = compute_row_stride_int8(N_v);
     for (i = 0; i < M_v * row_stride + 64; i = i + 4)
       m_seq.axil_write32(32'h0002_0000 + i, 32'hDEADBEEF);
 
-    // FC streaming + INT8 test hook (conv_cfg[6]=1, conv_cfg[5]=1)
+    // FC 流式 + INT8 test hook (conv_cfg[6]=1, conv_cfg[5]=1)
     m_seq.axil_write32(`NPU_REG_TASK_TYPE,    32'd1);
     m_seq.axil_write32(`NPU_REG_CONV_CFG,     32'h60);
     m_seq.axil_write32(`NPU_REG_POSTPROC,     32'd0);

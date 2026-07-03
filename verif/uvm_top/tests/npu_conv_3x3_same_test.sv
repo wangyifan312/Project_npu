@@ -7,9 +7,9 @@
 //   - Single cluster mode
 //   - Numeric check: sum-of-products against golden model with padding=1
 //
-// Input:  4x4 all ones (16 bytes)
-// Weight: 3x3 all ones (9 bytes)
-// Output: 4x4 INT32 values.
+// 输入:  4x4 all ones (16 bytes)
+// 权重: 3x3 all ones (9 bytes)
+// 输出: 4x4 INT32 values.
 //   With same padding (pad=1), each output position sums valid window elements:
 //   - Corner (0,0): only 2x2 valid with pad → 4
 //   - Edge (0,1): 2x3 valid with pad → 6
@@ -36,7 +36,7 @@ class npu_conv_3x3_same_test extends soc_base_test;
     phase.raise_objection(this);
     #200;
 
-    // Build test data: 4x4 input of all ones
+    // 构建测试数据: 4x4 input of all ones
     for (i = 0; i < 16; i++) begin
       input_bytes[i] = 8'h01;
     end
@@ -60,7 +60,7 @@ class npu_conv_3x3_same_test extends soc_base_test;
       expected_bytes[0], expected_bytes[1], expected_bytes[2], expected_bytes[3],
       expected_bytes[4], expected_bytes[5], expected_bytes[6], expected_bytes[7]), UVM_NONE)
 
-    // Configure and run NPU task
+    // 配置 and run NPU task
     conv_seq = npu_conv_task_seq::type_id::create("conv_seq");
     conv_seq.input_data            = input_bytes;
     conv_seq.weight_data           = weight_bytes;
@@ -79,7 +79,7 @@ class npu_conv_3x3_same_test extends soc_base_test;
     `uvm_info("TEST", "=== npu_conv_3x3_same_test: Single-Cluster 3x3 Same-Pad Conv ===", UVM_NONE)
     conv_seq.start(env.axil_ag.seqr);
 
-    // Compare DUT output with golden model
+    // 与黄金参考比对 DUT 输出 model
     if (conv_seq.done && !conv_seq.error) begin
       env.scoreboard.compare_output_bytes(conv_seq.actual_output, expected_bytes,
                                           conv_seq.output_base);

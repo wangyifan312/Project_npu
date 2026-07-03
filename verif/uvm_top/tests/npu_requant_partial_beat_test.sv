@@ -11,7 +11,7 @@
 // The DMA writer must produce the correct WSTRB for the last beat so that
 // only 1 byte is written to shared RAM in beat 1.
 //
-// Input:  9 INT32 values all = 100
+// 输入:  9 INT32 values all = 100
 // mult=1, shift=0 (identity requant with clamp to [-128, 127])
 // Expected: 9 bytes all = 100
 //
@@ -38,7 +38,7 @@ class npu_requant_partial_beat_test extends soc_base_test;
     phase.raise_objection(this);
     #200;
 
-    // Build test data: 9 INT32 values all = 100
+    // 构建测试数据: 9 INT32 values all = 100
     for (i = 0; i < 9; i++)
       input_ints[i] = 100;
 
@@ -73,7 +73,7 @@ class npu_requant_partial_beat_test extends soc_base_test;
       expected_bytes[6], expected_bytes[7], expected_bytes[8]), UVM_NONE)
     `uvm_info("TEST", "Beat layout: beat0=8 bytes (WSTRB=0xFF), beat1=1 byte (WSTRB=0x01)", UVM_NONE)
 
-    // Configure and run NPU requant task (mult=1, shift=0, 9 elements)
+    // 配置 and run NPU requant task (mult=1, shift=0, 9 elements)
     rq_seq = npu_requant_task_seq::type_id::create("rq_seq");
     rq_seq.input_ints            = input_ints;
     rq_seq.element_count         = 9;
@@ -86,7 +86,7 @@ class npu_requant_partial_beat_test extends soc_base_test;
     `uvm_info("TEST", "=== npu_requant_partial_beat_test: 9-element requant, partial last beat ===", UVM_NONE)
     rq_seq.start(env.axil_ag.seqr);
 
-    // Compare DUT output with golden model
+    // 与黄金参考比对 DUT 输出 model
     if (rq_seq.done && !rq_seq.error) begin
       // Verify actual output size
       if (rq_seq.actual_output.size() != 9) begin

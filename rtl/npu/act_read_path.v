@@ -21,7 +21,7 @@ module act_read_path #(
     output wire [7:0]                  error_code,
     output wire                        busy,
 
-    // Buffer write port (to npu_buffer)
+    // 缓冲区 write port (to npu_buffer)
     output wire [BUF_ADDR_W-1:0]       buf_wr_addr,
     output wire [BUF_DATA_W-1:0]       buf_wr_data,
     output wire                        buf_wr_en,
@@ -44,7 +44,7 @@ module act_read_path #(
     wire                  dma_data_valid;
     wire                  dma_data_ready;
 
-    // Buffer write address counter
+    // 缓冲区 write address counter
     reg [BUF_ADDR_W-1:0] wr_addr_cnt;
 
     // DMA reader always ready for data during active transfer

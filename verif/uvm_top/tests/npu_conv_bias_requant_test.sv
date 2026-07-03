@@ -8,14 +8,14 @@
 //   - Requant mult=1 shift=0 (identity, clamp to INT8)
 //   - Single cluster mode
 //
-// Input:  5x5 all 2s (25 bytes)
-// Weight: 5x5x1x2 all 1s (50 bytes, HWIO)
-// Bias:   INT32 {10, 20} packed as 8 bytes LE
+// 输入:  5x5 all 2s (25 bytes)
+// 权重: 5x5x1x2 all 1s (50 bytes, HWIO)
+// 偏置:   INT32 {10, 20} packed as 8 bytes LE
 // Raw MAC: 25*2*1 = 50 for each output channel
 // With bias: {50+10=60, 50+20=70}
-// Requant identity: {60, 70} clamped to INT8
+// 重量化 identity: {60, 70} clamped to INT8
 //
-// Golden flow:
+// 黄金参考 flow:
 //   1. compute_conv  → raw MAC INT32s [50, 50]
 //   2. compute_bias  → biased+requant INT8 [60, 70]
 //=============================================================================
@@ -121,7 +121,7 @@ class npu_conv_bias_requant_test extends soc_base_test;
     `uvm_info("TEST", "=== npu_conv_bias_requant_test: Single-Cluster Conv w/ Bias+Requant ===", UVM_NONE)
     conv_seq.start(env.axil_ag.seqr);
 
-    // Compare DUT output with golden model
+    // 与黄金参考比对 DUT 输出 model
     if (conv_seq.done && !conv_seq.error) begin
       env.scoreboard.compare_output_bytes(conv_seq.actual_output, expected_bytes,
                                           conv_seq.output_base);

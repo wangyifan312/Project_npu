@@ -62,7 +62,7 @@ class soc_mem_model extends uvm_component;
     `uvm_info("MEM_MODEL", $sformatf("Read %0d bytes from 0x%08h", nbytes, base_addr), UVM_HIGH)
   endfunction
 
-  // Clear all memory
+  // 清除 all memory
   function void clear();
     mem.delete();
   endfunction

@@ -32,8 +32,8 @@ class soc_golden_model extends uvm_component;
   //----------------------------------------------------------------------
   // compute_conv: INT8 Conv reference
   //
-  // input_bytes:  [input_h * input_w * input_c] INT8 NHWC
-  // weight_bytes: [kernel_h * kernel_w * input_c * output_c] INT8 HWIO
+  // 输入_bytes:  [input_h * input_w * input_c] INT8 NHWC
+  // 权重_bytes: [kernel_h * kernel_w * input_c * output_c] INT8 HWIO
   // Returns: output_bytes as [output_h * output_w * output_c] INT32 (little-endian)
   //----------------------------------------------------------------------
   function void compute_conv(
@@ -248,7 +248,7 @@ class soc_golden_model extends uvm_component;
   //----------------------------------------------------------------------
   // compute_gap: 8x8 GAP with INT8 input (matches RTL gap_cfg[1:0]=0)
   //
-  // input_bytes: [64 * channels] INT8 (8x8 spatial x channels)
+  // 输入_bytes: [64 * channels] INT8 (8x8 spatial x channels)
   //----------------------------------------------------------------------
   function void compute_gap(
       byte unsigned input_bytes[],  // [64 * channels] INT8
@@ -321,7 +321,7 @@ class soc_golden_model extends uvm_component;
   endfunction
 
   //----------------------------------------------------------------------
-  // NOTE: output_bytes and output_int32 are public class properties.
+  // 注意：output_bytes and output_int32 are public class properties.
   // Access them directly: golden.output_bytes, golden.output_int32
   // VCS O-2018.09-SP2 does not support dynamic array function return types.
   //----------------------------------------------------------------------

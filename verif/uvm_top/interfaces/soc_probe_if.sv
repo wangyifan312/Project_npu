@@ -48,7 +48,7 @@ interface soc_probe_if(input logic clk, input logic rst_n);
 
   // ---------------------------------------------------------------------------
   // AXI bus cycle counters (accumulated during NPU task window, TB-managed)
-  // Cleared by test via clear_bus_counters() before each new task.
+  // 清除ed by test via clear_bus_counters() before each new task.
   // ---------------------------------------------------------------------------
   logic [31:0]  bus_ar_cycles;     // ARVALID && ARREADY cycles
   logic [31:0]  bus_aw_cycles;     // AWVALID && AWREADY cycles
@@ -76,7 +76,7 @@ interface soc_probe_if(input logic clk, input logic rst_n);
   // NPU FSM state for activity window detection
   logic [4:0]   npu_fsm_state;
 
-  // Tile clock enables: flat vector [CLUSTER_COUNT*N_TILES-1:0]
+  // tile 时钟使能s: flat vector [CLUSTER_COUNT*N_TILES-1:0]
   // For parameterization, use a large max width. Actual width depends on
   // TILE_ROWS/TILE_COLS; probes outside the valid range read as 0.
   logic [1535:0] npu_cluster_tile_clk_en_flat;  // max: single-clusters * 256 tiles
@@ -95,7 +95,7 @@ interface soc_probe_if(input logic clk, input logic rst_n);
   bit         observed_tile_all_on;      // any tile within cluster0 active at some point
   bit         observed_all_clusters_active;
 
-  // Clear all sticky fields. Called by the test before starting a new task.
+  // 清除 all sticky fields. Called by the test before starting a new task.
   function void clear_sticky();
     observed_cluster_busy_mask   = 6'b0;
     observed_cluster_valid_mask  = 6'b0;

@@ -18,14 +18,14 @@ module mac_tile_4x4 (
     input  wire [31:0] sum_in_2,
     input  wire [31:0] sum_in_3,
 
-    // Weights: 4×4 (flat, row-major: w[0][0], w[0][1], ..., w[3][3])
+    // 权重s: 4×4 (flat, row-major: w[0][0], w[0][1], ..., w[3][3])
     input  wire [7:0]  weight_00, weight_01, weight_02, weight_03,
     input  wire [7:0]  weight_10, weight_11, weight_12, weight_13,
     input  wire [7:0]  weight_20, weight_21, weight_22, weight_23,
     input  wire [7:0]  weight_30, weight_31, weight_32, weight_33,
     input  wire        weight_ld,
 
-    // Outputs
+    // 输出s
     output wire [7:0]  act_out_0,
     output wire [7:0]  act_out_1,
     output wire [7:0]  act_out_2,

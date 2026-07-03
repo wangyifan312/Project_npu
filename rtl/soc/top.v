@@ -285,7 +285,7 @@ module top #(
         .npu_rready   (npu_rready),
         .npu_rdata    (npu_rdata),
         .npu_rresp    (npu_rresp),
-        // Memory side
+        // 内存 side
         .mem_awvalid  (mem_awvalid),
         .mem_awready  (mem_awready),
         .mem_awaddr   (mem_awaddr),

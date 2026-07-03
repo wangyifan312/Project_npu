@@ -3,10 +3,10 @@
 //
 // Verifies 2x2 MaxPool (stride 2) on a 4x4 INT32 tensor with 4 channels.
 //
-// Channel 0: {1,5,3,8, 2,6,4,7, 3,1,9,2, 4,8,5,3}
-// Channel 1: all 10s
-// Channel 2: {8,1,3,5, 7,2,4,6, 2,9,1,3, 5,3,8,4}
-// Channel 3: all 5s
+// 通道 0: {1,5,3,8, 2,6,4,7, 3,1,9,2, 4,8,5,3}
+// 通道 1: all 10s
+// 通道 2: {8,1,3,5, 7,2,4,6, 2,9,1,3, 5,3,8,4}
+// 通道 3: all 5s
 //
 // NHWC layout: input[spatial_idx * C + ch] = value
 //
@@ -39,37 +39,37 @@ class npu_pool_multichannel_test extends soc_base_test;
     phase.raise_objection(this);
     #200;
 
-    // Build test data: 4x4x4 NHWC INT32 tensor
-    // Channel 0 per position: {1,5,3,8, 2,6,4,7, 3,1,9,2, 4,8,5,3}
-    // Channel 1 per position: all 10
-    // Channel 2 per position: {8,1,3,5, 7,2,4,6, 2,9,1,3, 5,3,8,4}
-    // Channel 3 per position: all 5
+    // 构建测试数据: 4x4x4 NHWC INT32 tensor
+    // 通道 0 per position: {1,5,3,8, 2,6,4,7, 3,1,9,2, 4,8,5,3}
+    // 通道 1 per position: all 10
+    // 通道 2 per position: {8,1,3,5, 7,2,4,6, 2,9,1,3, 5,3,8,4}
+    // 通道 3 per position: all 5
 
     // Initialize all to zero first
     for (i = 0; i < 64; i++)
       input_ints[i] = 0;
 
-    // Channel 0 data
+    // 通道 0 data
     begin
       int unsigned ch0_data[16] = '{1,5,3,8, 2,6,4,7, 3,1,9,2, 4,8,5,3};
       for (i = 0; i < 16; i++)
         input_ints[i * 4 + 0] = ch0_data[i];
     end
 
-    // Channel 1: all 10s
+    // 通道 1: all 10s
     begin
       for (i = 0; i < 16; i++)
         input_ints[i * 4 + 1] = 10;
     end
 
-    // Channel 2 data
+    // 通道 2 data
     begin
       int unsigned ch2_data[16] = '{8,1,3,5, 7,2,4,6, 2,9,1,3, 5,3,8,4};
       for (i = 0; i < 16; i++)
         input_ints[i * 4 + 2] = ch2_data[i];
     end
 
-    // Channel 3: all 5s
+    // 通道 3: all 5s
     begin
       for (i = 0; i < 16; i++)
         input_ints[i * 4 + 3] = 5;
@@ -103,7 +103,7 @@ class npu_pool_multichannel_test extends soc_base_test;
       env.golden.output_int32[14],
       env.golden.output_int32[15]), UVM_NONE)
 
-    // Configure and run NPU pool task
+    // 配置 and run NPU pool task
     pool_seq = npu_pool_task_seq::type_id::create("pool_seq");
     pool_seq.input_ints   = input_ints;
     pool_seq.input_h      = 16'd4;
@@ -117,7 +117,7 @@ class npu_pool_multichannel_test extends soc_base_test;
     `uvm_info("TEST", "=== npu_pool_multichannel_test: 2x2 MaxPool 4ch ===", UVM_NONE)
     pool_seq.start(env.axil_ag.seqr);
 
-    // Compare DUT output with golden model
+    // 与黄金参考比对 DUT 输出 model
     if (pool_seq.done && !pool_seq.error) begin
       env.scoreboard.compare_output_bytes(pool_seq.actual_output, expected_bytes,
                                           pool_seq.output_base);

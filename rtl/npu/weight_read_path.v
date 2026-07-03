@@ -1,4 +1,4 @@
-// weight_read_path: weight read DMA wrapper
+// 权重_read_path: weight read DMA wrapper
 // Wraps dma_axi_reader, provides buffer write port interface
 // Spec §4.2: logically separate from act_read_path, shares AXI4 read port externally
 `timescale 1ns / 1ps
@@ -21,7 +21,7 @@ module weight_read_path #(
     output wire [7:0]                  error_code,
     output wire                        busy,
 
-    // Buffer write port (to npu_buffer)
+    // 缓冲区 write port (to npu_buffer)
     output wire [BUF_ADDR_W-1:0]       buf_wr_addr,
     output wire [BUF_DATA_W-1:0]       buf_wr_data,
     output wire                        buf_wr_en,

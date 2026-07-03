@@ -2,28 +2,28 @@
 
 interface axil_if(input logic clk, input logic rst_n);
 
-  // Write address channel
+  // 写 address channel
   logic        awvalid;
   logic        awready;
   logic [31:0] awaddr;
 
-  // Write data channel
+  // 写 data channel
   logic        wvalid;
   logic        wready;
   logic [31:0] wdata;
   logic [3:0]  wstrb;
 
-  // Write response channel
+  // 写 response channel
   logic        bvalid;
   logic        bready;
   logic [1:0]  bresp;
 
-  // Read address channel
+  // 读 address channel
   logic        arvalid;
   logic        arready;
   logic [31:0] araddr;
 
-  // Read data channel
+  // 读 data channel
   logic        rvalid;
   logic        rready;
   logic [31:0] rdata;

@@ -1,7 +1,7 @@
 //=============================================================================
-// npu_irq_reporting_test.sv — Phase U8-a NPU IRQ Reporting BFM Test
+// NPU 中断信号_reporting_test.sv — Phase U8-a NPU IRQ Reporting BFM Test
 //
-// BFM-level verification of IRQ CSR protocol:
+// BFM 级别 verification of IRQ CSR protocol:
 //   1. IRQ_EN reset=0 (backward compatible)
 //   2. IRQ_STATUS done/error pending on task completion
 //   3. IRQ_EN gate: npu_irq = |(irq_status & irq_en)
@@ -27,7 +27,7 @@ class npu_irq_reporting_test extends soc_base_test;
     m_seq = soc_base_seq::type_id::create("m_seq");
     m_seq.start(env.axil_ag.seqr);
 
-    // Preload all-1
+    // 预加载 all-1
     for (i=0; i<M_v*K_v; i=i+4)
       m_seq.axil_write32(32'h0000_0100+i, 32'h01010101);
     for (i=0; i<K_v*N_v; i=i+4)
@@ -36,7 +36,7 @@ class npu_irq_reporting_test extends soc_base_test;
     for (i=0; i<M_v*row_stride+64; i=i+4)
       m_seq.axil_write32(32'h0002_0000+i, 32'hDEADBEEF);
 
-    // Config
+    // 配置
     m_seq.axil_write32(`NPU_REG_TASK_TYPE,    32'd7);
     m_seq.axil_write32(`NPU_REG_CONV_CFG,     32'h20);
     m_seq.axil_write32(`NPU_REG_POSTPROC,     32'd0);
@@ -51,10 +51,10 @@ class npu_irq_reporting_test extends soc_base_test;
     m_seq.axil_write32(`NPU_REG_CLUSTER_MODE, 32'd0);
     m_seq.axil_write32(`NPU_REG_CLUSTER_MASK, 32'd1);
 
-    // Start
+    // 启动
     m_seq.axil_write32(`NPU_REG_CTRL, 32'd1);
 
-    // Poll for done OR error
+    // 轮询等待完成 OR error
     repeat(500000) begin
       m_seq.axil_read32(`NPU_REG_CTRL, ctrl_val);
       if (ctrl_val[2] || ctrl_val[3]) break;
@@ -62,7 +62,7 @@ class npu_irq_reporting_test extends soc_base_test;
     end
     m_seq.axil_read32(`NPU_REG_PERF_CYCLE_LO, cycle_lo);
 
-    // Read IRQ status
+    // 读 IRQ status
     m_seq.axil_read32(`NPU_REG_IRQ_STATUS, rdata);
     status_done  = rdata[`NPU_IRQ_DONE];
     status_error = rdata[`NPU_IRQ_ERROR];
@@ -70,7 +70,7 @@ class npu_irq_reporting_test extends soc_base_test;
     // Check npu_irq
     irq_fired = probe_vif.npu_irq;
 
-    // Verify output
+    // 验证输出
     errs = 0;
     for (r=0; r<M_v; r++)
       for (c=0; c<N_v; c++) begin
@@ -100,7 +100,7 @@ class npu_irq_reporting_test extends soc_base_test;
     `uvm_info("IRQ", $sformatf("Test1 IRQ_EN reset: 0x%08x (expect 0)", rdata), UVM_NONE)
 
     // ---- Test 2: IRQ_STATUS done pending on task done ----
-    // Clear any stale
+    // 清除 any stale
     m_seq.axil_write32(`NPU_REG_IRQ_CLEAR, 32'h3);
     m_seq.axil_write32(`NPU_REG_IRQ_EN,    32'h0);  // disabled initially
     run_gemm_irq(4, 64, 16, "T2_noen", irq_fired, status_done, status_error, func_ok);
@@ -139,7 +139,7 @@ class npu_irq_reporting_test extends soc_base_test;
     m_seq.axil_write32(`NPU_REG_IRQ_CLEAR, 32'h3);  // clear all
     // Run another task to set done again
     run_gemm_irq(4, 64, 16, "T5", irq_fired, status_done, status_error, func_ok);
-    // Write 0 to CLEAR
+    // 写 0 to CLEAR
     m_seq.axil_write32(`NPU_REG_IRQ_CLEAR, 32'h0);
     #1000;
     m_seq.axil_read32(`NPU_REG_IRQ_STATUS, rdata);
@@ -175,7 +175,7 @@ class npu_irq_reporting_test extends soc_base_test;
     if (!irq_fired)
       `uvm_error("IRQ", "T6: npu_irq=0 with error pending and EN.error=1")
 
-    // Clear
+    // 清除
     m_seq.axil_write32(`NPU_REG_IRQ_CLEAR, 32'h2);
     #1000;
     m_seq.axil_read32(`NPU_REG_IRQ_STATUS, rdata);
@@ -183,14 +183,14 @@ class npu_irq_reporting_test extends soc_base_test;
       `uvm_error("IRQ", "T6: error still pending after clear")
 
     // ---- Test 7: Back-to-back ----
-    // Clear error state from Test6, clear IRQ
+    // 清除 error state from Test6, clear IRQ
     m_seq.axil_write32(`NPU_REG_CTRL, 32'h10);  // CTRL[4]=1 clear error
     #1000;
     m_seq.axil_write32(`NPU_REG_IRQ_CLEAR, 32'h3);
     m_seq.axil_write32(`NPU_REG_IRQ_EN,    32'h1);
     run_gemm_irq(4, 64, 16, "B2B_T1", irq_fired, status_done, status_error, func_ok);
     if (!func_ok) `uvm_error("IRQ", "B2B_T1: output FAIL")
-    // Clear
+    // 清除
     m_seq.axil_write32(`NPU_REG_IRQ_CLEAR, 32'h1);
     #1000;
     // Run second task

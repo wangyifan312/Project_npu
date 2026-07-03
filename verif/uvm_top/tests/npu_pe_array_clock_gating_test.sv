@@ -4,7 +4,7 @@
 // 验证： dynamic PE array clock gating via existing tile_clk_en probe.
 // When NPU is idle (FSM_IDLE/F_DONE/FSM_ERROR), ALL tile clock enables
 // should be 0. During active computation (GEMM/FC/Conv), at least some
-// tile clock enables should be 1.
+// tile 时钟使能s should be 1.
 //
 // Uses existing soc_probe_if.npu_cluster_tile_clk_en_flat (1536-bit).
 // Sticky flags: saw_idle_zero, saw_active_one, saw_done_zero.
@@ -42,7 +42,7 @@ class npu_pe_array_clock_gating_test extends soc_base_test;
     m_seq = soc_base_seq::type_id::create("m_seq");
     m_seq.start(env.axil_ag.seqr);
 
-    // Preload all-1
+    // 预加载 all-1
     for (i=0; i<M_v*K_v; i=i+4)
       m_seq.axil_write32(32'h0000_0100+i, 32'h01010101);
     for (i=0; i<K_v*N_v; i=i+4)
@@ -88,7 +88,7 @@ class npu_pe_array_clock_gating_test extends soc_base_test;
       check_gating({label,"_POST"}, saw_done_zero, dummy_active);
     end
 
-    // Verify output
+    // 验证输出
     if (ctrl_val[3]) begin
       m_seq.axil_read32(`NPU_REG_STATUS, rdata);
       `uvm_error("CLK_GATE", $sformatf("%s ERROR code=0x%02x", label, rdata[7:0]))

@@ -7,7 +7,7 @@
 //   3. Start and poll
 //   4. Read output (INT8 vector)
 //
-// Requant: INT32 -> INT8 with configurable multiplier and shift.
+// 重量化: INT32 -> INT8 with configurable multiplier and shift.
 // Uses requant slot 0 (REQUANT_SEL=0).
 // No weight or bias — pure element-wise quantization with clamp to [-128,127].
 //
@@ -30,7 +30,7 @@ class npu_requant_task_seq extends soc_base_seq;
   `uvm_object_utils(npu_requant_task_seq)
 
   //---------------------------------------------------------------------------
-  // Configuration properties (set before start())
+  // 配置uration properties (set before start())
   //---------------------------------------------------------------------------
   bit [31:0]    input_base;
   bit [31:0]    output_base;
@@ -40,7 +40,7 @@ class npu_requant_task_seq extends soc_base_seq;
   int unsigned  shift;
 
   //---------------------------------------------------------------------------
-  // Result properties (set after body() completes)
+  // 结果 properties (set after body() completes)
   //---------------------------------------------------------------------------
   int unsigned  expected_output_bytes;
   bit           done;
@@ -82,7 +82,7 @@ class npu_requant_task_seq extends soc_base_seq;
 
     `uvm_info("REQUANT_TASK", "=== Requant Task: Preloading ===", UVM_NONE)
 
-    // Preload input only — Requant has no weight tensor
+    // 预加载 input only — Requant has no weight tensor
     preload_seq = shared_ram_preload_seq::type_id::create("preload_seq");
     preload_seq.base_addr = input_base;
     preload_seq.data      = input_data;

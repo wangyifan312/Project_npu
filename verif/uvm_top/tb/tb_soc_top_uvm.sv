@@ -118,7 +118,7 @@ module tb_soc_top_uvm;
   assign probe_vif.npu_m_bready  = u_top.npu_m_bready;
   assign probe_vif.npu_m_bresp   = u_top.npu_m_bresp;
 
-  // Write DMA internal state (for dual utilization metrics)
+  // 写 DMA internal state (for dual utilization metrics)
   assign probe_vif.npu_dma_wr_busy       = u_top.u_npu.dma_wr_busy;
   assign probe_vif.npu_dma_wr_txn_active = u_top.u_npu.dma_wr_txn_active;
 
@@ -133,14 +133,14 @@ module tb_soc_top_uvm;
   assign probe_vif.npu_fsm_state      = u_top.u_npu.fsm_state;
   assign probe_vif.npu_task_type      = u_top.u_npu.task_type;
 
-  // Tile clock enables: CLUSTER_COUNT * N_TILES = 1 * 256 = 256
+  // tile 时钟使能s: CLUSTER_COUNT * N_TILES = 1 * 256 = 256
   assign probe_vif.npu_cluster_tile_clk_en_flat =
     u_top.u_npu.cluster_tile_clk_en_all_flat;
 
   //-----------------------------------------------------------------------------
   // Sticky cluster activity sampling during NPU busy window
-  // Read-only: OR-accumulates probe signals into sticky observation fields.
-  // Cleared by test via probe_vif.clear_sticky() before each new task.
+  // 读-only: OR-accumulates probe signals into sticky observation fields.
+  // 清除ed by test via probe_vif.clear_sticky() before each new task.
   //-----------------------------------------------------------------------------
   always @(posedge clk) begin
     if (u_top.u_npu.dma_wr_busy || (|u_top.u_npu.cluster_busy)) begin
@@ -160,10 +160,10 @@ module tb_soc_top_uvm;
   //-----------------------------------------------------------------------------
   // AXI bus address/response cycle counters during full NPU task window
   // Gate: npu_status[1] (ctrl_busy) — covers the entire task from start to done.
-  // Read data (RVALID&&RREADY) and write data (WVALID&&WREADY) are counted by
+  // 读 data (RVALID&&RREADY) and write data (WVALID&&WREADY) are counted by
   // NPU perf counters (PERF_READ_BEATS and PERF_WRITE_DATA_CYC respectively).
   // These AR/AW/B counters supplement the perf counters for waveform visibility.
-  // Cleared by test via probe_vif.clear_bus_counters() before each new task.
+  // 清除ed by test via probe_vif.clear_bus_counters() before each new task.
   //-----------------------------------------------------------------------------
   always @(posedge clk) begin
     if (u_top.npu_status[1]) begin
@@ -179,7 +179,7 @@ module tb_soc_top_uvm;
   always #2.5 clk = ~clk;
 
   //-----------------------------------------------------------------------------
-  // Reset generation (separate from run_test to avoid consuming time before UVM)
+  // 复位 generation (separate from run_test to avoid consuming time before UVM)
   //-----------------------------------------------------------------------------
   initial begin
     rst_n = 1'b0;

@@ -14,7 +14,7 @@ class npu_status_monitor extends uvm_monitor;
   longint unsigned cycle_count;
   bit timeout_fired;
 
-  // Timeout threshold
+  // 超时 threshold
   int unsigned timeout_cycles;
 
   function new(string name = "npu_status_monitor", uvm_component parent = null);
@@ -55,7 +55,7 @@ class npu_status_monitor extends uvm_monitor;
       cur_done  = probe_vif.npu_status[2];
       cur_error = probe_vif.npu_status[3];
 
-      // Busy rising edge
+      // 忙 rising edge
       if (cur_busy && !prev_busy) begin
         txn = npu_status_txn::type_id::create("txn");
         txn.event_type = npu_status_txn::STATUS_BUSY_RISE;
@@ -69,7 +69,7 @@ class npu_status_monitor extends uvm_monitor;
         busy_timed_out = 1'b0;
       end
 
-      // Busy falling edge
+      // 忙 falling edge
       if (!cur_busy && prev_busy) begin
         txn = npu_status_txn::type_id::create("txn");
         txn.event_type = npu_status_txn::STATUS_BUSY_FALL;
@@ -82,7 +82,7 @@ class npu_status_monitor extends uvm_monitor;
         busy_timed_out = 1'b1; // prevent duplicate timeout
       end
 
-      // Done rising edge
+      // 完成 rising edge
       if (cur_done && !prev_done) begin
         txn = npu_status_txn::type_id::create("txn");
         txn.event_type = npu_status_txn::STATUS_DONE_RISE;
@@ -94,7 +94,7 @@ class npu_status_monitor extends uvm_monitor;
         `uvm_info("STATUS_MON", $sformatf("DONE rise at cycle %0d", cycle_count), UVM_MEDIUM)
       end
 
-      // Error rising edge
+      // 错误 rising edge
       if (cur_error && !prev_error) begin
         txn = npu_status_txn::type_id::create("txn");
         txn.event_type = npu_status_txn::STATUS_ERROR_RISE;
@@ -106,7 +106,7 @@ class npu_status_monitor extends uvm_monitor;
         `uvm_info("STATUS_MON", $sformatf("ERROR rise at cycle %0d", cycle_count), UVM_MEDIUM)
       end
 
-      // Timeout detection: busy stuck high
+      // 超时 detection: busy stuck high
       if (cur_busy && !busy_timed_out && (cycle_count - busy_start_cycle) > timeout_cycles) begin
         `uvm_error("STATUS_MON", $sformatf("NPU busy timeout: %0d cycles", cycle_count - busy_start_cycle))
         busy_timed_out = 1'b1;

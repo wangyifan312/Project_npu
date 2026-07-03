@@ -7,11 +7,11 @@
 //   - Single cluster mode (cluster_mode=2'd0)
 //   - Multi-channel numeric check against DPI-C golden model
 //
-// Input:  channel 0 = all 1s, channel 1 = all 2s (NHWC: 18 bytes)
-// Weight: 2 input ch * 2 output ch * 9 spatial = 36 bytes, all 1s (HWIO)
-// Golden: For each output channel, sum over all inputs and input channels
+// 输入:  channel 0 = all 1s, channel 1 = all 2s (NHWC: 18 bytes)
+// 权重: 2 input ch * 2 output ch * 9 spatial = 36 bytes, all 1s (HWIO)
+// 黄金参考: For each output channel, sum over all inputs and input channels
 //         = 9*1*1 + 9*2*1 = 27 for both output channels
-// Output: 2 INT32 values = 8 bytes (little-endian)
+// 输出: 2 INT32 values = 8 bytes (little-endian)
 //=============================================================================
 
 `timescale 1ns / 1ps
@@ -43,7 +43,7 @@ class npu_conv_multichannel_test extends soc_base_test;
       input_bytes[i*2 + 1] = 8'h02;
     end
 
-    // Golden: unpadded weights (36 bytes, all 0x01)
+    // 黄金参考: unpadded weights (36 bytes, all 0x01)
     for (i = 0; i < 36; i++) weight_golden[i] = 8'h01;
 
     // NPU preload: padded to wgt_per_cin per input channel
@@ -69,7 +69,7 @@ class npu_conv_multichannel_test extends soc_base_test;
       $signed({expected_bytes[3], expected_bytes[2], expected_bytes[1], expected_bytes[0]}),
       $signed({expected_bytes[7], expected_bytes[6], expected_bytes[5], expected_bytes[4]})), UVM_NONE)
 
-    // Configure and run NPU task
+    // 配置 and run NPU task
     conv_seq = npu_conv_task_seq::type_id::create("conv_seq");
     conv_seq.input_data            = input_bytes;
     conv_seq.weight_data           = weight_preload;  // padded for NPU wgt_per_cin
@@ -88,7 +88,7 @@ class npu_conv_multichannel_test extends soc_base_test;
     `uvm_info("TEST", "=== npu_conv_multichannel_test: Single-Cluster Multi-Channel Conv ===", UVM_NONE)
     conv_seq.start(env.axil_ag.seqr);
 
-    // Compare DUT output with golden model
+    // 与黄金参考比对 DUT 输出 model
     if (conv_seq.done && !conv_seq.error) begin
       env.scoreboard.compare_output_bytes(conv_seq.actual_output, expected_bytes,
                                           conv_seq.output_base);

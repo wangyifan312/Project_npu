@@ -19,7 +19,7 @@ class npu_conv_smoke_test extends soc_base_test;
     phase.raise_objection(this);
     #200;
 
-    // Build test data: 5x5 input of 0x01, 5x5 weight of 0x02
+    // 构建测试数据: 5x5 input of 0x01, 5x5 weight of 0x02
     for (i = 0; i < 25; i++) begin
       input_bytes[i]  = 8'h01;
       weight_bytes[i] = 8'h02;
@@ -38,7 +38,7 @@ class npu_conv_smoke_test extends soc_base_test;
       expected_bytes.size(),
       expected_bytes[0], expected_bytes[1], expected_bytes[2], expected_bytes[3]), UVM_NONE)
 
-    // Configure and run NPU task
+    // 配置 and run NPU task
     conv_seq = npu_conv_task_seq::type_id::create("conv_seq");
     conv_seq.input_data            = input_bytes;
     conv_seq.weight_data           = weight_bytes;
@@ -56,7 +56,7 @@ class npu_conv_smoke_test extends soc_base_test;
     `uvm_info("TEST", "=== npu_conv_smoke_test: Full 6-Cluster Conv ===", UVM_NONE)
     conv_seq.start(env.axil_ag.seqr);
 
-    // Compare DUT output with golden model
+    // 与黄金参考比对 DUT 输出 model
     if (conv_seq.done && !conv_seq.error) begin
       env.scoreboard.compare_output_bytes(conv_seq.actual_output, expected_bytes,
                                           conv_seq.output_base);

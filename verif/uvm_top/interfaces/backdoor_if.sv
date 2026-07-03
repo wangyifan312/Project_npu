@@ -1,5 +1,5 @@
 //=============================================================================
-// backdoor_if.sv — 用于加载测试数据的快速共享 RAM 访问
+// 后门_if.sv — 用于加载测试数据的快速共享 RAM 访问
 //
 // Provides task/function methods that UVM tests can call through a virtual
 // 批量加载 .memh 文件到 DUT 共享 RAM 的接口
@@ -35,7 +35,7 @@ interface backdoor_if;
   endtask
 
   //---------------------------------------------------------------------------
-  // read32 — 从 DUT 共享 RAM 读取单个 32-bit 字
+  // 读32 — 从 DUT 共享 RAM 读取单个 32-bit 字
   //---------------------------------------------------------------------------
   function int read32(input int byte_addr);
     int beat_idx;

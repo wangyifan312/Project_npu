@@ -3,12 +3,12 @@
 //
 // Verifies INT32 -> INT8 Requantization with configurable multiplier/shift.
 //
-// Test 1: multiplier=1, shift=0 (identity requant with clamp to INT8)
+// 测试 1: multiplier=1, shift=0 (identity requant with clamp to INT8)
 //   Input: 8 INT32 values = {100, 200, -50, -100, 0, 255, -200, 50}
 //   Expected INT8: {100, 127, -50, -100, 0, 127, -128, 50}
 //   (clamped to [-128, 127])
 //
-// Test 2: multiplier=2, shift=1 (effectively identity: (val*2)>>1 = val)
+// 测试 2: multiplier=2, shift=1 (effectively identity: (val*2)>>1 = val)
 //   Same input and expected output as Test 1.
 //
 // Uses env.golden.compute_requant() DPI-C ref model for golden comparison.
@@ -36,7 +36,7 @@ class npu_requant_smoke_test extends soc_base_test;
 
     overall_pass = 1;
 
-    // Build test data: 8 INT32 values
+    // 构建测试数据: 8 INT32 values
     input_ints[0] = 100;
     input_ints[1] = 200;
     input_ints[2] = -50;
@@ -47,7 +47,7 @@ class npu_requant_smoke_test extends soc_base_test;
     input_ints[7] = 50;
 
     //===================================================================
-    // Test 1: multiplier=1, shift=0 (identity requant with clamp)
+    // 测试 1: multiplier=1, shift=0 (identity requant with clamp)
     //===================================================================
     `uvm_info("TEST", "=== Test 1: multiplier=1, shift=0 (identity with clamp) ===", UVM_NONE)
 
@@ -76,7 +76,7 @@ class npu_requant_smoke_test extends soc_base_test;
 
     rq_seq.start(env.axil_ag.seqr);
 
-    // Compare DUT output with golden model
+    // 与黄金参考比对 DUT 输出 model
     if (rq_seq.done && !rq_seq.error) begin
       env.scoreboard.compare_output_bytes(rq_seq.actual_output, expected_bytes,
                                           rq_seq.output_base);
@@ -92,7 +92,7 @@ class npu_requant_smoke_test extends soc_base_test;
       `uvm_error("TEST", "Test 1 Requant task did not complete successfully")
     end
 
-    // Clear done/error state from Test 1 before starting Test 2
+    // 清除 done/error state from Test 1 before starting Test 2
     begin
       axil_seq_item tr;
       tr = axil_seq_item::type_id::create("clear_tr");
@@ -104,7 +104,7 @@ class npu_requant_smoke_test extends soc_base_test;
     end
 
     //===================================================================
-    // Test 2: multiplier=2, shift=1 (effectively identity)
+    // 测试 2: multiplier=2, shift=1 (effectively identity)
     //===================================================================
     `uvm_info("TEST", "=== Test 2: multiplier=2, shift=1 (effectively identity via (val*2)>>1) ===", UVM_NONE)
 
@@ -133,7 +133,7 @@ class npu_requant_smoke_test extends soc_base_test;
 
     rq_seq.start(env.axil_ag.seqr);
 
-    // Compare DUT output with golden model
+    // 与黄金参考比对 DUT 输出 model
     if (rq_seq.done && !rq_seq.error) begin
       env.scoreboard.compare_output_bytes(rq_seq.actual_output, expected_bytes,
                                           rq_seq.output_base);

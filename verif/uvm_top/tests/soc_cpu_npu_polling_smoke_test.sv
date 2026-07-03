@@ -26,18 +26,18 @@ class soc_cpu_npu_polling_smoke_test extends soc_base_test;
     bd_if.load_memh("verif/firmware/npu_irq_smoke/npu_polling.memh", 0, 128);
     `uvm_info("CPU_POLL", $sformatf("FW[0]=0x%08h", bd_if.read32(32'h0)), UVM_NONE)
 
-    // Preload input: 4 bytes all-1 at 0x00010000
+    // 预加载 input: 4 bytes all-1 at 0x00010000
     bd_if.load_memh("verif/firmware/npu_irq_smoke/npu_polling.memh", 32'h00010000, 1);  // reuse for all-1
     // Overwrite with explicit all-1
     for (i=0; i<4; i=i+1) begin
-      // backdoor write: use hierarchical path
+      // 后门 write: use hierarchical path
     end
     // Use simple preload via a small memh file
     // Actually: create inline via load_memh that's all-ones
     // Simpler: use existing mechanism
     `uvm_info("CPU_POLL", "Preloading input/weight via backdoor writes...", UVM_NONE)
 
-    // Preload input (0x00010000) and weight (0x00020000) with all-ones
+    // 预加载 input (0x00010000) and weight (0x00020000) with all-ones
     // Use backdoor write by loading small memh files
     // Generate temp memh content via system task
     begin
@@ -49,7 +49,7 @@ class soc_cpu_npu_polling_smoke_test extends soc_base_test;
     bd_if.load_memh("/tmp/u8b1_input.memh", 32'h00010000, 1);
     bd_if.load_memh("/tmp/u8b1_input.memh", 32'h00020000, 1);
 
-    // Clear output and magic areas
+    // 清除 output and magic areas
     begin
       int fd;
       fd = $fopen("/tmp/u8b1_zero8.memh", "w");

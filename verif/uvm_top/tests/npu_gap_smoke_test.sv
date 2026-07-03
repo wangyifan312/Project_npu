@@ -23,12 +23,12 @@ class npu_gap_smoke_test extends soc_base_test;
     phase.raise_objection(this);
     #200;
 
-    // Build test data: all 100
+    // 构建测试数据: all 100
     for (i = 0; i < 64; i++) begin
       input_bytes[i] = 8'd100;
     end
 
-    // Preload directly and verify
+    // 预加载 directly and verify
     seq = soc_base_seq::type_id::create("seq");
     seq.start(env.axil_ag.seqr);
 
@@ -37,13 +37,13 @@ class npu_gap_smoke_test extends soc_base_test;
       seq.axil_write32(32'h0000_0100 + i*4, 32'h64646464);
     end
 
-    // Read back to verify
+    // 读 back to verify
     seq.axil_read32(32'h0000_0100, rd);
     `uvm_info("TEST", $sformatf("Preload verify: addr=0x100 data=0x%08h (expect 0x64646464)", rd), UVM_NONE)
     seq.axil_read32(32'h0000_013C, rd);
     `uvm_info("TEST", $sformatf("Preload verify: addr=0x13C data=0x%08h (expect 0x64646464)", rd), UVM_NONE)
 
-    // Golden via DPI-C — copy to local to avoid reference issues
+    // 黄金参考 via DPI-C — copy to local to avoid reference issues
     env.golden.compute_gap(input_bytes, 1, 1, 0);
     expected_bytes = new[env.golden.output_bytes.size()];
     for (i = 0; i < env.golden.output_bytes.size(); i++)

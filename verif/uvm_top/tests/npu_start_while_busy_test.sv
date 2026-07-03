@@ -3,7 +3,7 @@
 //
 // Verifies behavior when CTRL.start is written while the NPU is already
 // processing a task.  The npu_ctrl module detects this as a
-// busy_start_violation and sets error_code = 0x10.
+// 忙_start_violation and sets error_code = 0x10.
 //
 // The test also verifies that the NPU can recover from the violation and
 // execute a subsequent valid task successfully (no hang).
@@ -166,7 +166,7 @@ class npu_start_while_busy_test extends soc_base_test;
 
     seq.axil_write32(`NPU_REG_CTRL, 32'h1);
 
-    // Poll for done on recovery task
+    // 轮询等待完成 on recovery task
     done_detected = 1'b0;
     for (poll_count = 0; poll_count < 50000; poll_count++) begin
       seq.axil_read32(`NPU_REG_CTRL, rd_data);

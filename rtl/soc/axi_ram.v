@@ -31,7 +31,7 @@ module axi_ram #(
 
     reg [AXI_DATA_W-1:0] ram [0:RAM_DEPTH-1];
 
-    // Write path
+    // 写 path
     reg         aw_stored;
     reg  [31:0] aw_addr;
     reg         w_stored;
@@ -81,7 +81,7 @@ module axi_ram #(
     assign s_axi_bvalid = bvalid;
     assign s_axi_bresp  = 2'b00;
 
-    // Read path
+    // 读 path
     reg         ar_stored;
     reg  [31:0] ar_addr;
     reg         rvalid;

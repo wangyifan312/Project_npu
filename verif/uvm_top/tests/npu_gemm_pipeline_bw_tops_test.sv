@@ -62,9 +62,9 @@ class npu_gemm_pipeline_bw_tops_test extends soc_base_test;
     #200;
 
     // ── Build test data ───────────────────────────────────────────
-    // Input:  1..64, 1..64, ... cycling (8 groups of 64 to fill 512)
-    // Weight: small INT8 values to stay in safe range
-    // Output: each of 256 outputs = dot(input, weight_col)
+    // 输入:  1..64, 1..64, ... cycling (8 groups of 64 to fill 512)
+    // 权重: small INT8 values to stay in safe range
+    // 输出: each of 256 outputs = dot(input, weight_col)
     for (i = 0; i < 512; i++)
       input_bytes[i] = 8'((i % 64) + 1);    // 1..64 cycling
 
@@ -143,8 +143,8 @@ class npu_gemm_pipeline_bw_tops_test extends soc_base_test;
     // ── Derived metrics ──────────────────────────────────────────
     total_mac = {mac_hi, mac_lo};
 
-    // idle_cycles = total - load - compute (compute includes STORE for FC tile loop)
-    // NOTE: For FC, the FMS goes: LOAD → COMPUTE → STORE within each tile.
+    // 空闲_cycles = total - load - compute (compute includes STORE for FC tile loop)
+    // 注意：For FC, the FMS goes: LOAD → COMPUTE → STORE within each tile.
     // compute_cycles covers COMPUTE state; load_cycles covers all LOAD states;
     // store_cycles covers STORE state.
     idle_cyc_int = (cycle_lo > (comp_cyc + load_cyc + store_cyc))
@@ -163,13 +163,13 @@ class npu_gemm_pipeline_bw_tops_test extends soc_base_test;
     // Array utilization (compute-level): arr_active / compute_cycles
     array_util_comp = (comp_cyc > 0) ? ($itor(arr_active) * 100.0 / $itor(comp_cyc)) : 0.0;
 
-    // Task-level bandwidth utilization
-    // read_task_bw_util = read_valid_bytes / (task_cycles * 32)
+    // 任务-level bandwidth utilization
+    // 读_task_bw_util = read_valid_bytes / (task_cycles * 32)
     read_bw  = (cycle_lo > 0) ? ($itor(r_valid_bytes) * 100.0 / ($itor(cycle_lo) * 32.0)) : 0.0;
     write_bw = (cycle_lo > 0) ? ($itor(w_valid_bytes) * 100.0 / ($itor(cycle_lo) * 32.0)) : 0.0;
     total_bw = read_bw + write_bw;
 
-    // Burst-level utilization
+    // burst-level utilization
     read_burst_util  = (read_active > 0) ? ($itor(r_beats) * 100.0 / $itor(read_active)) : 0.0;
     write_burst_util = (wr_txn_cycles > 0) ? ($itor(wr_data_cycles) * 100.0 / $itor(wr_txn_cycles)) : 0.0;
 
@@ -179,7 +179,7 @@ class npu_gemm_pipeline_bw_tops_test extends soc_base_test;
     // Actually, let me compute properly: beats / AR handshakes
     avg_read_burst_len = ($itor(r_beats) / ($itor(r_beats) / 16.0 + 1.0));  // rough
 
-    // Phase ratios
+    // 阶段 ratios
     compute_ratio = (cycle_lo > 0) ? ($itor(comp_cyc) * 100.0 / $itor(cycle_lo)) : 0.0;
     load_ratio    = (cycle_lo > 0) ? ($itor(load_cyc) * 100.0 / $itor(cycle_lo)) : 0.0;
     store_ratio   = (cycle_lo > 0) ? ($itor(store_cyc) * 100.0 / $itor(cycle_lo)) : 0.0;

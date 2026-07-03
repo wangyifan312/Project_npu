@@ -25,11 +25,11 @@ class npu_fc_streaming_int8_pack_test extends soc_base_test;
     for (i=0; i<K_v*N_v; i=i+4)
       m_seq.axil_write32(32'h0001_0000+i, 32'h01010101);
 
-    // Clear output
+    // 清除 output
     for (i=0; i<M_v*N_v*4; i=i+4)
       m_seq.axil_write32(32'h0002_0000 + i, 32'hDEADBEEF);
 
-    // FC streaming + INT8 test hook (conv_cfg[6]=1)
+    // FC 流式 + INT8 test hook (conv_cfg[6]=1)
     m_seq.axil_write32(`NPU_REG_TASK_TYPE,    32'd1);
     m_seq.axil_write32(`NPU_REG_CONV_CFG,     32'h60);   // bit[5]=1 stream, bit[6]=1 INT8
     m_seq.axil_write32(`NPU_REG_POSTPROC,     32'd0);
@@ -58,7 +58,7 @@ class npu_fc_streaming_int8_pack_test extends soc_base_test;
       return;
     end
 
-    // Golden: C[m][n] = K (all-1 data, K-major weights)
+    // 黄金参考: C[m][n] = K (all-1 data, K-major weights)
     errs = 0;
     begin
       int exp_val, row_stride;

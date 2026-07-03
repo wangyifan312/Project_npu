@@ -38,9 +38,9 @@ class npu_fc_128x128_peak_test extends soc_base_test;
 
     // ── Build test data ───────────────────────────────────────────
     // All values in INT8 signed range [-128, 127].
-    // weight[out][in] = (out % 12) + 1  → range [1,12], safe
-    // Input:  1..64 (safe)
-    // Output[out] = sum(1..64) * ((out%12)+1) = 2080 * ((out%12)+1)
+    // 权重[out][in] = (out % 12) + 1  → range [1,12], safe
+    // 输入:  1..64 (safe)
+    // 输出[out] = sum(1..64) * ((out%12)+1) = 2080 * ((out%12)+1)
     for (i = 0; i < 64; i++)
       input_bytes[i] = 8'(i + 1);   // 1..64
 
@@ -162,7 +162,7 @@ class npu_fc_128x128_peak_test extends soc_base_test;
     `uvm_info("TEST", "==================================================================", UVM_NONE)
 
     // ── Sanity gates ────────────────────────────────────────────────
-    // Note: MAC counter may accumulate across blocks; check >= minimum
+    // 注意：MAC counter may accumulate across blocks; check >= minimum
     if (total_mac < 64'd8192)
       `uvm_error("TEST", $sformatf("FAIL: weight MACs=%0d < 8192 (64×128)", total_mac))
     if (arr_active == 32'd0)

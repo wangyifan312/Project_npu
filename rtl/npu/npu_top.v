@@ -164,9 +164,9 @@ module npu_top #(
     localparam FSM_GEMM_STREAM_STORE   = 6'd38;
     localparam FSM_GEMM_STREAM_ACCUM   = 6'd40;  // Phase 3a: K-chunk loop check
 
-    // Phase 3c: input-tile-loader micro-sequencer within FSM_GEMM_STREAM_LOAD_A
+    // 阶段 3c: input-tile-loader micro-sequencer within FSM_GEMM_STREAM_LOAD_A
     // Currently GEMM-scoped (gemm_a_load_*); intended to become common
-    // input_tile_loader in Phase 4.
+    // 输入_tile_loader in Phase 4.
     localparam A_LOAD_IDLE    = 2'd0;
     localparam A_LOAD_REQ     = 2'd1;
     localparam A_LOAD_WAIT    = 2'd2;
@@ -193,7 +193,7 @@ module npu_top #(
     reg [31:0] wgt_load_phase;
     reg        wgt_load_wait;
 
-    // Phase 2: FC shadow weight register — loaded during compute,
+    // 阶段 2: FC shadow weight register — loaded during compute,
     // then swapped into wgt_load_reg after chunk completes
     reg [WGT_REG_BITS-1:0] wgt_load_reg_shadow;
     reg        fc_shadow_active;
@@ -352,7 +352,7 @@ module npu_top #(
     assign npu_error_code = ctrl_error_code;
 
     // ============================================================
-    // task_checker
+    // 任务_checker
     // ============================================================
     task_checker u_checker (
         .clk(clk), .rst_n(rst_n), .task_start(task_start),
@@ -454,7 +454,7 @@ module npu_top #(
     wire [AXI_DMA_DATA_W-1:0] dma_wr_data;
     wire        dma_wr_valid, dma_wr_ready;
 
-    // Write-beat FIFO wires (declared before use in dma_axi_writer)
+    // 写-beat FIFO wires (declared before use in dma_axi_writer)
     wire [255:0] wf_rd_data;
     wire [31:0]  wf_rd_strb;
     wire         wf_rd_last;
@@ -509,7 +509,7 @@ module npu_top #(
     );
 
     // ============================================================
-    // Buffer instances
+    // 缓冲区 instances
     // ============================================================
     wire [BUF_ADDR_W-1:0] act_rd_addr, wgt_rd_addr;
     wire [BUF_DATA_W-1:0] act_rd_data, wgt_rd_data;
@@ -672,8 +672,8 @@ module npu_top #(
     wire is_vec_relu_mode = (task_type == 3'd6);
     wire is_gemm_mode    = (task_type == 3'd7);
     wire gemm_row_streaming_en = is_gemm_mode && conv_cfg[5];
-    // Phase U4-b: FC streaming mode — FC matmul or matmul+ReLU routed through
-    // streaming GEMM pipeline.  ReLU handled via store_desc_relu_en in GST.
+    // 阶段 U4-b: FC streaming mode — FC matmul or matmul+ReLU routed through
+    // 流式 GEMM pipeline.  ReLU handled via store_desc_relu_en in GST.
     // FC with bias/requant still falls back to legacy.
     wire fc_streaming_en    = is_fc_mode && conv_cfg[5] && !bias_enabled;
     wire matrix_streaming_en = gemm_row_streaming_en || fc_streaming_en;
@@ -687,24 +687,24 @@ module npu_top #(
     wire [15:0] array_active_rows;
     wire [15:0] array_active_cols;
 
-    // Phase 4a-2: double-buffered input tile banks
+    // 阶段 4a-2: double-buffered input tile banks
     reg [7:0]  input_tile_bank0 [0:7][0:63];
     reg [7:0]  input_tile_bank1 [0:7][0:63];
-    // Phase 4c-1: result_tile double buffer (abstracted from c_tile)
+    // 阶段 4c-1: result_tile double buffer (abstracted from c_tile)
     reg signed [31:0] result_tile_bank0 [0:7][0:63];
     reg signed [31:0] result_tile_bank1 [0:7][0:63];
     reg        result_tile_valid_bank0 [0:7][0:63];
     reg        result_tile_valid_bank1 [0:7][0:63];
     reg        compute_result_bank;   // collector writes this bank
     reg        store_result_bank;     // STORE reads this bank
-    // Phase 5-3: output tile descriptor
+    // 阶段 5-3: output tile descriptor
     reg [15:0] out_tile_m_base;
     reg [15:0] out_tile_n_base;
     reg [15:0] out_tile_M;
     reg [15:0] out_tile_N;
     reg [31:0] out_tile_base_addr;
     reg [31:0] out_tile_row_stride;
-    // Phase 5-3: store descriptor locked at STORE start
+    // 阶段 5-3: store descriptor locked at STORE start
     reg [15:0] store_desc_m_base;
     reg [15:0] store_desc_n_base;
     reg [15:0] store_desc_M;
@@ -712,14 +712,14 @@ module npu_top #(
     reg [31:0] store_desc_base_addr;
     reg [31:0] store_desc_row_stride;
     reg        store_desc_bank;
-    // Phase U4-b: per-tile ReLU enable — latched with store_desc_* at STORE launch
+    // 阶段 U4-b: per-tile ReLU enable — latched with store_desc_* at STORE launch
     reg        store_desc_relu_en;
-    // Phase U4-d: output dtype — 0=INT32 (default), 1=INT8 (internal test hook only)
+    // 阶段 U4-d: output dtype — 0=INT32 (default), 1=INT8 (internal test hook only)
     reg        store_desc_output_dtype;
     // Internal test hook (NOT a public CSR): conv_cfg[6] enables INT8 output format
     // for FC streaming.  Default 0 → all existing paths remain INT32.
     wire       int8_test_hook = fc_streaming_en && conv_cfg[6];
-    // Phase 4c-2: STORE micro-FSM inside FSM_GEMM_STREAM_STORE (single always block)
+    // 阶段 4c-2: STORE micro-FSM inside FSM_GEMM_STREAM_STORE (single always block)
     localparam GST_PUSH_BEAT  = 3'd0;
     localparam GST_START      = 3'd1;
     localparam GST_START_CLR  = 3'd2;
@@ -732,7 +732,7 @@ module npu_top #(
     reg [15:0] stream_capture_count;
     reg        stream_active;
     reg        stream_a_tile_loaded;
-    // Phase 4a-2: bank ownership and metadata
+    // 阶段 4a-2: bank ownership and metadata
     reg        input_load_bank;          // which bank loader writes
     reg        input_compute_bank;       // which bank compute reads
     reg        input_bank0_valid;        // bank0 has valid loaded data
@@ -741,7 +741,7 @@ module npu_top #(
     reg [15:0] input_bank1_k_base;       // k_base for data in bank1
     reg [15:0] input_bank0_k_tile;       // k_tile for data in bank0
     reg [15:0] input_bank1_k_tile;       // k_tile for data in bank1
-    // Phase 4a-3: background input tile prefetch during RUN
+    // 阶段 4a-3: background input tile prefetch during RUN
     localparam PREF_IDLE    = 2'd0;
     localparam PREF_REQ     = 2'd1;
     localparam PREF_WAIT    = 2'd2;
@@ -761,7 +761,7 @@ module npu_top #(
     reg [15:0] input_prefetch_stall_count;
     reg [15:0] input_prefetch_beat_count;
     reg [15:0] input_prefetch_byte_count;
-    // Phase 4b: weight staging micro-sequencer (GEMM-scoped)
+    // 阶段 4b: weight staging micro-sequencer (GEMM-scoped)
     localparam WGT_STAGE_IDLE    = 2'd0;
     localparam WGT_STAGE_REQ     = 2'd1;
     localparam WGT_STAGE_WAIT    = 2'd2;
@@ -781,7 +781,7 @@ module npu_top #(
     reg [15:0] wgt_stage_valid_n_tile;
     reg [15:0] wgt_stage_beat_count;
     reg [15:0] wgt_stage_byte_count;
-    // Phase 4b-2: background weight prefetch during RUN
+    // 阶段 4b-2: background weight prefetch during RUN
     localparam WGT_PREF_IDLE    = 2'd0;
     localparam WGT_PREF_REQ     = 2'd1;
     localparam WGT_PREF_WAIT    = 2'd2;
@@ -801,7 +801,7 @@ module npu_top #(
     reg [15:0] wgt_pref_stall_count;
     reg [15:0] wgt_pref_beat_count;
     reg [15:0] wgt_pref_byte_count;
-    // Phase 4b-2a: FSM entry debug counters
+    // 阶段 4b-2a: FSM entry debug counters
     reg [15:0] dbg_load_array_entry;
     reg [15:0] dbg_wgt_ld_entry;
     reg [15:0] dbg_dual_hit_count;
@@ -809,24 +809,24 @@ module npu_top #(
     reg [15:0] dbg_accum_to_load_array;
     reg [15:0] gemm_store_row_idx;
     reg [15:0] gemm_store_beat_idx;
-    // Phase 3a: K-chunk streaming accumulation
+    // 阶段 3a: K-chunk streaming accumulation
     reg [15:0] gemm_stream_k_base;        // current K-chunk start offset (0, 64, 128, ...)
     reg [15:0] gemm_stream_k_chunk_idx;   // 0-based chunk index
     reg        gemm_stream_first_chunk;    // 1 during first K-chunk
     reg        gemm_stream_last_chunk;     // 1 during last K-chunk
     localparam GEMM_STREAM_FIXED_DELAY = 1;
-    // Phase 5-1: M tile descriptor
+    // 阶段 5-1: M tile descriptor
     reg [15:0] gemm_tile_m_base;    // global starting row of current M tile
     reg [15:0] gemm_tile_M;         // rows in current M tile (≤ 8)
-    // Phase 5-2: N tile descriptor
+    // 阶段 5-2: N tile descriptor
     reg [15:0] gemm_tile_n_base;    // global starting column of current N tile
     reg [15:0] gemm_tile_N;         // columns in current N tile (≤ 64)
-    // Phase 3c: input-tile-loader micro-sequencer (GEMM-scoped, Phase 4→common)
+    // 阶段 3c: input-tile-loader micro-sequencer (GEMM-scoped, Phase 4→common)
     reg        gemm_a_load_done;     // pulsed when micro-sequencer completes
     reg [1:0]  gemm_a_load_phase;
     reg [2:0]  gemm_a_load_row;     // 0..gemm_tile_M-1
     reg [6:0]  gemm_a_load_col;     // 0..fc_chunk_inputs-1
-    // Phase 4a-1: beat-level debug counters
+    // 阶段 4a-1: beat-level debug counters
     reg [15:0] gemm_a_load_beat_count;    // beats read in current LOAD_A
     reg [15:0] gemm_a_load_byte_count;    // bytes captured
     reg [5:0]  gemm_a_load_max_beats_per_row;  // max beats for any row
@@ -874,7 +874,7 @@ module npu_top #(
 
     assign array_sum_in = {PE_COLS{32'h0}};
     // 阶段 U6-a：动态 PE 阵列时钟门控
-    // Enable PE array clock only when NPU is active (not IDLE/DONE/ERROR).
+    // 使能 PE array clock only when NPU is active (not IDLE/DONE/ERROR).
     // Conservative: keeps clock on during all transitional and compute states.
     // Primary power saving: long idle periods between tasks.
     wire pe_array_clk_en_comb;
@@ -932,7 +932,7 @@ module npu_top #(
         arb_route_col_i = 0;
         cluster_route_col_i = 0;
 
-        // Phase 2b-1: streaming output routing
+        // 阶段 2b-1: streaming output routing
         if (matrix_streaming_en && (fsm_state == FSM_GEMM_STREAM_RUN)) begin
             if (perf_cluster_enable[0]) begin
                 integer s_col;
@@ -1179,7 +1179,7 @@ module npu_top #(
         .stall_acc(perf_stall_acc_evt),
         .stall_store(perf_stall_store_evt),
         .array_fill_drain(perf_array_fill_drain_evt),
-        // Outputs
+        // 输出s
         .total_cycle_lo(perf_cycle_lo), .total_cycle_hi(perf_cycle_hi),
         .read_beat_count(perf_read_beats), .write_beat_count(perf_write_beats),
         .read_active_cycles(perf_read_active), .write_active_cycles(perf_write_active),
@@ -1232,7 +1232,7 @@ module npu_top #(
         (fc_act_byte_idx + 32'd1) : fc_act_byte_idx;
     wire [BUF_ADDR_W-1:0] fc_act_beat_addr = fc_act_rd_byte_idx[BUF_ADDR_W+4:5];
     wire [HB_BEAT_BYTE_BITS-1:0] fc_act_byte_sel = fc_act_byte_idx[4:0];
-    // Phase 5-1: input-tile-loader address with M-tile support
+    // 阶段 5-1: input-tile-loader address with M-tile support
     // global_m = gemm_tile_m_base + local_row
     // byte_idx = global_m * input_c + gemm_stream_k_base + col
     wire [31:0] gemm_a_load_global_m = {16'd0, gemm_tile_m_base} + {13'd0, gemm_a_load_row};
@@ -1242,7 +1242,7 @@ module npu_top #(
         {25'd0, gemm_a_load_col};
     wire [BUF_ADDR_W-1:0] gemm_a_load_beat_addr = gemm_a_load_byte_idx[BUF_ADDR_W+4:5];
     wire [HB_BEAT_BYTE_BITS-1:0] gemm_a_load_lane_start = gemm_a_load_byte_idx[4:0];
-    // Phase 4a-3: background prefetch byte-level address computation
+    // 阶段 4a-3: background prefetch byte-level address computation
     wire [31:0] input_prefetch_global_m = {16'd0, gemm_tile_m_base} + {13'd0, input_prefetch_row};
     wire [31:0] input_prefetch_byte_idx =
         input_prefetch_global_m * {16'd0, input_c} +
@@ -1250,8 +1250,8 @@ module npu_top #(
         {25'd0, input_prefetch_col};
     wire [BUF_ADDR_W-1:0] input_prefetch_beat_addr = input_prefetch_byte_idx[BUF_ADDR_W+4:5];
     wire [4:0] input_prefetch_lane_start = input_prefetch_byte_idx[4:0];
-    // Phase 4b: weight staging byte-level address computation
-    // Streaming (GEMM/FC): K-major iteration (all N for each K) for strided full-B read.
+    // 阶段 4b: weight staging byte-level address computation
+    // 流式 (GEMM/FC): K-major iteration (all N for each K) for strided full-B read.
     // row = idx / n_tile, out = idx % n_tile → contiguous within each K row.
     // FC / legacy: N-major layout W[n][k] at byte_idx = n * K + k
     wire [31:0] wgt_stage_out_idx  = matrix_streaming_en ?
@@ -1274,7 +1274,7 @@ module npu_top #(
                                         + {27'd0, wgt_dma_byte_offset};
     wire [BUF_ADDR_W-1:0] wgt_stage_beat_addr = wgt_stage_abs_byte_idx[BUF_ADDR_W+4:5];
     wire [4:0] wgt_stage_byte_sel = wgt_stage_abs_byte_idx[4:0];
-    // Phase 5-2: background weight prefetch address (N-major for full B strided read)
+    // 阶段 5-2: background weight prefetch address (N-major for full B strided read)
     wire [31:0] wgt_pref_out_idx = (wgt_pref_n_tile == 16'd0) ? 32'd0 :
                                     (wgt_pref_lane_idx % {16'd0, wgt_pref_n_tile});
     wire [31:0] wgt_pref_row_idx = (wgt_pref_n_tile == 16'd0) ? 32'd0 :
@@ -1404,7 +1404,7 @@ module npu_top #(
     assign cf_act_valid = is_conv_mode && (fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_WAIT_WIN) &&
                           !act_feed_wait && !cf_done && (act_feed_done_cnt < blk_in_bytes[15:0]);
 
-    // Weight buffer read
+    // 权重 buffer read
     wire [BUF_ADDR_W-1:0] wgt_mac_addr;
     wire [31:0] fc_wgt_dma_base = blk_wgt_addr + fc_out_start * input_c;
     // P1: preload next-tile weight base with correct byte alignment
@@ -1425,7 +1425,7 @@ module npu_top #(
     wire [31:0] bias_word = hb_beat_word(wgt_rd_data, bias_word_sel);
     wire [BUF_ADDR_W-1:0] rq_acc_rd_addr = rq_src_idx[BUF_ADDR_W-1:0];
 
-    // Phase 2: shadow-load buffer address (during FC compute)
+    // 阶段 2: shadow-load buffer address (during FC compute)
     wire [31:0] fc_shadow_out_idx_w = (fc_shadow_chunk_inputs == 16'd0) ? 32'd0 :
                                        (fc_shadow_phase / {16'd0, fc_shadow_chunk_inputs});
     wire [31:0] fc_shadow_row_idx_w = (fc_shadow_chunk_inputs == 16'd0) ? 32'd0 :
@@ -1445,7 +1445,7 @@ module npu_top #(
     assign wgt_rd_bank  = wgt_consume_bank;
 
     // ============================================================
-    // Weight → array mapping (registered, multi-cycle loading)
+    // 权重 → array mapping (registered, multi-cycle loading)
     // Up to 25*C_out weights loaded per input channel
     // ============================================================
     // wgt_load_reg: sized for full PE array (PE_ROWS x PE_COLS)
@@ -1487,7 +1487,7 @@ module npu_top #(
             end
             wire [7:0] row_feed_val = fc_or_gemm ? cf_act_data : conv_row_feed_val;
             wire array_act_drive = (comp_sub_state == CP_FEED_ACT) || (comp_sub_state == CP_DRAIN);
-            // Phase 2b-1: stream skewed activation with row_active gate
+            // 阶段 2b-1: stream skewed activation with row_active gate
             wire signed [31:0] s_m = $signed({16'd0, stream_cycle}) - $signed({26'd0, ai[5:0]});
             wire [7:0] s_act_b0 = input_tile_bank0[s_m[2:0]][ai[5:0]];
             wire [7:0] s_act_b1 = input_tile_bank1[s_m[2:0]][ai[5:0]];
@@ -1502,7 +1502,7 @@ module npu_top #(
     endgenerate
 
     // Latch per-row activations during FEED_ACT (skewed feeding)
-    // Clear on restart to prevent stale values from previous c_in iteration
+    // 清除 on restart to prevent stale values from previous c_in iteration
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             integer ri;
@@ -1530,7 +1530,7 @@ module npu_top #(
 
     assign pp_data_in   = is_pool_mode ? act_pool_word : pp_result;
     // Conv: write directly to acc_buffer via acc_partial (bypass postproc)
-    // Pool: feed postproc; FC: feed postproc (for ReLU after FC1)
+    // 池化: feed postproc; FC: feed postproc (for ReLU after FC1)
     assign pp_data_valid = is_conv_mode ? 1'b0 :
                            is_pool_mode ? ((fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_WAIT_WIN) &&
                                            !act_feed_wait && !pp_start && (act_feed_done_cnt < blk_in_bytes[15:0])) :
@@ -1635,7 +1635,7 @@ module npu_top #(
 
     // DMA writer: stream from acc_buffer during STORE
     // During CP_COLLECT: read the current column's old partial sum.
-    // Pipelined store states (P5: 1 word/cycle sustained)
+    // 流水线d store states (P5: 1 word/cycle sustained)
     localparam SP_IDLE    = 2'd0;  // idle / waiting for store to start
     localparam SP_FIRST   = 2'd1;  // first read issued, data not yet valid
     localparam SP_STREAM  = 2'd2;  // data valid every cycle, issue next read
@@ -1780,8 +1780,8 @@ module npu_top #(
                                         vec_relu_read_done &&
                                         vec_relu_proc_done);
 
-    // Phase 4c-2/4c-3: gemm_store_eng_active driven by main FSM; GST runs as background tick.
-    // Phase 4c-3: removed fsm_state guard — GST can run during RUN/PREP/LOAD_A etc.
+    // 阶段 4c-2/4c-3: gemm_store_eng_active driven by main FSM; GST runs as background tick.
+    // 阶段 4c-3: removed fsm_state guard — GST can run during RUN/PREP/LOAD_A etc.
     wire gemm_store_eng_producer_done;
     assign gemm_store_eng_producer_done = gemm_store_eng_active &&
                                            (gemm_store_eng_phase == GST_START);
@@ -1792,7 +1792,7 @@ module npu_top #(
     // ============================================================
     // 32-lane INT8 ReLU: combinational vector postprocess
     // For each byte lane: if signed bit[7]=1 (negative), output 0; else pass through
-    // Input: act_rd_data (256-bit beat from act_buffer, Phase B read)
+    // 输入: act_rd_data (256-bit beat from act_buffer, Phase B read)
     // ============================================================
     genvar vl;
     generate
@@ -1831,7 +1831,7 @@ module npu_top #(
             // R handshakes: count actual AXI read data beats
             if (m_axi_rvalid && m_axi_rready)
                 dbg_rd_data_count <= dbg_rd_data_count + 32'd1;
-            // Phase B stall: push blocked because write_beat_fifo is full
+            // 阶段 B stall: push blocked because write_beat_fifo is full
             if (wf_wr_full && vec_relu_proc_active && !vec_relu_proc_done)
                 dbg_fifo_full_stall <= dbg_fifo_full_stall + 32'd1;
             dbg_cycle_cnt <= dbg_cycle_cnt + 32'd1;
@@ -1845,7 +1845,7 @@ module npu_top #(
     reg [7:0]  task_error_code_r;
 
     // ============================================================
-    // Phase 4a-3: background input tile prefetch micro-sequencer.
+    // 阶段 4a-3: background input tile prefetch micro-sequencer.
     // Runs during FSM_GEMM_STREAM_RUN to load next chunk's A tile
     // into the inactive bank while compute reads the active bank.
     // Independent of foreground LOAD_A micro-sequencer.
@@ -1874,7 +1874,7 @@ module npu_top #(
                     input_prefetch_phase <= PREF_CAPTURE;
                 end
                 PREF_CAPTURE: begin
-                    // Beat-level bulk unpack into prefetch bank
+                    // beat-level bulk unpack into prefetch bank
                     integer rem_v;
                     integer btb_v;
                     integer lane;
@@ -1882,7 +1882,7 @@ module npu_top #(
                     ls_v  = input_prefetch_lane_start;
                     rem_v = input_prefetch_k_tile - input_prefetch_col;
                     btb_v = (rem_v < (32 - ls_v)) ? rem_v : (32 - ls_v);
-                    // Write bytes to prefetch bank
+                    // 写 bytes to prefetch bank
                     if (input_prefetch_bank == 1'b0) begin
                         for (lane = 0; lane < 32; lane = lane + 1) begin
                             if ((lane >= ls_v) && ((lane - ls_v) < btb_v)) begin
@@ -1951,7 +1951,7 @@ module npu_top #(
     end
 
     // ============================================================
-    // Phase 4b-2: background weight prefetch micro-sequencer.
+    // 阶段 4b-2: background weight prefetch micro-sequencer.
     // Runs during FSM_GEMM_STREAM_RUN, reads next chunk's B weights
     // from wgt_buffer and writes them into wgt_load_reg.
     // Uses K-major compact B layout: (k_base+kk)*N_tile + n.
@@ -2001,7 +2001,7 @@ module npu_top #(
                             reg [31:0] wp_lane_row;
                             reg [4:0]  wp_lane_bsel;
                             wp_lane_idx  = wgt_pref_lane_idx + wp_lane;
-                            // Phase 5-2: N-major for streaming GEMM full-B strided read
+                            // 阶段 5-2: N-major for streaming GEMM full-B strided read
                             wp_lane_out  = (wgt_pref_n_tile == 16'd0) ? 32'd0 : (wp_lane_idx % {16'd0, wgt_pref_n_tile});
                             wp_lane_row  = (wgt_pref_n_tile == 16'd0) ? 32'd0 : (wp_lane_idx / {16'd0, wgt_pref_n_tile});
                             wp_lane_bsel = wgt_pref_abs_byte_idx[4:0] + wp_lane;
@@ -2032,10 +2032,10 @@ module npu_top #(
     end
 
     // ============================================================
-    // Phase 4b: sequential weight staging micro-sequencer.
-    // Reads B weights from wgt_buffer and unpacks into wgt_load_reg.
-    // Phase 4b-1: sequential (runs in FSM_LOAD_ARRAY, not during RUN).
-    // Phase 4b-2a: DBG counter increment
+    // 阶段 4b: sequential weight staging micro-sequencer.
+    // 读s B weights from wgt_buffer and unpacks into wgt_load_reg.
+    // 阶段 4b-1: sequential (runs in FSM_LOAD_ARRAY, not during RUN).
+    // 阶段 4b-2a: DBG counter increment
     // ============================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -2069,7 +2069,7 @@ module npu_top #(
                     wgt_stage_phase <= WGT_STAGE_CAPTURE;
                 end
                 WGT_STAGE_CAPTURE: begin
-                    // Beat-level unpack: up to 32 bytes from wgt_buffer
+                    // beat-level unpack: up to 32 bytes from wgt_buffer
                     // into wgt_load_reg. Same formula as legacy FC/GEMM path.
                     integer ws_remain;
                     integer ws_beatsz;
@@ -2095,7 +2095,7 @@ module npu_top #(
                             reg [31:0] ws_lane_row;
                             reg [4:0]  ws_lane_bsel;
                             ws_lane_idx  = wgt_stage_lane_idx + ws_lane;
-                            // Phase 5-2: K-major for streaming (GEMM/FC) full-B strided read
+                            // 阶段 5-2: K-major for streaming (GEMM/FC) full-B strided read
                             ws_lane_out  = matrix_streaming_en ?
                                 ((wgt_stage_n_tile == 16'd0) ? 32'd0 : (ws_lane_idx % {16'd0, wgt_stage_n_tile})) :
                                 ((wgt_stage_k_tile == 16'd0) ? 32'd0 : (ws_lane_idx / {16'd0, wgt_stage_k_tile}));
@@ -2190,7 +2190,7 @@ module npu_top #(
             stream_capture_count <= 16'd0;
             stream_active <= 1'b0;
             stream_a_tile_loaded <= 1'b0;
-            // Phase 3c: input-tile-loader micro-sequencer
+            // 阶段 3c: input-tile-loader micro-sequencer
             gemm_a_load_done  <= 1'b0;
             gemm_a_load_phase <= A_LOAD_IDLE;
             gemm_a_load_row   <= 3'd0;
@@ -2199,7 +2199,7 @@ module npu_top #(
             gemm_a_load_byte_count   <= 16'd0;
             gemm_a_load_max_beats_per_row <= 6'd0;
             gemm_a_load_unaligned_row_count <= 16'd0;
-            // Phase 4a-2: bank ownership and metadata
+            // 阶段 4a-2: bank ownership and metadata
             input_load_bank    <= 1'b0;
             input_compute_bank <= 1'b0;
             input_bank0_valid  <= 1'b0;
@@ -2208,14 +2208,14 @@ module npu_top #(
             input_bank1_k_base <= 16'd0;
             input_bank0_k_tile <= 16'd0;
             input_bank1_k_tile <= 16'd0;
-            // Phase 4a-3: prefetch counters
+            // 阶段 4a-3: prefetch counters
             input_prefetch_start_count <= 16'd0;
             input_prefetch_done_count  <= 16'd0;
             input_prefetch_hit_count   <= 16'd0;
             input_prefetch_stall_count <= 16'd0;
             input_prefetch_beat_count  <= 16'd0;
             input_prefetch_byte_count  <= 16'd0;
-            // Phase 4b: weight staging
+            // 阶段 4b: weight staging
             wgt_stage_active  <= 1'b0;
             wgt_stage_done    <= 1'b0;
             wgt_stage_phase   <= WGT_STAGE_IDLE;
@@ -2227,7 +2227,7 @@ module npu_top #(
             wgt_stage_valid_n_tile  <= 16'd0;
             wgt_stage_beat_count <= 16'd0;
             wgt_stage_byte_count <= 16'd0;
-            // Phase 4b-2: weight prefetch
+            // 阶段 4b-2: weight prefetch
             wgt_pref_active  <= 1'b0;
             wgt_pref_done    <= 1'b0;
             wgt_pref_valid   <= 1'b0;
@@ -2240,7 +2240,7 @@ module npu_top #(
             wgt_pref_beat_count  <= 16'd0;
             wgt_pref_byte_count  <= 16'd0;
             wgt_pref_n_base      <= 16'd0;
-            // Phase 4b-2a: FSM debug counters
+            // 阶段 4b-2a: FSM debug counters
             dbg_load_array_entry     <= 16'd0;
             dbg_wgt_ld_entry         <= 16'd0;
             dbg_dual_hit_count       <= 16'd0;
@@ -2363,8 +2363,8 @@ module npu_top #(
                             // P0-3 FIX: Vector INT8 ReLU 256b starts DMA ONCE here,
                             // then transitions directly to FSM_VEC_RELU_PROC.
                             // Previously FSM_TASK_SETUP started act_dma_start for all
-                            // task types, and FSM_LOAD_ACT (is_vec_relu_mode branch)
-                            // started a SECOND act_dma_start on act_dma_done, causing
+                            // 任务 types, and FSM_LOAD_ACT (is_vec_relu_mode branch)
+                            // 启动ed a SECOND act_dma_start on act_dma_done, causing
                             // 2x DMA read (1024 beats instead of 512 for 16KB).
                             act_dma_start <= 1'b1;
                             act_dma_addr <= blk_in_addr;
@@ -2596,7 +2596,7 @@ module npu_top #(
                 // FSM_VEC_RELU_PROC — 256-bit streaming vector INT8 ReLU
                 //
                 // Slow pipeline (rd_wait, 0.5 beat/cycle). Verified correct data.
-                // Writer partial burst handles tail when Phase B finishes first.
+                // 写r partial burst handles tail when Phase B finishes first.
                 // ============================================================
                 FSM_VEC_RELU_PROC: begin
                     dma_wr_valid_r <= 1'b0;
@@ -2729,37 +2729,37 @@ module npu_top #(
                     comp_sub_state <= CP_WAIT_WIN;
                     cin_idx <= 16'd0;
                     cf_channel_sel <= 6'd0;
-                    // Start first input channel weight load
+                    // 启动 first input channel weight load
                     fsm_state <= FSM_CIN_START;
                 end
 
                 FSM_FC_TILE_PREP: begin
-                    // Streaming (GEMM/FC) or legacy GEMM: use N-tile = min(N, PE_COLS)
-                    // Legacy FC only: uses fc_tile_outputs_next (capacity-based)
+                    // 流式 (GEMM/FC) or legacy GEMM: use N-tile = min(N, PE_COLS)
+                    // 传统 FC only: uses fc_tile_outputs_next (capacity-based)
                     if (is_gemm_mode || matrix_streaming_en)
                         fc_tile_outputs <= (gemm_N_val > PE_COLS_16) ? PE_COLS_16 : gemm_N_val;
                     else
                         fc_tile_outputs <= fc_tile_outputs_next;
                     fc_in_base <= 16'd0;
                     fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
-                    // Phase 3a: init streaming K-chunk state (this state entered once per task)
+                    // 阶段 3a: init streaming K-chunk state (this state entered once per task)
                     if (matrix_streaming_en) begin
                         gemm_stream_k_base       <= 16'd0;
                         gemm_stream_k_chunk_idx  <= 16'd0;
                         gemm_stream_first_chunk  <= 1'b1;
                         gemm_stream_last_chunk   <= (input_c <= PE_ROWS_16);
-                        // Phase 5-1: init M tile descriptor
+                        // 阶段 5-1: init M tile descriptor
                         gemm_tile_m_base <= 16'd0;
                         gemm_tile_M <= (gemm_M_val > 16'd8) ? 16'd8 : gemm_M_val;
-                        // Phase 5-2: init N tile descriptor
+                        // 阶段 5-2: init N tile descriptor
                         gemm_tile_n_base <= 16'd0;
                         gemm_tile_N <= (gemm_N_val > PE_COLS_16) ? PE_COLS_16 : gemm_N_val;
-                        // Phase 4c-1: init result_tile banks
+                        // 阶段 4c-1: init result_tile banks
                         compute_result_bank <= 1'b0;
                         store_result_bank   <= 1'b0;
                     end
                     dma_rd_ptr <= 0;
-                    // Phase 1a+: GEMM weight retention — skip reload
+                    // 阶段 1a+: GEMM weight retention — skip reload
                     if (gemm_weight_hit) begin
                         comp_feed_cnt <= 7'd0;
                         comp_drain_cnt <= 16'd0;
@@ -2803,7 +2803,7 @@ module npu_top #(
                     wgt_dma_start <= 1'b1;
                     wgt_dma_addr <= {fc_wgt_dma_base[31:5], 5'b0};
                     wgt_dma_byte_offset <= fc_wgt_dma_base[4:0];
-                    // Phase 5-2: streaming (GEMM/FC) loads full B[K,N] for N-tiling
+                    // 阶段 5-2: streaming (GEMM/FC) loads full B[K,N] for N-tiling
                     wgt_dma_bytes <= matrix_streaming_en ?
                         (output_c * input_c) + {27'd0, fc_wgt_dma_base[4:0]} :
                         (fc_tile_outputs * input_c) + {27'd0, fc_wgt_dma_base[4:0]};
@@ -2955,13 +2955,13 @@ module npu_top #(
 
                 // ============================================================
                 // FSM_LOAD_ARRAY: load weights from wgt_buffer into wgt_load_reg
-                // Phase 4b-1: GEMM streaming uses weight staging micro-sequencer.
-                // Legacy FC/GEMM/Conv uses original inline unpack.
+                // 阶段 4b-1: GEMM streaming uses weight staging micro-sequencer.
+                // 传统 FC/GEMM/Conv uses original inline unpack.
                 // ============================================================
                 FSM_LOAD_ARRAY: begin
                     dbg_load_array_entry <= dbg_load_array_entry + 16'd1;
                     if (matrix_streaming_en) begin
-                        // Phase 4b-1: sequential weight staging
+                        // 阶段 4b-1: sequential weight staging
                         if (!wgt_stage_active && !wgt_stage_done) begin
                             wgt_stage_active   <= 1'b1;
                             wgt_stage_done     <= 1'b0;
@@ -2970,11 +2970,11 @@ module npu_top #(
                             wgt_stage_n_start  <= fc_out_start;
                             wgt_stage_n_tile   <= fc_tile_outputs;
                             wgt_stage_valid    <= 1'b0;
-                            // Phase will be set to REQ by micro-sequencer IDLE state
+                            // 阶段 will be set to REQ by micro-sequencer IDLE state
                             $display("[WGT_STG] START k_base=%0d k_tile=%0d n_start=%0d n_tile=%0d",
                                 fc_in_base, fc_chunk_inputs, fc_out_start, fc_tile_outputs);
                         end else if (wgt_stage_done) begin
-                            // Weight staging complete — verify meta
+                            // 权重 staging complete — verify meta
                             if (!wgt_stage_valid ||
                                 (wgt_stage_valid_k_base  != fc_in_base) ||
                                 (wgt_stage_valid_k_tile  != fc_chunk_inputs) ||
@@ -2999,11 +2999,11 @@ module npu_top #(
                             wgt_load_wait <= 1'b0;
                         end else if (wgt_load_phase < (fc_tile_outputs * fc_chunk_inputs)) begin
                             // Performance fix: load up to 32 bytes/cycle from 256-bit
-                            // weight buffer (matching buffer native width), instead of
+                            // 权重 buffer (matching buffer native width), instead of
                             // the original 1 byte/cycle.  Uses same for-loop pattern as
                             // the Conv path below.  All 32 bytes in a beat map to the
                             // same output neuron (fc_load_out_idx constant) but different
-                            // input rows, so wgt_load_reg write targets are all distinct.
+                            // 输入 rows, so wgt_load_reg write targets are all distinct.
                             reg [31:0] fc_load_remaining;
                             reg [31:0] fc_bytes_in_beat;
                             reg [31:0] fc_load_count;
@@ -3038,7 +3038,7 @@ module npu_top #(
                         wgt_load_wait <= 1'b0;
                     end else if (wgt_load_phase < conv_wgt_valid_bytes) begin
                         // Map memory byte idx to wgt_load_reg byte idx:
-                        // memory: spatial_pos * C_out + out_c  (sequential)
+                        // 内存: spatial_pos * C_out + out_c  (sequential)
                         // wgt_reg: spatial_pos * PE_COLS + out_c   (strided for array columns)
                         // HB1-B: phase is a byte index; beat address and byte lane
                         // use the same 256-bit extraction rule as FC weights.
@@ -3080,7 +3080,7 @@ module npu_top #(
 
                 FSM_WGT_LD: begin
                     dbg_wgt_ld_entry <= dbg_wgt_ld_entry + 16'd1;
-                    // weight_ld pulsed → weights now in array PEs
+                    // 权重_ld pulsed → weights now in array PEs
                     comp_feed_cnt <= 7'd0;
                     comp_drain_cnt <= 16'd0;
                     if (matrix_streaming_en) begin
@@ -3098,7 +3098,7 @@ module npu_top #(
                         gemm_weight_k_size_cached <= fc_chunk_inputs;
                         gemm_weight_n_size_cached <= fc_tile_outputs;
                     end
-                    // Phase 2: trigger shadow load for next FC chunk
+                    // 阶段 2: trigger shadow load for next FC chunk
                     if (is_fc_mode && (fc_in_base + fc_chunk_inputs < input_c)) begin
                         fc_shadow_active  <= 1'b1;
                         fc_shadow_phase   <= 32'd0;
@@ -3177,7 +3177,7 @@ module npu_top #(
                                 comp_feed_cnt <= 7'd0;
                                 comp_sub_state <= CP_FEED_ACT;
                             end else if (is_pool_mode) begin
-                                // Pool: feed INT32 words, wait for postproc to finish
+                                // 池化: feed INT32 words, wait for postproc to finish
                                 if (act_feed_wait) begin
                                     act_feed_wait <= 1'b0;
                                 end else if (!pp_start && (act_feed_done_cnt < blk_in_bytes[15:0])) begin
@@ -3328,7 +3328,7 @@ module npu_top #(
                                         // P0 FIX: Bypass Phase-2 shadow register.
                                         // Shadow weight preload can fail to complete before
                                         // compute finishes (P2 reduced compute from 261→133
-                                        // cycles, shadow needs ~256).  Instead of swapping
+                                        // 周期s, shadow needs ~256).  Instead of swapping
                                         // possibly-incomplete wgt_load_reg_shadow, go through
                                         // FSM_LOAD_ARRAY which reloads the next chunk's weights
                                         // directly from wgt_buffer.  Cost: ~128 cycles per
@@ -3699,7 +3699,7 @@ module npu_top #(
                 end
 
                 // ============================================================
-                // Phase 2b-1: GEMM row-streaming states
+                // 阶段 2b-1: GEMM row-streaming states
                 // ============================================================
                 FSM_GEMM_STREAM_PREP: begin
                     stream_cycle <= 16'd0;
@@ -3708,7 +3708,7 @@ module npu_top #(
                     stream_a_tile_loaded <= 1'b0;
                     gemm_a_load_done <= 1'b0;
                     comp_feed_cnt <= 7'd0;
-                    // Phase 4a-2: bank selection — toggles per chunk
+                    // 阶段 4a-2: bank selection — toggles per chunk
                     if (gemm_stream_first_chunk) begin
                         integer ci, cj;
                         for (ci = 0; ci < 8; ci = ci + 1)
@@ -3729,14 +3729,14 @@ module npu_top #(
                         wgt_pref_valid    <= 1'b0;
                         wgt_pref_done     <= 1'b0;
                         wgt_pref_active   <= 1'b0;
-                        // Phase 5-1: M tile descriptor set once per task at FC_TILE_PREP
+                        // 阶段 5-1: M tile descriptor set once per task at FC_TILE_PREP
                         // First chunk: load into bank0, compute from bank0
                         input_load_bank    <= 1'b0;
                         input_compute_bank <= 1'b0;
                         fsm_state <= FSM_GEMM_STREAM_LOAD_A;
                     end else begin
                         // Subsequent chunks: compute from the bank LOAD_A just loaded.
-                        // input_load_bank was toggled in ACCUM before LOAD_A.
+                        // 输入_load_bank was toggled in ACCUM before LOAD_A.
                         input_compute_bank <= input_load_bank;
                         // Check that the bank LOAD_A loaded has valid metadata
                         if (input_load_bank == 1'b0) begin
@@ -3767,8 +3767,8 @@ module npu_top #(
                 end
 
                 // ============================================================
-                // Phase 4a-2: beat-level input-tile-loader with double-buffer
-                // Reads input_tile_bank[load_bank][row][col] = A[row][k_base+col]
+                // 阶段 4a-2: beat-level input-tile-loader with double-buffer
+                // 读s input_tile_bank[load_bank][row][col] = A[row][k_base+col]
                 // from act_buffer: one 256-bit beat per read, unpack up to 32 bytes.
                 // Handles unaligned rows: up to 3 beats for 64 bytes.
                 // ============================================================
@@ -3804,7 +3804,7 @@ module npu_top #(
                                  (wgt_pref_k_base == gemm_stream_k_base) &&
                                  (wgt_pref_k_tile == fc_chunk_inputs) &&
                                  (wgt_pref_n_tile == fc_tile_outputs) && (wgt_pref_n_base == gemm_tile_n_base)) begin
-                            // Weight was prefetched during previous RUN
+                            // 权重 was prefetched during previous RUN
                             wgt_pref_hit_count <= wgt_pref_hit_count + 16'd1;
                             wgt_pref_valid <= 1'b0;
                             wgt_pref_done  <= 1'b0;
@@ -3830,12 +3830,12 @@ module npu_top #(
                                 gemm_a_load_phase <= A_LOAD_WAIT;
                             end
                             A_LOAD_WAIT: begin
-                                // Data appears next cycle.
+                                // 数据 appears next cycle.
                                 gemm_a_load_phase <= A_LOAD_CAPTURE;
                             end
                             A_LOAD_CAPTURE: begin
-                                // Beat-level bulk unpack: up to 32 bytes from one 256-bit beat.
-                                // Writes to input_tile_bank[input_load_bank].
+                                // beat-level bulk unpack: up to 32 bytes from one 256-bit beat.
+                                // 写s to input_tile_bank[input_load_bank].
                                 integer lane_start_v;
                                 integer remaining_v;
                                 integer bytes_this_beat_v;
@@ -3906,7 +3906,7 @@ module npu_top #(
                 end
 
                 FSM_GEMM_STREAM_RUN: begin
-                    // Phase 4a-3: on first cycle of RUN, trigger background prefetch
+                    // 阶段 4a-3: on first cycle of RUN, trigger background prefetch
                     // of next chunk's input tile into the inactive bank.
                     if ((stream_cycle == 16'd0) && !gemm_stream_last_chunk &&
                         !input_prefetch_active) begin
@@ -3936,7 +3936,7 @@ module npu_top #(
                             $display("[PREFETCH] START bank=%0d k_base=%0d k_tile=%0d comp_bank=%0d",
                                 ~input_compute_bank, nk_base, nk_tile, input_compute_bank);
                         end
-                        // Phase 4b-2: also trigger background weight prefetch
+                        // 阶段 4b-2: also trigger background weight prefetch
                         if (1'b0 && !wgt_pref_active && !wgt_pref_done &&
                             !(wgt_pref_valid &&
                               (wgt_pref_k_base == nk_base) &&
@@ -3996,7 +3996,7 @@ module npu_top #(
                     end
                 end
 
-                // Phase 4a-3: K-chunk loop with prefetch-aware routing
+                // 阶段 4a-3: K-chunk loop with prefetch-aware routing
                 // If next chunk's input tile was prefetched during RUN,
                 // skip foreground LOAD_A and go directly to LOAD_ARRAY.
                 FSM_GEMM_STREAM_ACCUM: begin
@@ -4007,7 +4007,7 @@ module npu_top #(
                         next_kb = fc_in_base + fc_chunk_inputs;
                         next_kt = (input_c - next_kb > PE_ROWS_16) ? PE_ROWS_16 : (input_c - next_kb);
 
-                        // Phase 4b-2: also check weight prefetch stall
+                        // 阶段 4b-2: also check weight prefetch stall
                         if (input_prefetch_active || wgt_pref_active) begin
                             if (input_prefetch_active) begin
                                 input_prefetch_stall_count <= input_prefetch_stall_count + 16'd1;
@@ -4021,7 +4021,7 @@ module npu_top #(
                         end else if (input_bank0_valid && (input_bank0_k_base == next_kb) &&
                                        (input_bank0_k_tile == next_kt) &&
                                        (1'b0 != input_compute_bank)) begin
-                            // Input prefetch HIT: bank0 has next chunk's A data.
+                            // 输入 prefetch HIT: bank0 has next chunk's A data.
                             input_prefetch_hit_count <= input_prefetch_hit_count + 16'd1;
                             gemm_stream_k_base       <= next_kb;
                             gemm_stream_k_chunk_idx  <= gemm_stream_k_chunk_idx + 16'd1;
@@ -4047,7 +4047,7 @@ module npu_top #(
                                     next_kb);
                                 fsm_state <= FSM_WGT_LD;
                             end else begin
-                                // Input hit only: skip LOAD_A, go to LOAD_ARRAY
+                                // 输入 hit only: skip LOAD_A, go to LOAD_ARRAY
                                 wgt_load_phase <= 32'd0;
                                 wgt_load_wait <= 1'b1;
                                 $display("[PREFETCH] HIT bank0 k_base=%0d k_chunk=%0d (skip LOAD_A)",
@@ -4057,7 +4057,7 @@ module npu_top #(
                         end else if (input_bank1_valid && (input_bank1_k_base == next_kb) &&
                                        (input_bank1_k_tile == next_kt) &&
                                        (1'b1 != input_compute_bank)) begin
-                            // Input prefetch HIT: bank1 has next chunk's A data
+                            // 输入 prefetch HIT: bank1 has next chunk's A data
                             input_prefetch_hit_count <= input_prefetch_hit_count + 16'd1;
                             gemm_stream_k_base       <= next_kb;
                             gemm_stream_k_chunk_idx  <= gemm_stream_k_chunk_idx + 16'd1;
@@ -4091,7 +4091,7 @@ module npu_top #(
                                 fsm_state <= FSM_LOAD_ARRAY;
                             end
                         end else begin
-                            // Fallback: no prefetch data — use foreground LOAD_A
+                            // 回退: no prefetch data — use foreground LOAD_A
                             // Also handles first chunk after RUN0 (prefetch started but not done)
                             gemm_stream_k_base       <= next_kb;
                             gemm_stream_k_chunk_idx  <= gemm_stream_k_chunk_idx + 16'd1;
@@ -4124,7 +4124,7 @@ module npu_top #(
 
                 FSM_GEMM_STREAM_DONE: begin
                     store_result_bank <= compute_result_bank;
-                    // Phase 4c-3: STORE overlap — launch immediately if writer idle.
+                    // 阶段 4c-3: STORE overlap — launch immediately if writer idle.
                     // Only lock store_desc_* when GST is idle, to avoid corrupting
                     // an active background STORE's descriptor.
                     if (!gemm_store_eng_active) begin
@@ -4214,7 +4214,7 @@ module npu_top #(
                 end
 
                 FSM_GEMM_STREAM_STORE: begin
-                    // Phase 4c-3: Wait for background STORE engine to finish current tile.
+                    // 阶段 4c-3: Wait for background STORE engine to finish current tile.
                     // GST micro-FSM now runs as an after-case background tick, not here.
                     if (!gemm_store_eng_active) begin
                         if (gemm_store_pending) begin
@@ -4316,9 +4316,9 @@ module npu_top #(
             // ================================================================
             // P5: pipelined shared store_pack state machine — runs during FSM_STORE
             // or pipe_mode.  Placed AFTER the fsm_state case so store overrides
-            // signals set in FSM_STORE init on the same cycle.
+            // 信号s set in FSM_STORE init on the same cycle.
             //
-            // Pipelined read: we issue the NEXT read address (store_rd_prefetch)
+            // 流水线d read: we issue the NEXT read address (store_rd_prefetch)
             // while consuming the CURRENT data (dma_rd_ptr tracks consumed index).
             // This achieves 1 word/cycle sustained throughput (was 1 word/2 cycles
             // due to WAIT state for acc_buffer's 1-cycle read latency).
@@ -4369,7 +4369,7 @@ module npu_top #(
                     end
 
                     SP_STREAM: begin
-                        // Data from previous read is valid. Accumulate and issue next.
+                        // 数据 from previous read is valid. Accumulate and issue next.
                         if (store_word_idx < store_words_active) begin
                             store_pack_data <= store_pack_data_next;
                             store_pack_lane <= store_pack_lane + 3'd1;
@@ -4378,7 +4378,7 @@ module npu_top #(
 
                             if ((store_pack_lane == 3'd7) ||
                                 (store_word_idx + 32'd1 >= store_words_active)) begin
-                                // Beat complete
+                                // beat complete
                                 dma_wr_data_r <= store_pack_data_next;
                                 dma_wr_valid_r <= 1'b1;
                                 store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
@@ -4396,8 +4396,8 @@ module npu_top #(
                     end
 
                     SP_PUSH: begin
-                        // Beat pushed to FIFO; wait for FIFO to accept, then continue.
-                        // NOTE: do NOT increment dma_rd_ptr here — no new data was consumed.
+                        // beat pushed to FIFO; wait for FIFO to accept, then continue.
+                        // 注意：do NOT increment dma_rd_ptr here — no new data was consumed.
                         // dma_rd_ptr already points to the next word to consume (set by
                         // SP_STREAM beat-complete cycle). Only advance store_rd_prefetch
                         // to issue the next buffer read.
@@ -4476,7 +4476,7 @@ module npu_top #(
             end
 
             // ================================================================
-            // Phase 4c-3: background GEMM STORE engine tick.
+            // 阶段 4c-3: background GEMM STORE engine tick.
             // GST micro-FSM runs here (not inside FSM_GEMM_STREAM_STORE),
             // allowing STORE to overlap with main FSM RUN/PREP/LOAD_A states.
             // Still in the same always block — no multi-driver.
@@ -4492,7 +4492,7 @@ module npu_top #(
                         reg [31:0]  n_base_addr;      // n_base offset in bytes
                         reg [31:0]  beat_addr_offset;  // beat_idx offset in bytes
                         integer lane;
-                        // Phase U4-d: output-dtype-dependent packing
+                        // 阶段 U4-d: output-dtype-dependent packing
                         if (store_desc_output_dtype == 1'b0) begin
                             // INT32: 8 columns per beat, 4 bytes per column
                             beat_cols_max   = 6'd8;
@@ -4579,7 +4579,7 @@ module npu_top #(
                     end
 
                     GST_ADVANCE: begin
-                        // Phase U4-d: beats per row depends on output dtype
+                        // 阶段 U4-d: beats per row depends on output dtype
                         // INT32: ceil(N/8), INT8: ceil(N/32)
                         if (gemm_store_beat_idx + 16'd1 <
                             (store_desc_output_dtype ?
@@ -4612,18 +4612,18 @@ module npu_top #(
     assign task_error_fb = task_error_r;
     assign task_error_code_fb = task_error_code_r;
 
-    // weight_mac_addr
+    // 权重_mac_addr
     assign wgt_mac_addr = conv_weight_dma_byte_idx[BUF_ADDR_W+4:5];
 
     // ============================================================
-    // Phase 2: FC Shadow Weight Load — loads next chunk's weights
+    // 阶段 2: FC Shadow Weight Load — loads next chunk's weights
     // into wgt_load_reg_shadow during FEED_ACT+DRAIN+COLLECT.
     // After compute finishes, the main FSM swaps shadow→wgt_load_reg
     // in one cycle, bypassing the 128-cycle FSM_LOAD_ARRAY.
     // ============================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            // reset handled in main block
+            // 复位 handled in main block
         end else if (fc_shadow_active) begin
             if (fc_shadow_wait) begin
                 fc_shadow_wait <= 1'b0;
@@ -4659,7 +4659,7 @@ module npu_top #(
             end
             // fc_shadow_active stays 1 after load completion;
             // it is cleared at CP_COLLECT done after the swap into wgt_load_reg.
-            // Clearing it here would cause the swap to miss the shadow data
+            // 清除ing it here would cause the swap to miss the shadow data
             // and load zero weights for the next K-chunk.
         end
     end

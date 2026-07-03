@@ -10,7 +10,7 @@
 // This sequence only handles NPU register programming, start/poll, and
 // final logit readback.
 //
-// Memory layout mirrors tb_top_lenet.v:
+// 内存 layout mirrors tb_top_lenet.v:
 //   INPUT_ADDR      = 32'h0000_0100   (784 bytes)
 //   CONV1_WGT_ADDR  = 32'h0000_1000   (500 bytes)
 //   CONV1_OUT_ADDR  = 32'h0000_4000   (24*24*20*4 = 46080 bytes INT32)
@@ -32,7 +32,7 @@
 //   rq_fc2_mult, rq_fc2_shift
 //   cluster_mode
 //
-// Results (read after body()):
+// 结果s (read after body()):
 //   done, error, error_code
 //   fc2_logits[0:9] — 10 signed INT32 logit values
 //=============================================================================
@@ -44,7 +44,7 @@ class npu_lenet_seq extends soc_base_seq;
   `uvm_object_utils(npu_lenet_seq)
 
   //-----------------------------------------------------------------------------
-  // Memory layout (defaults match tb_top_lenet.v)
+  // 内存 layout (defaults match tb_top_lenet.v)
   //-----------------------------------------------------------------------------
   bit [31:0] input_addr;
   bit [31:0] conv1_wgt_addr;
@@ -60,7 +60,7 @@ class npu_lenet_seq extends soc_base_seq;
   bit [31:0] fc2_out_addr;
 
   //-----------------------------------------------------------------------------
-  // Requant parameters (defaults: pass-through, overridden by test)
+  // 重量化 parameters (defaults: pass-through, overridden by test)
   //-----------------------------------------------------------------------------
   int unsigned rq_conv2_mult;
   int unsigned rq_conv2_shift;
@@ -80,7 +80,7 @@ class npu_lenet_seq extends soc_base_seq;
   int unsigned poll_timeout;
 
   //-----------------------------------------------------------------------------
-  // Results
+  // 结果s
   //-----------------------------------------------------------------------------
   bit           done;
   bit           error;

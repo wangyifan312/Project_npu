@@ -7,7 +7,7 @@ class axi4_dma_monitor extends uvm_monitor;
   uvm_analysis_port #(axi4_dma_txn) ap;
   virtual soc_probe_if probe_vif;
 
-  // Read transaction tracking
+  // 读 transaction tracking
   bit        rd_active;
   int unsigned rd_txn_cycles;
   int unsigned rd_data_cycles;
@@ -18,7 +18,7 @@ class axi4_dma_monitor extends uvm_monitor;
   bit [2:0]  rd_arsize;
   bit [1:0]  rd_arburst;
 
-  // Write transaction tracking
+  // 写 transaction tracking
   bit        wr_active;
   int unsigned wr_txn_cycles;
   int unsigned wr_data_cycles;

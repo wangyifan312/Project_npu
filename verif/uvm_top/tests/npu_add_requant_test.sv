@@ -71,7 +71,7 @@ class npu_add_requant_test extends soc_base_test;
       $signed(expected_bytes[4]), $signed(expected_bytes[5]),
       $signed(expected_bytes[6]), $signed(expected_bytes[7])), UVM_NONE)
 
-    // Configure and run NPU ADD task
+    // 配置 and run NPU ADD task
     add_seq = npu_add_task_seq::type_id::create("add_seq");
     add_seq.src0_data      = src0_bytes;
     add_seq.src1_data      = src1_bytes;
@@ -90,7 +90,7 @@ class npu_add_requant_test extends soc_base_test;
     `uvm_info("TEST", "=== npu_add_requant_test: Single-Cluster ADD w/ Requant ===", UVM_NONE)
     add_seq.start(env.axil_ag.seqr);
 
-    // Compare DUT output with golden model
+    // 与黄金参考比对 DUT 输出 model
     if (add_seq.done && !add_seq.error) begin
       env.scoreboard.compare_output_bytes(add_seq.actual_output, expected_bytes,
                                           add_seq.output_base);

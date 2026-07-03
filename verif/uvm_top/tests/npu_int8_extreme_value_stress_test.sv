@@ -4,7 +4,7 @@
 // Signed INT8 extreme value stress — verifies signed multiply and INT32
 // accumulation with extreme/corner-case data patterns.
 //
-// Data patterns:
+// 数据 patterns:
 //   P1: all +127
 //   P2: all -128
 //   P3: A=+127, B=-128
@@ -16,7 +16,7 @@
 //
 // Coverage: K = 64, 65, 128, 129; M = 1, 4, 8; N = 1, 8, 64, 65
 //
-// Golden: computed analytically in testbench (sum of signed products).
+// 黄金参考: computed analytically in testbench (sum of signed products).
 //=============================================================================
 `timescale 1ns / 1ps
 
@@ -103,7 +103,7 @@ class npu_int8_extreme_value_stress_test extends soc_base_test;
   endfunction
 
   //----------------------------------------------------------------------------
-  // write_bytes_to_ram: write byte array as 32-bit words to shared RAM
+  // 写_bytes_to_ram: write byte array as 32-bit words to shared RAM
   //----------------------------------------------------------------------------
   task write_bytes_to_ram(soc_base_seq m_seq, input bit [31:0] base_addr,
                           input byte signed vals[], input int count);
@@ -137,10 +137,10 @@ class npu_int8_extreme_value_stress_test extends soc_base_test;
     fill_pattern_B(b_vals, K_v, N_v, pat, 42);
     compute_golden(a_vals, b_vals, golden, M_v, K_v, N_v);
 
-    // write A to 0x0000_0100
+    // 写 A to 0x0000_0100
     write_bytes_to_ram(m_seq, 32'h0000_0100, a_vals, M_v * K_v);
 
-    // write B to 0x0001_0000
+    // 写 B to 0x0001_0000
     write_bytes_to_ram(m_seq, 32'h0001_0000, b_vals, K_v * N_v);
 
     // guard + clear
@@ -150,7 +150,7 @@ class npu_int8_extreme_value_stress_test extends soc_base_test;
       m_seq.axil_write32(32'h0002_0000 + i, 32'hDEADBEEF);
     m_seq.axil_write32(32'h0002_0000 + M_v * row_stride, 32'hFEED_F00D);
 
-    // config GEMM streaming
+    // 配置 GEMM streaming
     m_seq.axil_write32(`NPU_REG_TASK_TYPE,    32'd7);
     m_seq.axil_write32(`NPU_REG_CONV_CFG,     32'h20);
     m_seq.axil_write32(`NPU_REG_POSTPROC,     32'd0);

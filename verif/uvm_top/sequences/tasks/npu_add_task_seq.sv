@@ -13,7 +13,7 @@
 //   - weight is NOT used by ADD (weight_bytes = 0)
 //   - output is INT8, same element count as src0/src1
 //
-// Register-programming contract:
+// 寄存器-programming contract:
 //   SRC1_ADDR, SRC1_BYTES, ADD_CFG,
 //   ADD_SRC0_MULT, ADD_SRC0_SHIFT,
 //   ADD_SRC1_MULT, ADD_SRC1_SHIFT,
@@ -72,13 +72,13 @@ class npu_add_task_seq extends soc_base_seq;
 
     `uvm_info("ADD_TASK", "=== ADD Task: Preloading ===", UVM_NONE)
 
-    // Preload src0 (primary input tensor) to src0_base
+    // 预加载 src0 (primary input tensor) to src0_base
     preload_seq = shared_ram_preload_seq::type_id::create("preload_seq");
     preload_seq.base_addr = src0_base;
     preload_seq.data = src0_data;
     preload_seq.start(m_sequencer);
 
-    // Preload src1 (secondary input tensor) to src1_base
+    // 预加载 src1 (secondary input tensor) to src1_base
     preload_seq = shared_ram_preload_seq::type_id::create("preload_seq");
     preload_seq.base_addr = src1_base;
     preload_seq.data = src1_data;

@@ -7,9 +7,9 @@
 //   - Single cluster mode
 //   - Numeric check: sum-of-products against golden model with stride=2
 //
-// Input:  6x6 all ones  (36 bytes)
-// Weight: 3x3 all twos  (9 bytes)
-// Output: 2x2 INT32 values, each = 9 * 1 * 2 = 18
+// 输入:  6x6 all ones  (36 bytes)
+// 权重: 3x3 all twos  (9 bytes)
+// 输出: 2x2 INT32 values, each = 9 * 1 * 2 = 18
 //=============================================================================
 
 `timescale 1ns / 1ps
@@ -32,7 +32,7 @@ class npu_conv_stride2_test extends soc_base_test;
     phase.raise_objection(this);
     #200;
 
-    // Build test data: 6x6 input of all ones
+    // 构建测试数据: 6x6 input of all ones
     for (i = 0; i < 36; i++) begin
       input_bytes[i] = 8'h01;
     end
@@ -55,7 +55,7 @@ class npu_conv_stride2_test extends soc_base_test;
       expected_bytes.size(),
       expected_bytes[0], expected_bytes[1], expected_bytes[2], expected_bytes[3]), UVM_NONE)
 
-    // Configure and run NPU task
+    // 配置 and run NPU task
     conv_seq = npu_conv_task_seq::type_id::create("conv_seq");
     conv_seq.input_data            = input_bytes;
     conv_seq.weight_data           = weight_bytes;
@@ -74,7 +74,7 @@ class npu_conv_stride2_test extends soc_base_test;
     `uvm_info("TEST", "=== npu_conv_stride2_test: Single-Cluster 3x3 Stride-2 Conv ===", UVM_NONE)
     conv_seq.start(env.axil_ag.seqr);
 
-    // Compare DUT output with golden model
+    // 与黄金参考比对 DUT 输出 model
     if (conv_seq.done && !conv_seq.error) begin
       env.scoreboard.compare_output_bytes(conv_seq.actual_output, expected_bytes,
                                           conv_seq.output_base);

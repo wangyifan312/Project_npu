@@ -19,7 +19,7 @@ module pe_cluster #(
     output reg                           cluster_valid,
     output reg                           cluster_done,
 
-    // Phase 2: continuous streaming mode (keeps array active indefinitely)
+    // 阶段 2: continuous streaming mode (keeps array active indefinitely)
     input  wire                          continuous_mode,
     input  wire                          stream_active
 );

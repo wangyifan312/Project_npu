@@ -63,7 +63,7 @@ class npu_pool_task_seq extends soc_base_seq;
 
     `uvm_info("POOL_TASK", "=== Pool Task: Preloading ===", UVM_NONE)
 
-    // Preload input only — Pool has no weight tensor
+    // 预加载 input only — Pool has no weight tensor
     preload_seq = shared_ram_preload_seq::type_id::create("preload_seq");
     preload_seq.base_addr = input_base;
     preload_seq.data = input_data;

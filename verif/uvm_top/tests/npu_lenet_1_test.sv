@@ -123,7 +123,7 @@ class npu_lenet_1_test extends soc_base_test;
     `uvm_info("LENET_TEST", $sformatf("Fixture: %0s, sample: %0s", fixture_dir, sample_name), UVM_NONE)
 
     //---------------------------------------------------------------------------
-    // Preload all fixture data into shared RAM via backdoor interface
+    // 预加载 all fixture data into shared RAM via backdoor interface
     //---------------------------------------------------------------------------
     `uvm_info("LENET_TEST", "Loading input image...", UVM_NONE)
     bd_if.load_memh(path_input,   32'h0000_0100, 196);
@@ -168,7 +168,7 @@ class npu_lenet_1_test extends soc_base_test;
     end else begin
       `uvm_info("LENET_TEST", "LeNet pipeline completed. Computing argmax...", UVM_NONE)
 
-      // Read FC2 logits via backdoor to cross-check
+      // 读 FC2 logits via backdoor to cross-check
       `uvm_info("LENET_TEST", "FC2 logits (AXI-Lite vs backdoor):", UVM_NONE)
       for (s = 0; s < 10; s++) begin
         backdoor_val = bd_if.read32(32'h000F_5000 + s * 4);
@@ -188,11 +188,11 @@ class npu_lenet_1_test extends soc_base_test;
         end
       end
 
-      // Read expected label
+      // 读 expected label
       expected_class = read_label_file(path_label);
       if (expected_class == -1) begin
         `uvm_warning("LENET_TEST", "Could not read expected label, using label from sample name")
-        // Fallback: try argmax.txt
+        // 回退: try argmax.txt
         expected_class = read_label_file({sample_dir, "/argmax.txt"});
       end
 

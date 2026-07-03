@@ -2,7 +2,7 @@
 // npu_back_to_back_task_test.sv — Back-to-Back Task Recovery Test
 //
 // 目的： Verify NPU can execute two consecutive tasks without reset.
-// Task A: FC small (16→16), Task B: FC small (16→16) with different data.
+// 任务 A: FC small (16→16), Task B: FC small (16→16) with different data.
 // Both tasks' outputs are independently verified against golden.
 //
 // 检查：
@@ -43,8 +43,8 @@ class npu_back_to_back_task_test extends soc_base_test;
     #200;
 
     // ================================================================
-    // Task A: 16→16 FC with all-1s weights, sequential inputs
-    // Output[i] = 136 * (i+1)
+    // 任务 A: 16→16 FC with all-1s weights, sequential inputs
+    // 输出[i] = 136 * (i+1)
     // ================================================================
     input_a = new[16];
     for (i = 0; i < 16; i++)
@@ -86,7 +86,7 @@ class npu_back_to_back_task_test extends soc_base_test;
         `uvm_info("TEST", "Task A: PASS (output verified)", UVM_NONE)
       end
 
-      // Read perf counters after Task A
+      // 读 perf counters after Task A
       fc_seq_a.axil_read32(`NPU_REG_PERF_CYCLE_LO, rd_val);
       `uvm_info("TEST", $sformatf("Task A: cycle_count=%0d", rd_val), UVM_NONE)
     end else begin
@@ -105,25 +105,25 @@ class npu_back_to_back_task_test extends soc_base_test;
       task_a_pass = 1'b0;
     end
 
-    // Clear sticky probes before Task B (auto-clear mechanism test:
+    // 清除 sticky probes before Task B (auto-clear mechanism test:
     // npu_start_poll_seq now writes only bit[0]=1 without explicit clear,
     // relying on npu_ctrl auto-clearing done/error on new task start.)
     clear_probe_sticky();
 
     // ================================================================
-    // Task B: 16→16 FC with DIFFERENT pattern (all-2s inputs)
-    // Output[i] = 32 * (i+1)   [sum=32 since each input=2 * 16 weights=1]
+    // 任务 B: 16→16 FC with DIFFERENT pattern (all-2s inputs)
+    // 输出[i] = 32 * (i+1)   [sum=32 since each input=2 * 16 weights=1]
     // Wait - weights are per-output-channel. Let me use a clearer pattern.
     //
-    // Input: all 2s (16 INT8 values of 2)
-    // Weight: identity-like, weight[out][in] = out+1
-    // Output[out] = sum(in[0..15] * weight[out][0..15])
+    // 输入: all 2s (16 INT8 values of 2)
+    // 权重: identity-like, weight[out][in] = out+1
+    // 输出[out] = sum(in[0..15] * weight[out][0..15])
     //             = sum(2 * (out+1) * 16) = 32 * (out+1) * 16 ... hmm
     //
     // Let me use a simple pattern:
-    // Input: {2,2,...,2} (16 INT8s of 2)
-    // Weight: all 1s
-    // Output[i] = 16 * 2 * 1 = 32 for all i
+    // 输入: {2,2,...,2} (16 INT8s of 2)
+    // 权重: all 1s
+    // 输出[i] = 16 * 2 * 1 = 32 for all i
     // ================================================================
     input_b = new[16];
     for (i = 0; i < 16; i++)
@@ -181,7 +181,7 @@ class npu_back_to_back_task_test extends soc_base_test;
         end
       end
 
-      // Read perf counters after Task B
+      // 读 perf counters after Task B
       fc_seq_b.axil_read32(`NPU_REG_PERF_CYCLE_LO, rd_val);
       `uvm_info("TEST", $sformatf("Task B: cycle_count=%0d", rd_val), UVM_NONE)
     end else begin

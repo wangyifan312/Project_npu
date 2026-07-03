@@ -1,10 +1,10 @@
 //=============================================================================
 // npu_fc_streaming_smoke_test.sv — FC Streaming as MatrixOp Phase U1
 //
-// Phase U1: FC routed through streaming GEMM pipeline when:
+// 阶段 U1: FC routed through streaming GEMM pipeline when:
 //   is_fc_mode && conv_cfg[5] && !bias_enabled
 //
-// Test levels:
+// 测试 levels:
 //   FCS0:  M=1, K=4,  N=4   — minimal smoke (all-1 data)
 //   FCS1:  M=1, K=16, N=16  — full PE array, non-uniform data
 //   FCS2:  M=1, K=128,N=16  — K>64 cross-chunk accumulation
@@ -12,8 +12,8 @@
 //   FCS4:  M=4, K=64, N=64  — batch M>1 (input_h=4)
 //   FCS5:  M=1, K=8,  N=8   — signed INT8 A/B
 //
-// Weight layout: K-major B[k][n] (streaming MatrixOp layout).
-// Legacy N-major W[n][k] is NOT compatible with streaming FC.
+// 权重 layout: K-major B[k][n] (streaming MatrixOp layout).
+// 传统 N-major W[n][k] is NOT compatible with streaming FC.
 //=============================================================================
 `timescale 1ns / 1ps
 
@@ -38,7 +38,7 @@ class npu_fc_streaming_smoke_test extends soc_base_test;
     m_seq.start(env.axil_ag.seqr);
     #200;
 
-    // FC streaming levels
+    // FC 流式 levels
     M_arr[0]=1;  K_arr[0]=4;   N_arr[0]=4;    // FCS0: smoke
     M_arr[1]=1;  K_arr[1]=16;  N_arr[1]=16;   // FCS1: non-uniform
     M_arr[2]=1;  K_arr[2]=128; N_arr[2]=16;   // FCS2: K>64 chunking
@@ -56,7 +56,7 @@ class npu_fc_streaming_smoke_test extends soc_base_test;
         lvl, M_v,K_v,N_v),UVM_NONE)
 
       // --- Preload input A[M][K] — K-major: A[m*K + k] ---
-      // Write 32-bit words; data is packed little-endian in memory
+      // 写 32-bit words; data is packed little-endian in memory
       if (lvl == 5) begin
         // FCS5: signed — A=alternating +1/-1, B=all +2
         // Pack 4 bytes per 32-bit word
@@ -111,7 +111,7 @@ class npu_fc_streaming_smoke_test extends soc_base_test;
         exp_val = K_v; // each C[m][n] = sum_k 1*1 = K
       end
 
-      // Clear output region
+      // 清除 output region
       for (i=0; i<M_v*N_v*4; i=i+4)
         m_seq.axil_write32(32'h0002_0000+i, 32'hDEADBEEF);
 

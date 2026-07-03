@@ -34,13 +34,13 @@ class npu_fc_smoke_test extends soc_base_test;
     #200;
 
     // --- Build test data ---
-    // Input: 4-element INT8 vector {1, 2, 3, 4}
+    // 输入: 4-element INT8 vector {1, 2, 3, 4}
     input_bytes[0] = 8'd1;
     input_bytes[1] = 8'd2;
     input_bytes[2] = 8'd3;
     input_bytes[3] = 8'd4;
 
-    // Weight: 4x1 INT8 vector, all 1s (4 bytes for 1 output neuron)
+    // 权重: 4x1 INT8 vector, all 1s (4 bytes for 1 output neuron)
     for (i = 0; i < 4; i++) begin
       weight_bytes[i] = 8'd1;
     end

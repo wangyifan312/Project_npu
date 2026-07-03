@@ -1,4 +1,4 @@
-// task_checker: validate task parameters and addresses before NPU execution
+// 任务_checker: validate task parameters and addresses before NPU execution
 // One-cycle check: registers inputs on task_start, outputs result next cycle
 `timescale 1ns / 1ps
 
@@ -9,10 +9,10 @@ module task_checker #(
     input  wire        clk,
     input  wire        rst_n,
 
-    // Task trigger from npu_ctrl
+    // 任务 trigger from npu_ctrl
     input  wire        task_start,
 
-    // Task parameters (from npu_ctrl latched outputs)
+    // 任务 parameters (from npu_ctrl latched outputs)
     input  wire [2:0]  task_type,
     input  wire [31:0] input_addr,
     input  wire [31:0] weight_addr,
@@ -43,14 +43,14 @@ module task_checker #(
     input  wire [31:0] add_out_multiplier,
     input  wire [5:0]  add_out_shift,
 
-    // Check result
+    // 检查结果
     output wire        checks_pass,
     output wire [7:0]  error_code,
     output wire        check_done    // pulsed when check completes
 );
 
     // ============================================================
-    // Error codes
+    // 错误 codes
     // ============================================================
     localparam ERR_NONE              = 8'h00;
     localparam ERR_INVALID_TASK_TYPE = 8'h01;
@@ -166,7 +166,7 @@ module task_checker #(
     end
 
     // ============================================================
-    // Address helper: check if addr is in valid region
+    // 地址 helper: check if addr is in valid region
     // ============================================================
     function addr_in_bounds;
         input [31:0] addr;
@@ -175,7 +175,7 @@ module task_checker #(
         end
     endfunction
 
-    // Address helper: check if addr + bytes doesn't overflow region
+    // 地址 helper: check if addr + bytes doesn't overflow region
     function addr_range_ok;
         input [31:0] addr;
         input [31:0] bytes;
@@ -198,7 +198,7 @@ module task_checker #(
                          (task_type_r == TASK_VECTOR_RELU);
 
     // Alignment: require 64-byte alignment for AXI burst efficiency.
-    // Pool/Requant/ADD may leave weight_addr unused.
+    // 池化/Requant/ADD may leave weight_addr unused.
     wire addr_aligned_ok = (input_addr_r[5:0]  == 6'h00) &&
                            (output_addr_r[5:0] == 6'h00) &&
                            (weight_unused || (weight_addr_r[5:0] == 6'h00));
@@ -288,16 +288,16 @@ module task_checker #(
         (conv_out_h != 16'd0) &&
         (conv_out_w != 16'd0);
 
-    // Pool: input dimensions must be even (2x2/stride=2)
+    // 池化: input dimensions must be even (2x2/stride=2)
     wire pool_dim_ok = (input_h_r[0] == 1'b0) && (input_w_r[0] == 1'b0);
 
     // Conv dimension check (only for Conv task_type)
     wire conv_check = (task_type_r != TASK_CONV) || conv_dim_ok;
 
-    // Pool dimension check (only for Pool task_type)
+    // 池化 dimension check (only for Pool task_type)
     wire pool_check = (task_type_r != TASK_POOL) || pool_dim_ok;
 
-    // Input/output channel relationship for Conv/FC
+    // 输入/output channel relationship for Conv/FC
     // Conv: C_in >= 1, C_out >= 1
     // FC: C_in >= 1, C_out >= 1 (mapped to input_c/output_c or input_h/output_c)
     wire dim_relation_ok =
@@ -305,7 +305,7 @@ module task_checker #(
          (task_type_r == TASK_VECTOR_RELU)) ?
         1'b1 : ((input_c_r >= 16'd1) && (output_c_r >= 16'd1));
 
-    // Requant task:
+    // 重量化 task:
     // - input is INT32 words, so byte count must be 4 * output byte count
     // - no weight payload
     // - multiplier must be non-zero

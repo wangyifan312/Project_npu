@@ -13,7 +13,7 @@
 //   - output: [channels] INT8 values (per-channel averages, requantized)
 //   - weight is NOT used (weight_bytes = 0)
 //
-// Register-programming contract:
+// 寄存器-programming contract:
 //   GAP_CFG, REQUANT0_MULT, REQUANT0_SHIFT
 //   input_h=8, input_w=8, input_c=channels, output_c=channels
 //=============================================================================
@@ -80,7 +80,7 @@ class npu_gap_task_seq extends soc_base_seq;
 
     `uvm_info("GAP_TASK", "=== GAP Task: Preloading ===", UVM_NONE)
 
-    // Preload input INT32 tensor — GAP has no weight tensor
+    // 预加载 input INT32 tensor — GAP has no weight tensor
     preload_seq = shared_ram_preload_seq::type_id::create("preload_seq");
     preload_seq.base_addr = input_base;
     preload_seq.data = preload_bytes;

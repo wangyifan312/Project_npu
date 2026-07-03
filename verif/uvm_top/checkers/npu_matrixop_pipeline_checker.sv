@@ -2,7 +2,7 @@
 // npu_matrixop_pipeline_checker.sv — Phase U5-a: Lightweight Pipeline Checker
 //
 // Synthesis-off documented assertion plan for the MatrixOp fast path and
-// legacy fallback path.  This module is a compilation stub; the actual checks
+// 传统 fallback path.  This module is a compilation stub; the actual checks
 // are exercised by the four Phase U5-a stress tests (Tasks A–D).
 //
 // Check categories (documented — verified functionally by stress tests):
@@ -27,7 +27,7 @@
 //   CHK-10: INT32 accumulation within signed 32-bit range.
 //           Verified by: extreme value stress test (corner-case data patterns).
 //
-// Note: This module intentionally contains no active logic.  It serves as the
+// 注意：This module intentionally contains no active logic.  It serves as the
 // documented assertion plan.  The actual functional coverage is provided by:
 //   - npu_gemm_kchunk_stress_test.sv          (Task A)
 //   - npu_matrixop_partial_beat_stress_test.sv (Task B)

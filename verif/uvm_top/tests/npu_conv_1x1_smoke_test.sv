@@ -7,9 +7,9 @@
 //   - Single cluster mode
 //   - Numeric check: element-wise multiply against golden model
 //
-// Input:  {1,2,3, 4,5,6, 7,8,9} (3x3)
-// Weight: {2}                     (1x1, single value)
-// Output: {2,4,6, 8,10,12, 14,16,18} (9 INT32 values)
+// 输入:  {1,2,3, 4,5,6, 7,8,9} (3x3)
+// 权重: {2}                     (1x1, single value)
+// 输出: {2,4,6, 8,10,12, 14,16,18} (9 INT32 values)
 //=============================================================================
 
 `timescale 1ns / 1ps
@@ -32,7 +32,7 @@ class npu_conv_1x1_smoke_test extends soc_base_test;
     phase.raise_objection(this);
     #200;
 
-    // Build test data: 3x3 input = {1,2,3, 4,5,6, 7,8,9}
+    // 构建测试数据: 3x3 input = {1,2,3, 4,5,6, 7,8,9}
     input_bytes[0] = 8'd1;
     input_bytes[1] = 8'd2;
     input_bytes[2] = 8'd3;
@@ -59,7 +59,7 @@ class npu_conv_1x1_smoke_test extends soc_base_test;
       expected_bytes.size(),
       expected_bytes[0], expected_bytes[1], expected_bytes[2], expected_bytes[3]), UVM_NONE)
 
-    // Configure and run NPU task
+    // 配置 and run NPU task
     conv_seq = npu_conv_task_seq::type_id::create("conv_seq");
     conv_seq.input_data            = input_bytes;
     conv_seq.weight_data           = weight_bytes;
@@ -78,7 +78,7 @@ class npu_conv_1x1_smoke_test extends soc_base_test;
     `uvm_info("TEST", "=== npu_conv_1x1_smoke_test: Single-Cluster 1x1 Conv ===", UVM_NONE)
     conv_seq.start(env.axil_ag.seqr);
 
-    // Compare DUT output with golden model
+    // 与黄金参考比对 DUT 输出 model
     if (conv_seq.done && !conv_seq.error) begin
       env.scoreboard.compare_output_bytes(conv_seq.actual_output, expected_bytes,
                                           conv_seq.output_base);

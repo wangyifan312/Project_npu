@@ -7,12 +7,12 @@ class soc_scoreboard extends uvm_component;
   // Analysis imports
   uvm_analysis_imp #(axil_seq_item, soc_scoreboard) axil_imp;
 
-  // Error tracking
+  // 错误 tracking
   int unsigned axil_write_count = 0;
   int unsigned axil_read_count = 0;
   int unsigned axil_error_count = 0;
 
-  // Output compare tracking
+  // 输出 compare tracking
   int unsigned compared_bytes = 0;
   int unsigned mismatch_count = 0;
   int unsigned first_mismatch_offset = -1;

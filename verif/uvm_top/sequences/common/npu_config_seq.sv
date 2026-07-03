@@ -4,7 +4,7 @@ class npu_config_seq extends soc_base_seq;
 
   `uvm_object_utils(npu_config_seq)
 
-  // Task configuration — set before start()
+  // 任务 configuration — set before start()
   bit [2:0]  task_type;
   bit [31:0] input_addr;
   bit [31:0] weight_addr;
@@ -22,7 +22,7 @@ class npu_config_seq extends soc_base_seq;
   bit [1:0]  cluster_mode;
   bit [5:0]  cluster_mask;
 
-  // Requant
+  // 重量化
   bit [31:0] requant_slot_sel;
   bit [31:0] requant_multiplier;
   bit [31:0] requant_shift;
@@ -42,7 +42,7 @@ class npu_config_seq extends soc_base_seq;
   // GAP
   bit [31:0] gap_cfg;
 
-  // Bias
+  // 偏置
   bit [31:0] bias_addr;
   bit [31:0] bias_bytes;
 

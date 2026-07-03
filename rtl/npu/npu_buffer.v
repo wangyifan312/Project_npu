@@ -63,7 +63,7 @@ module npu_buffer #(
             state_a <= B_EMPTY;
             state_b <= B_EMPTY;
         end else if (flush) begin
-            // Error recovery: force both banks to EMPTY
+            // 错误 recovery: force both banks to EMPTY
             state_a <= B_EMPTY;
             state_b <= B_EMPTY;
         end else begin

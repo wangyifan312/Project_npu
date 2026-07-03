@@ -7,20 +7,20 @@ module mac_pe (
     input  wire        clk,
     input  wire        rst_n,
 
-    // Data flow: activation left→right, partial sum top→bottom
+    // 数据 flow: activation left→right, partial sum top→bottom
     input  wire [7:0]  act_in,
     output wire [7:0]  act_out,
     input  wire [31:0] sum_in,
     output wire [31:0] sum_out,
 
-    // Weight loading
+    // 权重 loading
     input  wire [7:0]  weight,
     input  wire        weight_ld
 );
 
-    // Registered activation (forwarded to right neighbor)
+    // 寄存器ed activation (forwarded to right neighbor)
     reg [7:0]  act_reg;
-    // Weight storage (stationary)
+    // 权重 storage (stationary)
     reg [7:0]  weight_reg;
 
     always @(posedge clk or negedge rst_n) begin

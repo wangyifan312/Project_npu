@@ -14,7 +14,7 @@ module cluster_scheduler #(
 );
 
     always @(*) begin
-        // Single cluster: enable if mask bit 0 is set
+        // 单 cluster: enable if mask bit 0 is set
         cluster_enable = {CLUSTER_COUNT{1'b0}};
         cluster_enable[0] = cluster_mask_req[0];
         cluster_count   = cluster_enable[0] ? 3'd1 : 3'd0;

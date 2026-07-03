@@ -5,7 +5,7 @@
 //   If hangs → multi-window hang confirmed, same mechanism as Test 1
 //   If passes → issue specific to certain kernel/output size combinations
 //
-// Configuration:
+// 配置uration:
 //   input:  5x5 spatial, Cin=1, all 0x01 (25 bytes)
 //   weight: 3x3 kernel, Cin=1, Cout=1, all 0x01 (9 bytes)
 //   conv_cfg = 32'd2 (3x3 kernel, stride1, valid)
@@ -42,12 +42,12 @@ class npu_conv_3x3_multiwindow_diag_test extends soc_base_test;
     #200;
 
     // --- Build test data ---
-    // Input: 5x5 spatial, Cin=1, all 0x01 (25 bytes)
+    // 输入: 5x5 spatial, Cin=1, all 0x01 (25 bytes)
     input_bytes = new[25];
     for (i = 0; i < 25; i++)
       input_bytes[i] = 8'h01;
 
-    // Weight: 3x3 kernel, Cin=1, Cout=1, all 0x01 (9 bytes)
+    // 权重: 3x3 kernel, Cin=1, Cout=1, all 0x01 (9 bytes)
     weight_bytes = new[9];
     for (i = 0; i < 9; i++)
       weight_bytes[i] = 8'h01;

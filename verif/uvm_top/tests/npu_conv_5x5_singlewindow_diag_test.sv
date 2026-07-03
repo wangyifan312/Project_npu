@@ -9,7 +9,7 @@
 //   single-window output is known to work (existing npu_conv_smoke_test).
 //   This test confirms it works in single-cluster mode as a control.
 //
-// Configuration:
+// 配置uration:
 //   input:  5x5 spatial, Cin=1, all 0x01 (25 bytes)
 //   weight: 5x5 kernel, Cin=1, Cout=1, all 0x01 (25 bytes)
 //   conv_cfg = 32'd0 (5x5 kernel, stride1, valid)
@@ -43,12 +43,12 @@ class npu_conv_5x5_singlewindow_diag_test extends soc_base_test;
     #200;
 
     // --- Build test data ---
-    // Input: 5x5 spatial, Cin=1, all 0x01 (25 bytes)
+    // 输入: 5x5 spatial, Cin=1, all 0x01 (25 bytes)
     input_bytes = new[25];
     for (i = 0; i < 25; i++)
       input_bytes[i] = 8'h01;
 
-    // Weight: 5x5 kernel, Cin=1, Cout=1, all 0x01 (25 bytes)
+    // 权重: 5x5 kernel, Cin=1, Cout=1, all 0x01 (25 bytes)
     weight_bytes = new[25];
     for (i = 0; i < 25; i++)
       weight_bytes[i] = 8'h01;

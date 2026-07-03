@@ -2,8 +2,8 @@
 // soc_top_env.sv — Top-Level UVM Environment
 //
 // Instantiates AXI-Lite agent (always), plus optional status monitor, DMA
-// monitor, performance checker, scoreboard, and memory model based on the
-// environment config feature toggles.
+// 监控器, performance checker, scoreboard, and memory model based on the
+// 环境 config feature toggles.
 //=============================================================================
 
 `timescale 1ns / 1ps

@@ -1,4 +1,4 @@
-// bias_add_requant_i32_to_i8: optional INT32 folded bias add before existing requant primitive.
+// 偏置_add_requant_i32_to_i8: optional INT32 folded bias add before existing requant primitive.
 // R1c keeps requant_i32_to_i8 arithmetic unchanged and makes the ordering explicit:
 //   accumulator INT32 -> optional + folded bias INT32 -> optional ReLU
 //   -> requant_i32_to_i8 -> INT8.

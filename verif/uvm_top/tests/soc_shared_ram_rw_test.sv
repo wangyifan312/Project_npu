@@ -2,8 +2,8 @@
 // soc_shared_ram_rw_test.sv — Shared-RAM AXI-Lite Write/Read Test
 //
 // Sanity test that exercises the AXI-Lite path through the SoC to shared RAM.
-// Writes known patterns to various addresses, reads them back, and checks
-// data integrity.  Also validates byte-strobe masking.
+// 写s known patterns to various addresses, reads them back, and checks
+// 数据 integrity.  Also validates byte-strobe masking.
 //=============================================================================
 
 `timescale 1ns / 1ps
@@ -72,22 +72,22 @@ class soc_shared_ram_rw_test extends soc_base_test;
     //-----------------------------------------------------------------------
     `uvm_info("TEST", "Testing byte strobes...", UVM_NONE)
 
-    // Write all zeros first, then build up bytes one at a time
+    // 写 all zeros first, then build up bytes one at a time
     seq.axil_write32(32'h0000_0100, 32'h00000000);
 
-    // Write byte 0 only (strb = 4'b0001)
+    // 写 byte 0 only (strb = 4'b0001)
     seq.axil_write32(32'h0000_0100, 32'h000000FF, 4'b0001);
     seq.axil_read32(32'h0000_0100, rd_data);
     if (rd_data !== 32'h000000FF)
       `uvm_error("TEST", $sformatf("Byte strobe 0x1 failed: got 0x%08h", rd_data))
 
-    // Write byte 1 only (strb = 4'b0010) — keep byte 0 intact
+    // 写 byte 1 only (strb = 4'b0010) — keep byte 0 intact
     seq.axil_write32(32'h0000_0100, 32'h0000FF00, 4'b0010);
     seq.axil_read32(32'h0000_0100, rd_data);
     if (rd_data !== 32'h0000FFFF)
       `uvm_error("TEST", $sformatf("Byte strobe 0x2 failed: got 0x%08h", rd_data))
 
-    // Write bytes 2-3 (strb = 4'b1100)
+    // 写 bytes 2-3 (strb = 4'b1100)
     seq.axil_write32(32'h0000_0100, 32'hFFFF0000, 4'b1100);
     seq.axil_read32(32'h0000_0100, rd_data);
     if (rd_data !== 32'hFFFFFFFF)

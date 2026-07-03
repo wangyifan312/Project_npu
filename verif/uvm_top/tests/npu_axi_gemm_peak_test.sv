@@ -86,7 +86,7 @@ class npu_axi_gemm_peak_test extends soc_base_test;
         fc_seq.start(env.axil_ag.seqr);
 
         if (fc_seq.done && !fc_seq.error) begin
-          // Verify output
+          // 验证输出
           if (fc_seq.actual_output.size() != N_v * 4) begin
             `uvm_error("TEST", $sformatf("L%d row %0d: output size %0d != expected %0d",
               lvl, row, fc_seq.actual_output.size(), N_v*4))
@@ -111,7 +111,7 @@ class npu_axi_gemm_peak_test extends soc_base_test;
         if (row_fail) break;
       end
 
-      // Read performance counters (via a helper base sequence)
+      // 读 performance counters (via a helper base sequence)
       begin
         soc_base_seq rd_seq;
         rd_seq = soc_base_seq::type_id::create("rd_seq");

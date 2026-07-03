@@ -1,4 +1,4 @@
-// shared_ram: unified 1MB memory with CPU AXI-Lite + NPU 256-bit AXI4 DMA ports
+// 共享 RAM: unified 1MB memory with CPU AXI-Lite + NPU 256-bit AXI4 DMA ports
 // CPU and NPU access the same physical 32768 x 256-bit beat array.
 `timescale 1ns / 1ps
 
@@ -68,7 +68,7 @@ module shared_ram #(
     localparam [1:0] AXI_BURST_INCR = 2'b01;
     localparam integer MEM_BYTES = RAM_DEPTH * NPU_BEAT_BYTES;
 
-    // Address split: beat_addr=addr[19:5], word_in_beat=addr[4:2]
+    // 地址 split: beat_addr=addr[19:5], word_in_beat=addr[4:2]
     reg [NPU_AXI_DATA_W-1:0] ram [0:RAM_DEPTH-1];
 
     function [ADDR_BITS-1:0] beat_index;

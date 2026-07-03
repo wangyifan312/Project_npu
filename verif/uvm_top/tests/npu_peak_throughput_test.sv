@@ -38,9 +38,9 @@ class npu_peak_throughput_test extends soc_base_test;
     #200;
 
     // ── Build test data ───────────────────────────────────────────
-    // Input:  64 INT8 values = 1, 2, 3, ..., 64
-    // Weight: 64×64 INT8, weight[out][in] = (out+1)  (same for all inputs)
-    // Output: out[o] = sum(inputs) * (o+1) = 2080 * (o+1)
+    // 输入:  64 INT8 values = 1, 2, 3, ..., 64
+    // 权重: 64×64 INT8, weight[out][in] = (out+1)  (same for all inputs)
+    // 输出: out[o] = sum(inputs) * (o+1) = 2080 * (o+1)
     //         sum(1..64) = 64*65/2 = 2080
 
     for (i = 0; i < 64; i++)

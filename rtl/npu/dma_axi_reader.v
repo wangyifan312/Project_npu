@@ -1,6 +1,6 @@
 // dma_axi_reader：AXI4 读主设备，用于连续块 DMA
 // Splits large transfers into bursts (max 16 beats per burst)
-// Outputs data stream to buffer with backpressure (data_ready)
+// 输出s data stream to buffer with backpressure (data_ready)
 `timescale 1ns / 1ps
 
 module dma_axi_reader #(
@@ -50,7 +50,7 @@ module dma_axi_reader #(
                                  (AXI_DATA_WIDTH == 256) ? 5 : 5;
 
     // ============================================================
-    // Error codes
+    // 错误 codes
     // ============================================================
     localparam ERR_NONE    = 8'h00;
     localparam ERR_RRESP   = 8'h20;  // AXI read response error
@@ -78,7 +78,7 @@ module dma_axi_reader #(
     reg  [7:0]  burst_len;        // ARLEN for current burst (= beats - 1)
     reg         ar_done;          // AR handshake complete
 
-    // Output data stage (registered, handles backpressure)
+    // 输出 data stage (registered, handles backpressure)
     reg         data_valid_r;
     reg  [AXI_DATA_WIDTH-1:0] data_out_r;
 
@@ -165,7 +165,7 @@ module dma_axi_reader #(
                 end
 
                 S_AR: begin
-                    // Clear any stale data_valid from previous burst boundary
+                    // 清除 any stale data_valid from previous burst boundary
                     if (data_valid_r && data_ready)
                         data_valid_r <= 1'b0;
                     if (ar_hs) begin
@@ -232,7 +232,7 @@ module dma_axi_reader #(
     end
 
     // ============================================================
-    // Error detection (latched on entering S_ERROR)
+    // 错误 detection (latched on entering S_ERROR)
     // ============================================================
     reg         error_r;
     reg  [7:0]  error_code_r;
@@ -257,9 +257,9 @@ module dma_axi_reader #(
     end
 
     // ============================================================
-    // Outputs
+    // 输出s
     // ============================================================
-    // Registered done strobe (only in S_DONE, never in S_ERROR)
+    // 寄存器ed done strobe (only in S_DONE, never in S_ERROR)
     reg done_r;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n)

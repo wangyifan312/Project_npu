@@ -4,7 +4,7 @@
 // Verifies INT32 -> INT8 Requantization clamping behavior at boundary values.
 // multiplier=1, shift=0 (identity requant with clamp to [-128, 127]).
 //
-// Input (13 INT32 values):
+// 输入 (13 INT32 values):
 //   INT32_MAX  ( 2147483647)            -> 127  (clamped)
 //   INT32_MIN  (-2147483648)            -> -128 (clamped)
 //   -129                               -> -128 (clamped)
@@ -43,7 +43,7 @@ class npu_requant_extreme_test extends soc_base_test;
     phase.raise_objection(this);
     #200;
 
-    // Build test data: 13 INT32 values covering boundary conditions
+    // 构建测试数据: 13 INT32 values covering boundary conditions
     // INT32_MAX / INT32_MIN use hex to avoid SV signed-literal overflow
     input_ints[0]  = 32'h7FFFFFFF;   //  2147483647 (INT32_MAX)
     input_ints[1]  = 32'h80000000;   // -2147483648 (INT32_MIN)
@@ -120,7 +120,7 @@ class npu_requant_extreme_test extends soc_base_test;
       `uvm_error("TEST", $sformatf("Golden model known-answer check FAILED: %0d mismatches", mismatches))
     end
 
-    // Configure and run NPU requant task (mult=1, shift=0)
+    // 配置 and run NPU requant task (mult=1, shift=0)
     rq_seq = npu_requant_task_seq::type_id::create("rq_seq");
     rq_seq.input_ints            = input_ints;
     rq_seq.element_count         = 13;
@@ -133,7 +133,7 @@ class npu_requant_extreme_test extends soc_base_test;
     `uvm_info("TEST", "=== npu_requant_extreme_test: INT32 -> INT8 boundary clamping ===", UVM_NONE)
     rq_seq.start(env.axil_ag.seqr);
 
-    // Compare DUT output with golden model
+    // 与黄金参考比对 DUT 输出 model
     if (rq_seq.done && !rq_seq.error) begin
       env.scoreboard.compare_output_bytes(rq_seq.actual_output, expected_bytes,
                                           rq_seq.output_base);

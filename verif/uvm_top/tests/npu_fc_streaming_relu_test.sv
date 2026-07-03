@@ -20,7 +20,7 @@ class npu_fc_streaming_relu_test extends soc_base_test;
     m_seq = soc_base_seq::type_id::create("m_seq");
     m_seq.start(env.axil_ag.seqr);
 
-    // Preload A: alternating +5/-3 to create mixed-sign outputs
+    // 预加载 A: alternating +5/-3 to create mixed-sign outputs
     for (i=0; i<M_v; i++) begin
       for (k=0; k<K_v; k=k+4) begin
         word = 32'h00000000;
@@ -36,15 +36,15 @@ class npu_fc_streaming_relu_test extends soc_base_test;
       end
     end
 
-    // Preload B: all +2 → magnify values, K-major
+    // 预加载 B: all +2 → magnify values, K-major
     for (i=0; i<K_v*N_v; i=i+4)
       m_seq.axil_write32(32'h0001_0000 + i, 32'h02020202);
 
-    // Clear output
+    // 清除 output
     for (i=0; i<M_v*N_v*4; i=i+4)
       m_seq.axil_write32(32'h0002_0000 + i, 32'hDEADBEEF);
 
-    // Configure: FC, streaming, ReLU enabled
+    // 配置: FC, streaming, ReLU enabled
     m_seq.axil_write32(`NPU_REG_TASK_TYPE,    32'd1);
     m_seq.axil_write32(`NPU_REG_CONV_CFG,     32'h20);   // streaming=1
     m_seq.axil_write32(`NPU_REG_POSTPROC,     32'd1);    // relu_en=1

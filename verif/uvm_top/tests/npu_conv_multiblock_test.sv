@@ -48,7 +48,7 @@ class npu_conv_multiblock_test extends soc_base_test;
     `uvm_info("TEST", $sformatf("=== Multi-Block Conv: %0d×%0d×%0d → %0dch k=%0d ===",
       input_h, input_w, input_c, output_c, kernel), UVM_NONE)
 
-    // Build test data
+    // 构建测试数据
     input_bytes  = new[input_h * input_w * input_c];
     weight_bytes = new[kernel * kernel * input_c * output_c];
 
@@ -58,7 +58,7 @@ class npu_conv_multiblock_test extends soc_base_test;
     for (i = 0; i < kernel * kernel * input_c * output_c; i++)
       weight_bytes[i] = 8'((i % 16) + 1);
 
-    // Golden reference
+    // 黄金参考 reference
     env.golden.compute_conv(input_bytes, weight_bytes,
       input_h, input_w, input_c, output_c, kernel, kernel, 1, 0);
 
@@ -120,7 +120,7 @@ class npu_conv_multiblock_test extends soc_base_test;
     // Math MAC count: derived from task configuration parameters
     //   Conv: output_h × output_w × output_c × kernel_h × kernel_w × input_c
     // ==================================================================
-    // Valid padding: out_dim = (in_dim - kernel) / stride + 1
+    // 有效 padding: out_dim = (in_dim - kernel) / stride + 1
     output_h = (input_h - kernel) / 1 + 1;  // stride=1
     output_w = (input_w - kernel) / 1 + 1;
     math_mac_count = 64'(output_h) * output_w * output_c * kernel * kernel * input_c;
@@ -137,7 +137,7 @@ class npu_conv_multiblock_test extends soc_base_test;
     tops_arr_active  = (cycle_lo > 0) ? ($itor(arr_active) / $itor(cycle_lo) * peak_tops) : 0.0;
     array_util = (cycle_lo > 0) ? ($itor(arr_active) * 100.0 / $itor(cycle_lo)) : 0.0;
 
-    // Task-level bandwidth
+    // 任务-level bandwidth
     read_bw  = (cycle_lo > 0) ? ($itor(r_valid_bytes) * 100.0 / ($itor(cycle_lo) * 32.0)) : 0.0;
     write_bw = (cycle_lo > 0) ? ($itor(w_valid_bytes) * 100.0 / ($itor(cycle_lo) * 32.0)) : 0.0;
     total_bw = read_bw + write_bw;

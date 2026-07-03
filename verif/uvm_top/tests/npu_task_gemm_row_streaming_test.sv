@@ -1,6 +1,6 @@
 //=============================================================================
 // npu_task_gemm_row_streaming_test.sv — Row-streaming GEMM coverage
-// Phase 2b-2: RS0-RS3 baseline + RS4-RS8 enhanced coverage
+// 阶段 2b-2: RS0-RS3 baseline + RS4-RS8 enhanced coverage
 //=============================================================================
 `timescale 1ns / 1ps
 
@@ -564,7 +564,7 @@ class npu_task_gemm_row_streaming_test extends soc_base_test;
     //=================================================================
     // RS9: K>64 cross-chunk accumulation, M=8,K=128,N=8, all-1
     // 2 K-chunks: chunk0 k_base=0 K_tile=64, chunk1 k_base=64 K_tile=64
-    // expected C[m][n] = 128
+    // 期望值 C[m][n] = 128
     //=================================================================
     begin
       int M_v, K_v, N_v, beats_per_row;
@@ -1147,7 +1147,7 @@ class npu_task_gemm_row_streaming_test extends soc_base_test;
     // RS14: non-uniform A across K chunks
     // M=2 K=128 N=4  B=all-1
     // A: k=0..63=1  k=64..127=2
-    // expected C = 64*1 + 64*2 = 192
+    // 期望值 C = 64*1 + 64*2 = 192
     // If A_tile stale: C = 64*1 + 64*1 = 128 (wrong)
     //=================================================================
     begin
@@ -1233,7 +1233,7 @@ class npu_task_gemm_row_streaming_test extends soc_base_test;
     // RS15: K=65 boundary A reload
     // M=2 K=65 N=4  B=all-1
     // A: k=0..63=1  k=64=7
-    // expected C = 64*1 + 7 = 71
+    // 期望值 C = 64*1 + 7 = 71
     // Verifies last K_tile=1 correctly reloads A.
     //=================================================================
     begin
@@ -1319,7 +1319,7 @@ class npu_task_gemm_row_streaming_test extends soc_base_test;
     // RS16: signed non-uniform A across K chunks
     // M=2 K=128 N=4  B=all-1
     // A: k=0..63=1  k=64..127=-1
-    // expected C = 64*1 + 64*(-1) = 0
+    // 期望值 C = 64*1 + 64*(-1) = 0
     // Verifies signed non-uniform A reload.
     //=================================================================
     begin
@@ -1404,7 +1404,7 @@ class npu_task_gemm_row_streaming_test extends soc_base_test;
     // RS17: non-uniform B across K chunks
     // M=2 K=128 N=4  A=all-1
     // B: k=0..63=1  k=64..127=2
-    // expected C = 64*1*1 + 64*2*1 = 64 + 128 = 192
+    // 期望值 C = 64*1*1 + 64*2*1 = 64 + 128 = 192
     // If weight k_base wrong: C = 64*1 + 64*1 = 128
     //=================================================================
     begin
@@ -1485,7 +1485,7 @@ class npu_task_gemm_row_streaming_test extends soc_base_test;
     // RS18: signed canceling B across K chunks
     // M=2 K=128 N=4  A=all-1
     // B: k=0..63=1  k=64..127=-1
-    // expected C = 64*1*1 + 64*(-1)*1 = 0
+    // 期望值 C = 64*1*1 + 64*(-1)*1 = 0
     // If weight k_base wrong: C = 128
     //=================================================================
     begin
@@ -1565,7 +1565,7 @@ class npu_task_gemm_row_streaming_test extends soc_base_test;
     // RS19: K=65 B boundary
     // M=2 K=65 N=4  A=all-1
     // B: k=0..63=1  k=64=7
-    // expected C = 64*1 + 7 = 71
+    // 期望值 C = 64*1 + 7 = 71
     //=================================================================
     begin
       int M_v, K_v, N_v;
@@ -1642,7 +1642,7 @@ class npu_task_gemm_row_streaming_test extends soc_base_test;
     end
 
     //=================================================================
-    // Phase 5-1: M-tiling tests
+    // 阶段 5-1: M-tiling tests
     //=================================================================
 
     // MT0: M tiling basic (M=16, K=64, N=8, A=1, B=1)
@@ -2006,7 +2006,7 @@ class npu_task_gemm_row_streaming_test extends soc_base_test;
     end
 
     //=================================================================
-    // Phase 5-2: N-tiling tests
+    // 阶段 5-2: N-tiling tests
     //=================================================================
 
     // NT0: N tiling basic (M=8, K=64, N=128, all-1)

@@ -53,7 +53,7 @@ class npu_gemm_ntile_nonuniform_diag_test extends soc_base_test;
       end
     end
 
-    // Write to RAM
+    // 写 to RAM
     for (i = 0; i < M_v * K_v; i = i + 4) begin
       word = 32'h0;
       for (int j = 0; j < 4; j++) if (i+j < M_v*K_v) word[j*8 +: 8] = a_vals[i+j];
@@ -97,7 +97,7 @@ class npu_gemm_ntile_nonuniform_diag_test extends soc_base_test;
       return;
     end
 
-    // Output mismatch fingerprint
+    // 输出 mismatch fingerprint
     errs = 0;
     `uvm_info("NTLDIAG", $sformatf("D0 CHECKERBOARD M=%0d K=%0d N=%0d:", M_v, K_v, N_v), UVM_NONE)
     for (r = 0; r < M_v; r++) begin

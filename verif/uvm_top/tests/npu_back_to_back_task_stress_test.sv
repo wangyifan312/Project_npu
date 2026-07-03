@@ -13,7 +13,7 @@
 //   BB_07: GEMM small → FC+ReLU (cross-mode with post-op)
 //   BB_08: FC+ReLU    → GEMM large (cross-mode with post-op, K-chunk)
 //
-// Legacy-path transitions (BB_05_legacy, BB_06_legacy, BB_07_legacy, BB_08_legacy)
+// 传统-path transitions (BB_05_legacy, BB_06_legacy, BB_07_legacy, BB_08_legacy)
 // are deferred pending investigation of legacy FC/Conv configuration requirements.
 //
 // Key checks:

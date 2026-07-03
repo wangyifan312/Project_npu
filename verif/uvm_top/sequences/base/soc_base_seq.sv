@@ -2,7 +2,7 @@
 // soc_base_seq.sv — 带 AXI-Lite 便捷任务的基础序列
 //
 // 提供阻塞式 axil_write32 / axil_read32 辅助函数 that all derived
-// sequences and test run_phase code can use for register-programming and
+// 序列s and test run_phase code can use for register-programming and
 // shared-RAM access.
 //=============================================================================
 

@@ -1,7 +1,7 @@
 //=============================================================================
 // npu_fc_full_array_activation_test.sv — Full 64×64 PE Array Activation Test
 //
-// Phase U7-a: renamed from npu_fc_full_cluster_96out_test.
+// 阶段 U7-a: renamed from npu_fc_full_cluster_96out_test.
 // CLUSTER_COUNT=1 final baseline — single 64×64 PE cluster.
 //
 // 目的： Prove the full 64×64 PE array (16×16 tiles, 4096 PEs) is activated
@@ -39,13 +39,13 @@ class npu_fc_full_array_activation_test extends soc_base_test;
     #200;
 
     // --- Build test data: 16→96 FC ---
-    // Input: 16 INT8 values {1, 2, 3, ..., 16}
+    // 输入: 16 INT8 values {1, 2, 3, ..., 16}
     input_bytes = new[16];
     for (i = 0; i < 16; i++)
       input_bytes[i] = 8'(i + 1);
 
-    // Weight: 96×16 INT8, deterministic pattern
-    // weight[out_idx * 16 + in_idx] = (out_idx + 1) for all in_idx
+    // 权重: 96×16 INT8, deterministic pattern
+    // 权重[out_idx * 16 + in_idx] = (out_idx + 1) for all in_idx
     // So output[out_idx] = sum(inputs) * (out_idx+1) = 136 * (out_idx+1)
     weight_bytes = new[96 * 16];
     for (i = 0; i < 96; i++) begin
@@ -83,7 +83,7 @@ class npu_fc_full_array_activation_test extends soc_base_test;
 
     `uvm_info("TEST", "=== npu_fc_full_cluster_96out_test: Full Cluster 16→96 FC ===", UVM_NONE)
 
-    // Clear sticky probes before task start
+    // 清除 sticky probes before task start
     clear_probe_sticky();
     fc_seq.start(env.axil_ag.seqr);
 

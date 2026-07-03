@@ -7,8 +7,8 @@
 // fc_streaming_en = is_fc_mode && conv_cfg[5] && !bias_enabled
 // When bias is enabled, fc_streaming_en=0 → legacy path
 //
-// Phase U5-d3: Fixed output verification for PACKED INT8 mode.
-// Legacy FC+bias requant packs 4 INT8 outputs per 32-bit word
+// 阶段 U5-d3: Fixed output verification for PACKED INT8 mode.
+// 传统 FC+bias requant packs 4 INT8 outputs per 32-bit word
 // (rq_word_store_mode=0, dense packing). The test reads the
 // packed word and extracts individual byte values.
 //=============================================================================
@@ -37,23 +37,23 @@ class npu_fc_streaming_fallback_test extends soc_base_test;
     `uvm_info("TEST",$sformatf("-- FALLBACK: M=1 K=%0d N=%0d with bias & conv_cfg[5]=1 --",
       K_v,N_v),UVM_NONE)
 
-    // Preload A[1][K] all-1
+    // 预加载 A[1][K] all-1
     for (i=0; i<K_v; i=i+4)
       m_seq.axil_write32(32'h0000_0100+i, 32'h01010101);
 
-    // Preload W[K][N] — legacy N-major: W[n][k] layout
+    // 预加载 W[K][N] — legacy N-major: W[n][k] layout
     for (i=0; i<K_v*N_v; i=i+4)
       m_seq.axil_write32(32'h0001_0000+i, 32'h01010101);
 
-    // Preload bias: N INT32 = 0
+    // 预加载 bias: N INT32 = 0
     for (i=0; i<N_v*4; i=i+4)
       m_seq.axil_write32(32'h0000_0400+i, 32'd0);
 
-    // Clear output — N INT8 packed bytes (N bytes, not N*4)
+    // 清除 output — N INT8 packed bytes (N bytes, not N*4)
     for (i=0; i<N_v*4; i=i+4)
       m_seq.axil_write32(32'h0002_0000+i, 32'hDEADBEEF);
 
-    // Configure: FC, streaming, WITH bias
+    // 配置: FC, streaming, WITH bias
     m_seq.axil_write32(`NPU_REG_TASK_TYPE,    32'd1);          // FC mode
     m_seq.axil_write32(`NPU_REG_CONV_CFG,     32'h30);        // bit[4]=1 bias, bit[5]=1 streaming
     m_seq.axil_write32(`NPU_REG_INPUT_ADDR,   32'h0000_0100);
@@ -67,14 +67,14 @@ class npu_fc_streaming_fallback_test extends soc_base_test;
     m_seq.axil_write32(`NPU_REG_POSTPROC,     32'd0);
     m_seq.axil_write32(`NPU_REG_CLUSTER_MODE, 32'd0);
     m_seq.axil_write32(`NPU_REG_CLUSTER_MASK, 32'd1);
-    // Bias configuration
+    // 偏置 configuration
     m_seq.axil_write32(`NPU_REG_BIAS_ADDR,   32'h0000_0400);
     m_seq.axil_write32(`NPU_REG_BIAS_BYTES,  N_v*4);
-    // Requant pass-through: mult=1, shift=0 preserves INT32 value in INT8 range
+    // 重量化 pass-through: mult=1, shift=0 preserves INT32 value in INT8 range
     m_seq.axil_write32(`NPU_REG_REQUANT0_MULT,  32'd1);
     m_seq.axil_write32(`NPU_REG_REQUANT0_SHIFT, 32'd0);
 
-    // Start and poll
+    // 启动并轮询
     m_seq.axil_write32(`NPU_REG_CTRL, 32'd1);
     repeat(500000) begin
       m_seq.axil_read32(`NPU_REG_CTRL, ctrl_val);
@@ -84,7 +84,7 @@ class npu_fc_streaming_fallback_test extends soc_base_test;
 
     m_seq.axil_read32(`NPU_REG_PERF_CYCLE_LO, cycle_lo);
 
-    // Legacy FC with bias: requant output is PACKED INT8
+    // 传统 FC with bias: requant output is PACKED INT8
     // 4 INT8 outputs packed into 1 32-bit word (rq_word_store_mode=0)
     // C[n] = requant(bias + sum_k A[k]*W[n][k])
     // = requant(0 + sum_k 1*1) = requant(K) = clamp(K, -128, 127) = 4

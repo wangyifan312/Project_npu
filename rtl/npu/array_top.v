@@ -44,7 +44,7 @@ module array_top #(
     // 每 tile 的门控时钟
     // 阶段 U6-a：低相位锁存器用于安全时钟门控.
     // RTL 仿真：模拟标准 ICG 行为
-    // enable 在 clk 高电平期间稳定。ASIC：替换为工艺库 ICG 单元。
+    // 使能 在 clk 高电平期间稳定。ASIC：替换为工艺库 ICG 单元。
     // FPGA：替换为 BUFGCE 或时钟使能原语。
     wire [N_TILES-1:0] gated_clk;
     reg  [N_TILES-1:0] tile_clk_en_latched;

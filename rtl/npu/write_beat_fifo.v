@@ -1,4 +1,4 @@
-// write_beat_fifo.v — 256-bit Write Beat FIFO
+// 写_beat_fifo.v — 256-bit Write Beat FIFO
 // Combinational read: rd_data always shows front of queue when not empty.
 // Used between store_packer (producer) and dma_axi_writer (consumer).
 `timescale 1ns / 1ps

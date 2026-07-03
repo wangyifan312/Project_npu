@@ -7,7 +7,7 @@
 //   3. Start and poll
 //   4. Read output (INT32 vector)
 //
-// Weight layout: row-major [output_c * input_c] INT8
+// 权重 layout: row-major [output_c * input_c] INT8
 //   weight[0..input_c-1]       = row 0 (output neuron 0)
 //   weight[input_c..2*input_c-1] = row 1 (output neuron 1)
 //   ...
@@ -58,13 +58,13 @@ class npu_fc_task_seq extends soc_base_seq;
 
     `uvm_info("FC_TASK", "=== FC Task: Preloading ===", UVM_NONE)
 
-    // Preload input vector
+    // 预加载 input vector
     preload_seq = shared_ram_preload_seq::type_id::create("preload_seq");
     preload_seq.base_addr = input_base;
     preload_seq.data      = input_data;
     preload_seq.start(m_sequencer);
 
-    // Preload weight matrix
+    // 预加载 weight matrix
     preload_seq = shared_ram_preload_seq::type_id::create("preload_seq");
     preload_seq.base_addr = weight_base;
     preload_seq.data      = weight_data;
