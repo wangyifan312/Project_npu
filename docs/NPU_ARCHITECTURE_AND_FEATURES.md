@@ -7,7 +7,7 @@
 | 最终交付 tag | `npu-final-delivery-v1.5-clean` |
 | main HEAD | `d5d2828` |
 | 架构基线 | single-cluster 64×64 PE NPU (CLUSTER_COUNT=1) |
-| active registered tests | **61** |
+| active registered tests | **62** |
 | archived tests | **6** |
 | orphan tests | **0** |
 | UVM_ERROR | **0** |

@@ -4,7 +4,7 @@
 
 | 项目 | 数量 |
 |------|------|
-| active registered tests | **61** |
+| active registered tests | **62** |
 | archived tests | **6** |
 | orphan tests | **0** |
 | UVM_ERROR | **0** |
@@ -30,8 +30,8 @@
 | **CPU-running smoke (U8-b)** | **3** | PicoRV32 boot/polling/IRQ smoke |
 | **DMA read partial mask (U9-a1)** | **2** | DMA read-side data_strb partial beat zero-padding |
 | **DMA buffer capacity guard (U9-a2)** | **1** | task_checker rejects input/weight exceeding buffer bank capacity |
-| **AXI4 4KB boundary split (U9-a3)** | **3** | DMA reader/writer auto-split bursts at 4KB boundaries |
-| **Total active** | **61** | — |
+| **AXI4 4KB boundary split (U9-a3)** | **4** | DMA reader/writer auto-split bursts at 4KB boundaries (incl. forced writer split) |
+| **Total active** | **62** | — |
 
 ## 3. Smoke / Basic Tests
 
@@ -209,6 +209,7 @@
 | `npu_dma_read_4kb_boundary_split_test` | Reader AR burst 4KB split | input_addr=0x0F80, 256B read → 2 AR bursts (ARLEN=3 each); output correct | PASS |
 | `npu_dma_write_4kb_boundary_split_test` | Writer AW burst 4KB split | output_addr=0x2F80, 256B write → 2 AW bursts (AWLEN=3 each); output correct | PASS |
 | `npu_dma_4kb_boundary_mixed_test` | Mixed read+write 4KB split | All 3 channels near 4KB boundaries simultaneously; output correct | PASS |
+| `npu_dma_writer_forced_4kb_split_test` | Writer forced 4KB split (VecReLU) | Proves calc_burst_beats_4kb truncates burst at 4KB: AW0=4 beats at 0x2F80→0x2FFF, AW1=4 beats at 0x3000→0x307F | PASS |
 
 **U9-a3 说明：**
 - DMA reader/writer 均实现 4KB boundary auto-split（不返回 error）
@@ -241,8 +242,8 @@
 | CPU-running smoke | 3 | `+TB_AXIL_ENABLE=0`（由 run_uvm.sh 透传至 simv） |
 | DMA read partial mask (U9-a1) | 2 | 默认 BFM mode |
 | DMA buffer capacity guard (U9-a2) | 1 | 默认 BFM mode |
-| AXI4 4KB boundary split (U9-a3) | 3 | 默认 BFM mode |
-| Full active regression | 61 | 全部 |
+| AXI4 4KB boundary split (U9-a3) | 4 | 默认 BFM mode |
+| Full active regression | 62 | 全部 |
 
 **CPU-running test 运行注意：**
 - `soc_cpu_npu_irq_smoke_test` 必须使用 `+TB_AXIL_ENABLE=0`
