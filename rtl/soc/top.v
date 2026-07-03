@@ -90,7 +90,8 @@ module top #(
         .ENABLE_MUL    (1),
         .ENABLE_FAST_MUL(1),
         .ENABLE_DIV    (1),
-        .COMPRESSED_ISA(1)
+        .COMPRESSED_ISA(1),
+        .ENABLE_IRQ    (1)          // Phase U8-b: enable IRQ support
     ) u_cpu (
         .clk            (clk),
         .resetn         (rst_n && !tb_axil_enable),
