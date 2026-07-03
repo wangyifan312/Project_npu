@@ -77,18 +77,48 @@ module dma_axi_writer #(
     reg [2:0] state, next_state;
 
     // ============================================================
-    // Burst calculation
+    // Burst calculation with AXI4 4KB boundary split (U9-a3)
+    // burst_beats = min(ceil(bytes/BEAT_BYTES), MAX_BURST_LEN, beats_to_4KB)
     // ============================================================
+    function [7:0] calc_burst_beats_4kb;
+        input [31:0] bytes;
+        input [AXI_ADDR_WIDTH-1:0] addr;
+        reg [31:0] beats_by_bytes;
+        reg [31:0] bytes_to_4kb;
+        reg [31:0] beats_to_4kb;
+        reg [31:0] selected;
+        begin
+            if (bytes == 32'd0) begin
+                calc_burst_beats_4kb = 8'd0;
+            end else begin
+                // ceil(bytes / BEAT_BYTES)
+                beats_by_bytes = (bytes + BEAT_BYTES - 1) >> BEAT_BYTES_LOG2;
+
+                // AXI4: one burst must not cross a 4KB (4096-byte) boundary
+                bytes_to_4kb = 32'd4096 - {20'd0, addr[11:0]};
+                beats_to_4kb = bytes_to_4kb >> BEAT_BYTES_LOG2;
+
+                if (beats_to_4kb == 32'd0)
+                    beats_to_4kb = 32'd1;
+
+                selected = beats_by_bytes;
+
+                if (selected > MAX_BURST_LEN)
+                    selected = MAX_BURST_LEN[31:0];
+
+                if (selected > beats_to_4kb)
+                    selected = beats_to_4kb;
+
+                calc_burst_beats_4kb = selected[7:0];
+            end
+        end
+    endfunction
+
+    // Legacy wrapper for backward compatibility
     function [7:0] calc_burst_beats;
         input [31:0] bytes;
-        reg [31:0] raw_beats;
         begin
-            if (bytes >= (MAX_BURST_LEN * BEAT_BYTES))
-                calc_burst_beats = MAX_BURST_LEN[7:0];
-            else begin
-                raw_beats = (bytes + BEAT_BYTES - 1) / BEAT_BYTES;
-                calc_burst_beats = raw_beats[7:0];
-            end
+            calc_burst_beats = calc_burst_beats_4kb(bytes, 32'h0);
         end
     endfunction
 
@@ -236,8 +266,8 @@ module dma_axi_writer #(
                             aw_done         <= 1'b0;
                             w_done          <= 1'b0;
                             beat_counter    <= 8'h0;
-                            beats_in_burst  <= calc_burst_beats(byte_count);
-                            burst_len       <= calc_burst_beats(byte_count) - 8'h1;
+                            beats_in_burst  <= calc_burst_beats_4kb(byte_count, base_addr);
+                            burst_len       <= calc_burst_beats_4kb(byte_count, base_addr) - 8'h1;
                             state <= S_WAIT_DATA;
                         end
                     end
@@ -359,8 +389,8 @@ module dma_axi_writer #(
                         end else begin
                             // Next burst: bytes_remaining already holds remaining count
                             beat_counter    <= 8'h0;
-                            beats_in_burst  <= calc_burst_beats(bytes_remaining);
-                            burst_len       <= calc_burst_beats(bytes_remaining) - 8'h1;
+                            beats_in_burst  <= calc_burst_beats_4kb(bytes_remaining, current_addr);
+                            burst_len       <= calc_burst_beats_4kb(bytes_remaining, current_addr) - 8'h1;
                             aw_done         <= 1'b0;
                             w_done          <= 1'b0;
                             state <= S_WAIT_DATA;

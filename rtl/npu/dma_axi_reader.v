@@ -106,20 +106,51 @@ module dma_axi_reader #(
     endfunction
 
     // ============================================================
-    // Next burst calculation: compute from explicit byte count input
-    // Rounds up to whole beats (partial last beat is padded)
+    // Next burst calculation with AXI4 4KB boundary split (U9-a3)
+    // burst_beats = min(ceil(bytes/BEAT_BYTES), MAX_BURST_LEN, beats_to_4KB)
+    // Rounds up to whole beats (partial last beat is padded).
     // ============================================================
+    function [7:0] calc_burst_beats_4kb;
+        input [31:0] bytes;
+        input [AXI_ADDR_WIDTH-1:0] addr;
+        reg [31:0] beats_by_bytes;
+        reg [31:0] bytes_to_4kb;
+        reg [31:0] beats_to_4kb;
+        reg [31:0] selected;
+        begin
+            if (bytes == 32'd0) begin
+                calc_burst_beats_4kb = 8'd0;
+            end else begin
+                // ceil(bytes / BEAT_BYTES)
+                beats_by_bytes = (bytes + BEAT_BYTES - 1) >> BEAT_BYTES_LOG2;
+
+                // AXI4: one burst must not cross a 4KB (4096-byte) boundary
+                bytes_to_4kb = 32'd4096 - {20'd0, addr[11:0]};
+                beats_to_4kb = bytes_to_4kb >> BEAT_BYTES_LOG2;
+
+                // Safety: with 32B-aligned addr this is >= 1; guard against 0
+                if (beats_to_4kb == 32'd0)
+                    beats_to_4kb = 32'd1;
+
+                selected = beats_by_bytes;
+
+                if (selected > MAX_BURST_LEN)
+                    selected = MAX_BURST_LEN[31:0];
+
+                if (selected > beats_to_4kb)
+                    selected = beats_to_4kb;
+
+                calc_burst_beats_4kb = selected[7:0];
+            end
+        end
+    endfunction
+
+    // Legacy wrapper kept for internal readability where addr is implicit.
+    // All new code uses calc_burst_beats_4kb directly.
     function [7:0] calc_burst_beats;
         input [31:0] bytes;
-        reg [31:0] raw_beats;
         begin
-            if (bytes >= (MAX_BURST_LEN * BEAT_BYTES))
-                calc_burst_beats = MAX_BURST_LEN[7:0];
-            else begin
-                // Round partial byte counts up to whole AXI beats.
-                raw_beats = (bytes + BEAT_BYTES - 1) / BEAT_BYTES;
-                calc_burst_beats = raw_beats[7:0];
-            end
+            calc_burst_beats = calc_burst_beats_4kb(bytes, 32'h0);
         end
     endfunction
 
@@ -180,9 +211,9 @@ module dma_axi_reader #(
                             current_addr    <= base_addr;
                             ar_done         <= 1'b0;
                             beat_counter    <= 8'h0;
-                            // Compute first burst from byte_count (input, stable)
-                            beats_in_burst  <= calc_burst_beats(byte_count);
-                            burst_len       <= calc_burst_beats(byte_count) - 8'h1;
+                            // Compute first burst with 4KB boundary split
+                            beats_in_burst  <= calc_burst_beats_4kb(byte_count, base_addr);
+                            burst_len       <= calc_burst_beats_4kb(byte_count, base_addr) - 8'h1;
                             state <= S_AR;
                         end
                     end
@@ -221,8 +252,8 @@ module dma_axi_reader #(
                                 if (remaining_after_burst == 32'h0) begin
                                     state <= S_DONE;
                                 end else begin
-                                    beats_in_burst <= calc_burst_beats(remaining_after_burst);
-                                    burst_len      <= calc_burst_beats(remaining_after_burst) - 8'h1;
+                                    beats_in_burst <= calc_burst_beats_4kb(remaining_after_burst, current_addr + ({24'h0, beats_in_burst} * BEAT_BYTES));
+                                    burst_len      <= calc_burst_beats_4kb(remaining_after_burst, current_addr + ({24'h0, beats_in_burst} * BEAT_BYTES)) - 8'h1;
                                     beat_counter   <= 8'h0;
                                     ar_done        <= 1'b0;
                                     state <= S_AR;
