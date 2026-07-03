@@ -1,0 +1,17 @@
+// Minimal boot magic firmware — PicoRV32 RV32I hand-assembled
+// Writes 0xB007B007 to 0x000FF000, then infinite loops
+// Only 5 instructions, no stack, no libc, no compressed
+// PROGADDR_RESET = 0x00000000
+//
+// RISC-V encoding verified:
+//   LUI x5, 0x000FF → 0x000FF297
+//   LUI x6, 0xB007B → 0xB007B337
+//   ADDI x6, x6, 0x007 → 0x00730313
+//   SW x6, 0(x5) → 0x0062A023
+//   JAL x0, -8 → 0xFF9FF06F (jump back 2 instructions = 8 bytes)
+
+000FF297
+B007B337
+00730313
+0062A023
+FF9FF06F

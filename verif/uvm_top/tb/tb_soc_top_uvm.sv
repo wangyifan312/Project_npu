@@ -17,8 +17,14 @@ module tb_soc_top_uvm;
 
   // Phase U8-b: default BFM mode (1), CPU mode via +TB_AXIL_ENABLE=0
   initial begin
+    int tb_axil_val;
     tb_axil_enable = 1'b1;
-    void'($value$plusargs("TB_AXIL_ENABLE=%0d", tb_axil_enable));
+    if ($value$plusargs("TB_AXIL_ENABLE=%0d", tb_axil_val)) begin
+      tb_axil_enable = tb_axil_val[0];
+      $display("[U8B] TB_AXIL_ENABLE=%0d (from plusarg)", tb_axil_enable);
+    end else begin
+      $display("[U8B] TB_AXIL_ENABLE=1 (default, no plusarg)");
+    end
   end
 
   // Interfaces

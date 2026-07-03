@@ -25,8 +25,12 @@ class soc_cpu_npu_polling_smoke_test extends soc_base_test;
     `uvm_info("CPU_POLL", "=== CPU POLLING SMOKE (Phase U8-b) ===", UVM_NONE)
     `uvm_info("CPU_POLL", "Loading firmware via backdoor...", UVM_NONE)
     bd_if.load_memh("verif/firmware/npu_irq_smoke/polling_firmware.memh", 0, 1024);
-    `uvm_info("CPU_POLL", $sformatf("Firmware loaded. Word[0]=0x%08x Word[4]=0x%08x",
-      bd_if.read32(0), bd_if.read32(4)), UVM_NONE)
+    `uvm_info("CPU_POLL", $sformatf("FW loaded: addr0=0x%08x addr4=0x%08x addr8=0x%08x",
+      bd_if.read32(32'h00000000), bd_if.read32(32'h00000004), bd_if.read32(32'h00000008)), UVM_NONE)
+
+    // Verify magic flag area is clear
+    `uvm_info("CPU_POLL", $sformatf("Pre-boot: MAGIC_BOOT=0x%08x MAGIC_DONE=0x%08x",
+      bd_if.read32(32'h000FF000), bd_if.read32(32'h000FF004)), UVM_NONE)
 
     phase.raise_objection(this);
     // Delay to allow CPU to boot (reset released at t=100ns)
