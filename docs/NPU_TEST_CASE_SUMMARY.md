@@ -4,13 +4,13 @@
 
 | 项目 | 数量 |
 |------|------|
-| active registered tests | **54** |
+| active registered tests | **56** |
 | archived tests | **5** |
 | orphan tests | **0** |
 | UVM_ERROR | **0** |
 | UVM_FATAL | **0** |
-| 运行命令 | `./verif/uvm_top/scripts/run_uvm.sh <test_name> UVM_NONE` |
-| CPU-running tests | `+TB_AXIL_ENABLE=0` plusarg |
+| 运行命令 | `./verif/uvm_top/scripts/run_uvm.sh <test_name> UVM_NONE [plusargs...]` |
+| CPU-running tests | `run_uvm.sh ... +TB_AXIL_ENABLE=0`（plusarg 由脚本透传） |
 
 ## 2. 测试分类统计
 
@@ -28,7 +28,8 @@
 | Diagnostic | 5 | Conv single/multi-window, 5×5 kernel diag |
 | **NPU IRQ (U8-a)** | **1** | BFM-level IRQ protocol verification |
 | **CPU-running smoke (U8-b)** | **3** | PicoRV32 boot/polling/IRQ smoke |
-| **Total active** | **54** | — |
+| **DMA read partial mask (U9-a1)** | **2** | DMA read-side data_strb partial beat zero-padding |
+| **Total active** | **56** | — |
 
 ## 3. Smoke / Basic Tests
 
@@ -144,7 +145,7 @@
 |------|---------|------|--------|
 | `soc_cpu_boot_magic_smoke_test` | PicoRV32 boot from shared RAM, write MAGIC_BOOT | `+TB_AXIL_ENABLE=0` | PASS |
 | `soc_cpu_npu_polling_smoke_test` | CPU configures NPU CSR, starts GEMM, polls done | CPU mode | PASS |
-| `soc_cpu_npu_irq_smoke_test` | CPU enables done IRQ, receives irq[4], handler clears | CPU mode | PASS |
+| `soc_cpu_npu_irq_smoke_test` | CPU enables done IRQ, receives irq[4], handler clears | CPU mode (`+TB_AXIL_ENABLE=0`) | PASS |
 
 **U8-b 说明：**
 - Minimal bare-metal firmware smoke verification
@@ -152,6 +153,7 @@
 - `riscv64-unknown-elf-gcc 8.1.0` 编译 firmware（`-march=rv32i -mabi=ilp32`）
 - BFM 不在 CPU-running test 中写 NPU CSR
 - IRQ return-to-main 不是 primary pass criterion
+- **必须使用 `+TB_AXIL_ENABLE=0` 启动。不加此 plusarg 时 `tb_axil_enable=1`（BFM mode），CPU 处于 reset（`cpu_resetn = rst_n && !tb_axil_enable = 0`），MAGIC_BOOT timeout 是预期行为而非 bug**
 
 **soc_cpu_npu_irq_smoke_test 关键验证链：**
 1. CPU 写 MAGIC_BOOT
@@ -164,7 +166,25 @@
 8. handler 写 MAGIC_IRQ_SEEN=0x1A2B3C4D, MAGIC_TEST_DONE=0x55AA55AA
 9. output=0x00000004, cpu_trap=0
 
-## 15. Archived Tests
+## 15. DMA Read Partial Beat Mask Tests (U9-a1)
+
+| Test | Purpose | Key Coverage | Result |
+|------|---------|-------------|--------|
+| `npu_dma_read_partial_poison_test` | Poison tail mask verification | GEMM M=1,K=4,N=1; 4B 0x01 valid + 28B 0x7F poison in one 32B beat; output=4 confirms mask works | PASS |
+| `npu_dma_read_partial_mask_test` | Multi-size partial beat mask | K=4,8,12,20,36,68 (single/multi-beat partial); all output values correct despite poison tails; ARSIZE remains 3'd5 | 6/6 PASS |
+
+**U9-a1 说明：**
+- `dma_axi_reader` 新增 `data_strb` 输出，基于 transfer-level `bytes_remaining` 计算
+- `data_strb` 与 `data_out`/`data_valid` 同拍
+- full beat 时 `data_strb` 全 1；partial final beat 时仅有效 byte 为 1
+- `act_read_path` / `weight_read_path` 写 buffer 前 `& strb_mask` 清零无效 byte
+- **不是 narrow burst**（ARSIZE 保持 3'd5）
+- **不是 variable-size burst**
+- **不是 unaligned DMA**
+- **不是 4KB boundary split**
+- `soc_base_test` 是 abstract base class，不计入 active concrete tests 数量
+
+## 16. Archived Tests
 
 | Test | 归档原因 |
 |------|----------|
@@ -176,7 +196,7 @@
 
 存档位置: `verif/uvm_top/tests/archive/`
 
-## 16. 回归套件
+## 17. 回归套件
 
 | 套件 | 测试数 | 运行方式 |
 |------|--------|----------|
@@ -185,5 +205,11 @@
 | Legacy / fallback | 6 | 默认 BFM mode |
 | Low-power | 1 | 默认 BFM mode |
 | NPU IRQ | 1 | 默认 BFM mode |
-| CPU-running smoke | 3 | `+TB_AXIL_ENABLE=0` |
-| Full active regression | 54 | 全部 |
+| CPU-running smoke | 3 | `+TB_AXIL_ENABLE=0`（由 run_uvm.sh 透传至 simv） |
+| DMA read partial mask (U9-a1) | 2 | 默认 BFM mode |
+| Full active regression | 56 | 全部 |
+
+**CPU-running test 运行注意：**
+- `soc_cpu_npu_irq_smoke_test` 必须使用 `+TB_AXIL_ENABLE=0`
+- 不加此 plusarg 时 CPU 处于 reset 状态，MAGIC_BOOT timeout 是预期行为
+- 运行命令：`./verif/uvm_top/scripts/run_uvm.sh soc_cpu_npu_irq_smoke_test UVM_NONE +TB_AXIL_ENABLE=0`

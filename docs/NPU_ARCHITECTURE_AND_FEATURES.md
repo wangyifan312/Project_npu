@@ -4,10 +4,10 @@
 
 | 项目 | 值 |
 |------|-----|
-| 最终交付 tag | `npu-final-delivery-v1.4-irq` |
-| main HEAD | `30ea955` |
+| 最终交付 tag | `npu-final-delivery-v1.5-clean` |
+| main HEAD | `d5d2828` |
 | 架构基线 | single-cluster 64×64 PE NPU (CLUSTER_COUNT=1) |
-| active registered tests | **54** |
+| active registered tests | **56** |
 | archived tests | **5** |
 | orphan tests | **0** |
 | UVM_ERROR | **0** |
@@ -27,8 +27,9 @@ top
 - PicoRV32 通过 AXI-Lite 访问 shared_ram 和 NPU CSR
 - NPU 通过 256-bit AXI4 DMA 访问 shared_ram
 - 验证环境支持双模式：
-  - `tb_axil_enable=1`（默认）：AXI-Lite BFM 驱动 NPU CSR（54 个 tests 的默认模式）
+  - `tb_axil_enable=1`（默认）：AXI-Lite BFM 驱动 NPU CSR（56 个 tests 的默认模式）
   - `tb_axil_enable=0`：PicoRV32 CPU 驱动 NPU CSR（U8-b 3 个 tests 的 CPU-running 模式）
+  - CPU-running mode 通过 `run_uvm.sh ... +TB_AXIL_ENABLE=0` 启动（plusarg 由脚本透传至 simv）
 - CPU reset vector = `0x00000000`（shared_ram 基址）
 - CPU IRQ vector = `0x00000010`
 
@@ -68,10 +69,19 @@ npu_top
 ## 4. 数据通路
 
 ```
-Input:  shared_ram → AXI4 read DMA → act_buffer → PE array
-Weight: shared_ram → AXI4 read DMA → wgt_buffer → wgt_load_reg → PE array
+Input:  shared_ram → AXI4 read DMA → [data_strb zero-pad] → act_buffer → PE array
+Weight: shared_ram → AXI4 read DMA → [data_strb zero-pad] → wgt_buffer → wgt_load_reg → PE array
 Output: PE array → output_arbiter → acc_buffer → store_pack → write_beat_fifo → AXI4 write DMA → shared_ram
 ```
+
+**DMA read-side partial beat zero-padding (U9-a1):**
+- `dma_axi_reader` 输出 `data_strb`（与 `data_out`/`data_valid` 同拍）
+- `data_strb` 基于 transfer-level `bytes_remaining` 计算，不使用 burst-level `RLAST`
+- full beat: `data_strb` 全 1
+- partial final beat: `data_strb` 仅有效 byte 为 1
+- `act_read_path` / `weight_read_path` 写 buffer 前 `dma_data_out & strb_mask` 清零无效 byte
+- AXI read 保持 256-bit full-width INCR burst（ARSIZE=3'd5）
+- **不是 narrow burst，不是 variable-size burst，不是 unaligned DMA**
 
 **MatrixOp streaming path (GST):**
 ```
@@ -184,15 +194,21 @@ PE array → result_tile_bank → GST store engine → write_beat_fifo → DMA w
 | legacy Conv/Add/Pool/GAP/Requant | ✅ 保留 |
 | PE array clock gating | ✅ U6-a |
 | NPU IRQ reporting | ✅ U8-a + U8-b |
+| DMA read partial beat zero-padding | ✅ U9-a1 |
 | multi-cluster | ❌ CLUSTER_COUNT=1 最终基线 |
 | 512-bit AXI | ❌ 未实现 |
 | general Conv MatrixOp | ❌ 未实现 |
 | descriptor queue | ❌ 未实现 |
 | full software driver stack | ❌ 仅 minimal bare-metal firmware smoke |
+| 4KB boundary split (AXI4) | ❌ 未实现 |
+| narrow burst | ❌ 未实现 |
+| variable-size burst | ❌ 未实现 |
+| unaligned DMA | ❌ 未实现 |
 
 ## 11. 最终 Tag 链
 
 ```
+npu-final-delivery-v1.5-clean → d5d2828 (baseline for U9-a1)
 npu-final-delivery-v1.4-irq   → 30ea955 (CPU IRQ smoke delivery)
 npu-cpu-irq-smoke-u8b         → 30ea955
 npu-irq-reporting-u8a         → 3bf787c
