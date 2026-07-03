@@ -308,6 +308,7 @@ package soc_top_uvm_pkg;
   `include "npu_dma_read_4kb_boundary_split_test.sv"
   `include "npu_dma_write_4kb_boundary_split_test.sv"
   `include "npu_dma_4kb_boundary_mixed_test.sv"
+  `include "npu_dma_writer_forced_4kb_split_test.sv"
 
 endpackage
 
