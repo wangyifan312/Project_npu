@@ -1,21 +1,20 @@
 //=============================================================================
-// npu_conv_1x1_fullcluster_multiwindow_diag_test.sv — Agent B Diagnostic Test 1b
+// npu_conv_1x1_full_array_multiwindow_diag_test.sv — Agent B Diagnostic Test 1b
 //
-// Purpose: Test whether 1x1 Conv with multi-window (4x4) output hangs in
-//   FULL-CLUSTER mode. Single-cluster variant PASSED (Test 1). This tests
-//   whether the hang is cluster-mode specific.
+// Phase U7-a: renamed from npu_conv_1x1_fullcluster_multiwindow_diag_test.
+// CLUSTER_COUNT=1 final baseline — single 64×64 PE cluster.
 //
-// Configuration:
-//   Same as Test 1 but cluster_mode = full (2'd2)
+// Purpose: Test 1x1 Conv with multi-window (4x4) output in full-array mode.
+//   Single-cluster single-window variant PASSED (Test 1).
 //=============================================================================
 
 `timescale 1ns / 1ps
 
-class npu_conv_1x1_fullcluster_multiwindow_diag_test extends soc_base_test;
+class npu_conv_1x1_full_array_multiwindow_diag_test extends soc_base_test;
 
-  `uvm_component_utils(npu_conv_1x1_fullcluster_multiwindow_diag_test)
+  `uvm_component_utils(npu_conv_1x1_full_array_multiwindow_diag_test)
 
-  function new(string name = "npu_conv_1x1_fullcluster_multiwindow_diag_test", uvm_component parent = null);
+  function new(string name = "npu_conv_1x1_full_array_multiwindow_diag_test", uvm_component parent = null);
     super.new(name, parent);
   endfunction
 

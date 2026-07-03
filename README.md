@@ -1,6 +1,6 @@
 # Project_npu
 
-`Project_npu` 是面向赛题"CPU + NPU 异构处理器设计"的 RTL 仓库。当前正式基线是 `PicoRV32 CPU + 6-cluster NPU + shared memory` SoC，目标网络为 `LeNet(MNIST)`。
+`Project_npu` 是面向赛题"CPU + NPU 异构处理器设计"的 RTL 仓库。当前正式基线是 `PicoRV32 CPU + single-cluster 64×64 PE NPU + shared memory` SoC，目标网络为 `LeNet(MNIST)`。
 
 当前项目状态的唯一总表入口是：
 

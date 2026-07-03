@@ -155,7 +155,6 @@ package soc_top_uvm_pkg;
   `include "npu_requant_smoke_test.sv"
   `include "npu_requant_extreme_test.sv"
   `include "npu_requant_partial_beat_test.sv"
-  `include "npu_cluster_mode_test.sv"
   `include "npu_fc_smoke_test.sv"
   `include "npu_add_smoke_test.sv"
   `include "npu_gap_smoke_test.sv"
@@ -183,12 +182,9 @@ package soc_top_uvm_pkg;
   // Structural UVM tests — cluster array, mask, perf scaling, back-to-back
   //---------------------------------------------------------------------------
   `include "npu_fc_16x16_full_array_test.sv"
-  `include "npu_fc_full_cluster_96out_test.sv"
-  `include "npu_fc_b1_diag.sv"
-  `include "npu_cluster_mask_sweep_test.sv"
+  `include "npu_fc_full_array_activation_test.sv"
   `include "npu_peak_throughput_test.sv"
   `include "npu_fc_128x128_peak_test.sv"
-  `include "npu_perf_counter_scaling_test.sv"
   `include "npu_back_to_back_task_test.sv"
 
   //---------------------------------------------------------------------------
@@ -200,7 +196,6 @@ package soc_top_uvm_pkg;
   // Diagnostic tests — Conv multi-cluster mismatch fingerprinting
   //---------------------------------------------------------------------------
   `include "npu_conv_1x1_single_16oc_diag_test.sv"
-  `include "npu_conv_1x1_dual_32oc_diag_test.sv"
   `include "npu_conv_1x1_full_96oc_diag_test.sv"
 
   //---------------------------------------------------------------------------
@@ -218,7 +213,7 @@ package soc_top_uvm_pkg;
   `include "npu_conv_1x1_multiwindow_diag_test.sv"
   `include "npu_conv_3x3_multiwindow_diag_test.sv"
   `include "npu_conv_5x5_singlewindow_diag_test.sv"
-  `include "npu_conv_1x1_fullcluster_multiwindow_diag_test.sv"
+  `include "npu_conv_1x1_full_array_multiwindow_diag_test.sv"
   `include "npu_conv_multiblock_test.sv"
   `include "npu_conv_bandwidth_test.sv"
 

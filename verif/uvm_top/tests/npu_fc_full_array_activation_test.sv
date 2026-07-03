@@ -1,25 +1,28 @@
 //=============================================================================
-// npu_fc_full_cluster_96out_test.sv — Full Cluster 96-Output FC Test
+// npu_fc_full_array_activation_test.sv — Full 64×64 PE Array Activation Test
 //
-// Purpose: Prove all single-clusters participate in FC computation simultaneously.
-// Uses FC task with 96 output channels (single-clusters × 16 outputs/cluster),
-// deterministic pattern, and verifies output correctness + cluster activity.
+// Phase U7-a: renamed from npu_fc_full_cluster_96out_test.
+// CLUSTER_COUNT=1 final baseline — single 64×64 PE cluster.
+//
+// Purpose: Prove the full 64×64 PE array (16×16 tiles, 4096 PEs) is activated
+// during FC compute. Uses FC task with 96 output channels, deterministic
+// pattern, verifies output correctness and array activity via sticky probes.
 //
 // Checks:
 //   1. Output compare: 96 INT32 outputs matched golden
-//   2. All single-clusters have busy/valid/done observed via probe
-//   3. Full-cluster active window: cluster_enable = 6'b111111
+//   2. PE array busy/valid/done observed via probe
+//   3. Full array active window: all tile enables asserted
 //   4. Output writeback covers multiple 256-bit beats (96×4=384 bytes → 12 beats)
 //   5. No error
 //=============================================================================
 
 `timescale 1ns / 1ps
 
-class npu_fc_full_cluster_96out_test extends soc_base_test;
+class npu_fc_full_array_activation_test extends soc_base_test;
 
-  `uvm_component_utils(npu_fc_full_cluster_96out_test)
+  `uvm_component_utils(npu_fc_full_array_activation_test)
 
-  function new(string name = "npu_fc_full_cluster_96out_test", uvm_component parent = null);
+  function new(string name = "npu_fc_full_array_activation_test", uvm_component parent = null);
     super.new(name, parent);
   endfunction
 
