@@ -8,7 +8,7 @@ module axi_interconnect #(
     parameter CPU_AXI_DATA_W  = 32,
     parameter DMA_AXI_DATA_W  = 256,
     parameter NPU_BASE   = 32'h1000_0000,
-    parameter NPU_MASK   = 32'hFFFF_FF00  // 256B NPU register space
+    parameter NPU_MASK   = 32'hFFFF_FE00  // 512B NPU register space (extended for IRQ CSRs)
 ) (
     input  wire        clk,
     input  wire        rst_n,

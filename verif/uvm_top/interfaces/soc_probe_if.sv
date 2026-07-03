@@ -4,6 +4,7 @@ interface soc_probe_if(input logic clk, input logic rst_n);
 
   // NPU status from DUT port
   logic [31:0] npu_status;
+  logic        npu_irq;        // Phase U8-a: NPU IRQ output
 
   // NPU DMA AXI4 read address channel (passive probe)
   logic         npu_m_arvalid;

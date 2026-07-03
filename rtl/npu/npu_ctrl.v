@@ -646,6 +646,7 @@ module npu_ctrl #(
                     busy       <= 1'b0;
                     error      <= 1'b1;
                     error_code <= task_error_code_i;
+                    irq_status[1] <= 1'b1;  // Phase U8-a: checker error pending
                 end
             end else if (write_new_start) begin
                 task_type_r     <= cfg_task_type[2:0];

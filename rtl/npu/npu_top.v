@@ -230,7 +230,6 @@ module npu_top #(
     wire [5:0]  add_src1_shift;
     wire [31:0] add_out_multiplier;
     wire [5:0]  add_out_shift;
-    wire        npu_irq;
     wire [1:0]  conv_kernel_sel = conv_cfg[1:0];
     wire        conv_stride2 = conv_cfg[2];
     wire        conv_same_pad = conv_cfg[3];
