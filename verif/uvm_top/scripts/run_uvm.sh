@@ -66,6 +66,7 @@ echo "=== Running test: ${TEST} ==="
 ./sim/simv_uvm_top \
     +UVM_TESTNAME=${TEST} \
     +UVM_VERBOSITY=${VERBOSITY} \
+    "${@:3}" \
     -l sim/uvm_run.log
 
 echo ""
