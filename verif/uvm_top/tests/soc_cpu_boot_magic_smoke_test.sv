@@ -23,7 +23,7 @@ class soc_cpu_boot_magic_smoke_test extends soc_base_test;
 
     // Load firmware at time 0, BEFORE CPU reset released
     `uvm_info("BOOTMAG", "=== CPU BOOT MAGIC SMOKE (Phase U8-b0) ===", UVM_NONE)
-    bd_if.load_memh("verif/firmware/npu_irq_smoke/boot_simple.memh", 0, 16);
+    bd_if.load_memh("verif/firmware/npu_irq_smoke/boot_magic.memh", 0, 16);
 
     // Verify firmware loaded correctly
     `uvm_info("BOOTMAG", $sformatf("FW[0x00]=0x%08h FW[0x04]=0x%08h FW[0x08]=0x%08h FW[0x0C]=0x%08h FW[0x10]=0x%08h",
