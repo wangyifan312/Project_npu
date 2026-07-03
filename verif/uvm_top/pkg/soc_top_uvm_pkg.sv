@@ -283,6 +283,8 @@ package soc_top_uvm_pkg;
   `include "soc_cpu_boot_magic_smoke_test.sv"
   `include "soc_cpu_npu_polling_smoke_test.sv"
 
+  `include "soc_cpu_npu_irq_smoke_test.sv"
+
 endpackage
 
 `endif // SOC_TOP_UVM_PKG_SV
