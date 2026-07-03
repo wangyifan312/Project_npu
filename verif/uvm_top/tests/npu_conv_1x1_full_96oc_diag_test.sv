@@ -1,7 +1,7 @@
 //=============================================================================
 // npu_conv_1x1_full_96oc_diag_test.sv — Diagnostic: Full-Cluster 3x3 Conv (96 OC)
 //
-// Purpose: FINGERPRINT full single-cluster Conv mismatch with many output channels.
+// 目的： FINGERPRINT full single-cluster Conv mismatch with many output channels.
 // All single-clusters should participate.
 //
 // Configuration:
@@ -15,7 +15,7 @@
 //   Output: 3x3x96 = 864 INT32
 //   Golden: each output = 9*1*1 = 9
 //
-// Checks:
+// 检查：
 //   1. Output compare — detailed mismatch report
 //   2. Per-cluster channel-range pattern
 //   3. Sticky probes: all single-clusters show activity

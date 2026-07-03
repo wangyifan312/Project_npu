@@ -7,7 +7,7 @@
 //   All multipliers = 1, all shifts = 0 (identity requant, just clamp)
 //   Expected: {15, 30, 45, 60}
 //
-// Verifies: ADD task_type=4, config, start/poll, output read, DPI-C golden
+// 验证： ADD task_type=4, config, start/poll, output read, DPI-C golden
 //=============================================================================
 
 `timescale 1ns / 1ps

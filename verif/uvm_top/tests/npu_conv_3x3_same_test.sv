@@ -1,7 +1,7 @@
 //=============================================================================
 // npu_conv_3x3_same_test.sv — 3x3 Kernel Same Padding Conv Smoke Test
 //
-// Test coverage:
+// 测试覆盖：
 //   - 4x4 input, 3x3 kernel, Cin=1, Cout=1, stride=1, same padding
 //   - conv_cfg[1:0]=2 (3x3 kernel), conv_cfg[3]=1 (same padding)
 //   - Single cluster mode

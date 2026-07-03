@@ -49,7 +49,7 @@ module conv_frontend #(
     // Line buffer: 5 rows x MAX_LINE_W x 8 bits
     reg [7:0] lb [0:4][0:MAX_LINE_W-1];
 
-    // State machine
+    // 状态机
     localparam S_IDLE              = 3'd0;
     localparam S_LOAD_FIRST_5      = 3'd1;
     localparam S_COMPUTE           = 3'd2;

@@ -1,7 +1,7 @@
 //=============================================================================
 // npu_fc_streaming_relu_test.sv — Phase U4-b: ReLU on result_tile GST path
 //
-// Verifies: FC streaming + relu_en=1 + bias_enabled=0 → MatrixOp path
+// 验证： FC streaming + relu_en=1 + bias_enabled=0 → MatrixOp path
 // with INT32 ReLU applied in GST_PUSH_BEAT via store_desc_relu_en.
 //=============================================================================
 `timescale 1ns / 1ps

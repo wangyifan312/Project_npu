@@ -1,7 +1,7 @@
 //=============================================================================
 // npu_conv_1x1_single_16oc_diag_test.sv — Diagnostic: Single-Cluster 3x3 Conv (16 OC)
 //
-// Purpose: BASELINE — verify single-cluster 3x3 Conv works for 16 output channels.
+// 目的： BASELINE — verify single-cluster 3x3 Conv works for 16 output channels.
 // If this fails, multi-cluster diagnosis is moot.
 //
 // Configuration:
@@ -12,7 +12,7 @@
 //   Output: 1x1x16 = 16 INT32
 //   Golden: each output = 9*1*1 = 9
 //
-// Checks:
+// 检查：
 //   1. Output compare: 16 INT32 values matched golden
 //   2. Sticky probes: cluster0 observed busy/valid/done
 //   3. No error

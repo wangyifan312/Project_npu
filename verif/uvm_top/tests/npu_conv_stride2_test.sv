@@ -1,7 +1,7 @@
 //=============================================================================
 // npu_conv_stride2_test.sv — 3x3 Kernel Stride-2 Conv Smoke Test
 //
-// Test coverage:
+// 测试覆盖：
 //   - 6x6 input, 3x3 kernel, Cin=1, Cout=1, stride=2, valid padding
 //   - conv_cfg[1:0]=2 (3x3 kernel), conv_cfg[2]=1 (stride2)
 //   - Single cluster mode

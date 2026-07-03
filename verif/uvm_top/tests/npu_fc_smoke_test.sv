@@ -9,7 +9,7 @@
 //   Golden: output[0] = 1+2+3+4 = 10
 //           output[1] = 1+2+3+4 = 10
 //
-// Verifies: FC task_type=1, config, start/poll, output read, DPI-C golden
+// 验证： FC task_type=1, config, start/poll, output read, DPI-C golden
 //=============================================================================
 
 `timescale 1ns / 1ps

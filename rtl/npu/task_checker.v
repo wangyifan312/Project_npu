@@ -76,7 +76,7 @@ module task_checker #(
     localparam [2:0] TASK_GEMM        = 3'd7;
 
     // ============================================================
-    // Internal registers (latch inputs on task_start)
+    // 内部寄存器 (latch inputs on task_start)
     // ============================================================
     reg         checking;
     reg  [2:0]  task_type_r;
@@ -382,7 +382,7 @@ module task_checker #(
         ((input_bytes_r == output_bytes_r) &&
          (weight_bytes_r == 32'd0));
 
-    // Priority-encoded error
+    // 优先级编码的错误
     always @(*) begin
         error_code_comb = ERR_NONE;
         if (!task_type_known)
@@ -422,7 +422,7 @@ module task_checker #(
     wire all_checks_pass = (error_code_comb == ERR_NONE);
 
     // ============================================================
-    // Output registers: valid in the cycle after checking=1
+    // 输出寄存器：在 checking=1 后的周期有效
     // ============================================================
     reg         checks_pass_r;
     reg  [7:0]  error_code_r;

@@ -1,5 +1,5 @@
 //=============================================================================
-// soc_top_defines.svh — NPU Register Address Macros for UVM Verification
+// soc_top_defines.svh — NPU 寄存器地址宏 for UVM Verification
 //=============================================================================
 
 `ifndef SOC_TOP_DEFINES_SVH
@@ -251,7 +251,7 @@
 `define NPU_STATUS_ERROR  3  // bit[3]
 
 //-----------------------------------------------------------------------------
-// Phase U8-a: IRQ registers (extended 7-bit address space, 0x100-0x10C)
+// 阶段 U8-a：中断寄存器（扩展 7 位地址空间，0x100-0x10C）
 //-----------------------------------------------------------------------------
 `define NPU_REG_IRQ_EN       (`SOC_NPU_REG_BASE + 32'h100)
 `define NPU_REG_IRQ_STATUS   (`SOC_NPU_REG_BASE + 32'h104)

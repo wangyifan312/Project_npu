@@ -1,6 +1,6 @@
-// top.v: CPU+NPU heterogeneous processor — top-level integration
-// PicoRV32 (AXI-Lite) → AXI Interconnect → Memory + NPU registers
-// NPU DMA (AXI4) → Memory
+// top.v：CPU+NPU 异构处理器顶层集成
+// PicoRV32 (AXI-Lite) → AXI 互联 → 共享内存 + NPU 寄存器
+// NPU DMA (AXI4) → 共享内存
 `timescale 1ns / 1ps
 
 module top #(
@@ -36,14 +36,14 @@ module top #(
     output wire [31:0] tb_rdata,
     output wire [1:0]  tb_rresp,
 
-    // Debug/trace outputs
+    // 调试/跟踪输出
     output wire        cpu_trap,
     output wire [31:0] npu_status,  // {error, done, busy, 1'b0} for quick debug
     output wire        npu_irq       // Phase U8-a: NPU IRQ output
 );
 
     // ============================================================
-    // CPU ↔ Interconnect AXI-Lite
+    // CPU ↔ 互联 AXI-Lite
     // ============================================================
     wire        cpu_core_awvalid, cpu_core_awready;
     wire [31:0] cpu_core_awaddr;
@@ -60,7 +60,7 @@ module top #(
     wire [31:0] cpu_core_rdata;
     wire [1:0]  cpu_core_rresp;
 
-    // Phase U8-a: NPU IRQ
+    // 阶段 U8-a：NPU 中断
     wire [31:0] cpu_irq;
     wire        npu_irq_int;
     assign cpu_irq = {27'h0, npu_irq_int, 4'h0};  // npu_irq → cpu irq[4]
@@ -82,7 +82,7 @@ module top #(
     wire [1:0]  cpu_rresp;
 
     // ============================================================
-    // PicoRV32 CPU (AXI-Lite version)
+    // PicoRV32 CPU（AXI-Lite 版本）
     // ============================================================
     picorv32_axi #(
         .PROGADDR_RESET(32'h0000_0000),

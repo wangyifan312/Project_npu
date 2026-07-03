@@ -10,12 +10,12 @@ module tb_soc_top_uvm;
   import uvm_pkg::*;
   import soc_top_uvm_pkg::*;
 
-  // Clock and reset
+  // 时钟和复位
   reg clk;
   reg rst_n;
   reg tb_axil_enable;
 
-  // Phase U8-b: default BFM mode (1), CPU mode via +TB_AXIL_ENABLE=0
+  // 阶段 U8-b：默认 BFM 模式(1)，CPU 模式通过 +TB_AXIL_ENABLE=0
   initial begin
     int tb_axil_val;
     tb_axil_enable = 1'b1;
@@ -27,13 +27,13 @@ module tb_soc_top_uvm;
     end
   end
 
-  // Interfaces
+  // 接口
   axil_if      axil_vif(.clk(clk), .rst_n(rst_n));
   soc_probe_if probe_vif(.clk(clk), .rst_n(rst_n));
   backdoor_if  bd_if();
 
   //-----------------------------------------------------------------------------
-  // DUT instantiation
+  // DUT 实例化
   //-----------------------------------------------------------------------------
   top #(
     .NPU_TILE_ROWS(16),
@@ -174,7 +174,7 @@ module tb_soc_top_uvm;
   end
 
   //-----------------------------------------------------------------------------
-  // Clock generation: 200 MHz => 2.5 ns half-period
+  // 时钟生成: 200 MHz => 2.5 ns half-period
   //-----------------------------------------------------------------------------
   always #2.5 clk = ~clk;
 
@@ -188,7 +188,7 @@ module tb_soc_top_uvm;
   end
 
   //-----------------------------------------------------------------------------
-  // UVM test launch — must be at time 0, no delays before run_test()
+  // UVM 测试启动 — must be at time 0, no delays before run_test()
   //-----------------------------------------------------------------------------
   initial begin
     clk   = 1'b0;

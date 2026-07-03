@@ -1,4 +1,4 @@
-// block_scheduler: splits Conv/FC/Pool tasks into blocks that fit in on-chip buffers
+// block_scheduler：将 Conv/FC/Pool 任务拆分为多个 block that fit in on-chip buffers
 // Computes per-block addresses, byte counts, and dimensions
 // Conv: splits by output rows (horizontal stripes with kernel overlap)
 // Pool: splits by output rows (2 input rows per 1 output row)

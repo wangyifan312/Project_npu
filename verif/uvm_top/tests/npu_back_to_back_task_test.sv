@@ -1,11 +1,11 @@
 //=============================================================================
 // npu_back_to_back_task_test.sv — Back-to-Back Task Recovery Test
 //
-// Purpose: Verify NPU can execute two consecutive tasks without reset.
+// 目的： Verify NPU can execute two consecutive tasks without reset.
 // Task A: FC small (16→16), Task B: FC small (16→16) with different data.
 // Both tasks' outputs are independently verified against golden.
 //
-// Checks:
+// 检查：
 //   1. Task A done without error, output compare PASS
 //   2. Task B done without error, output compare PASS
 //   3. busy/done state transition: Task A done→idle, then Task B config→start→done

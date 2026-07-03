@@ -1,7 +1,7 @@
 //=============================================================================
 // npu_conv_1x1_multiwindow_diag_test.sv — Agent B Diagnostic Test 1
 //
-// Purpose: Test whether 1x1 Conv with multi-window (4x4) output hangs.
+// 目的： Test whether 1x1 Conv with multi-window (4x4) output hangs.
 //   If hangs → issue is in downstream pipeline (DMA writer tail, Hang B)
 //   If passes → conv_frontend correctly handles 1x1 multi-window
 //

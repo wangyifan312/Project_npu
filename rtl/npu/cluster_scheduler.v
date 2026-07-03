@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 
 // cluster_scheduler: single-cluster enable control (64x64 PE array).
-// Trivial for CLUSTER_COUNT=1 — always enables cluster 0.
+// CLUSTER_COUNT=1 时简化为始终使能 cluster 0。
 
 module cluster_scheduler #(
     parameter CLUSTER_COUNT = 1

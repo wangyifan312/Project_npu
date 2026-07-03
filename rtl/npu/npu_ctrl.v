@@ -1,5 +1,5 @@
-// npu_ctrl: NPU register file + control state machine
-// AXI4-Lite slave for CPU access, controls task lifecycle
+// npu_ctrl：NPU 寄存器文件 + 控制状态机
+// AXI4-Lite 从设备，供 CPU 访问，控制任务生命周期
 `timescale 1ns / 1ps
 
 module npu_ctrl #(
@@ -11,7 +11,7 @@ module npu_ctrl #(
     input  wire        clk,
     input  wire        rst_n,
 
-    // === AXI4-Lite Slave Interface ===
+    // === AXI4-Lite 从设备接口 ===
     // Write address channel
     input  wire                        s_axi_awvalid,
     output wire                        s_axi_awready,
@@ -35,7 +35,7 @@ module npu_ctrl #(
     output wire [AXI_DATA_WIDTH-1:0]   s_axi_rdata,
     output wire [1:0]                  s_axi_rresp,
 
-    // === Task control outputs (latched, to NPU internals) ===
+    // === 任务控制输出（锁存后给 NPU 内部）===
     output wire                        ctrl_busy,
     output wire                        ctrl_done,
     output wire                        ctrl_error,
@@ -78,14 +78,14 @@ module npu_ctrl #(
     // === IRQ output (Phase U8-a) ===
     output wire                        npu_irq,
 
-    // === Task status inputs (from NPU internals) ===
+    // === 任务状态输入（来自 NPU 内部）===
     input  wire                        task_done_i,
     input  wire                        task_error_i,
     input  wire [7:0]                  task_error_code_i,
     input  wire                        check_done_i,    // task_checker result ready
     input  wire                        checks_pass_i,   // task_checker: all checks passed
 
-    // === Performance counter inputs ===
+    // === 性能计数器输入 ===
     input  wire [31:0]                 perf_cycle_lo_i,
     input  wire [31:0]                 perf_cycle_hi_i,
     input  wire [31:0]                 perf_read_beats_i,
@@ -121,7 +121,7 @@ module npu_ctrl #(
 );
 
     // ============================================================
-    // Register address map (byte offsets)
+    // 寄存器地址映射（字节偏移）
     // ============================================================
     localparam ADDR_CTRL           = 6'd0;   // 0x00: [0]=start,[1]=busy,[2]=done,[3]=error
     localparam ADDR_STATUS         = 6'd1;   // 0x04: [7:0]=error_code
@@ -182,7 +182,7 @@ module npu_ctrl #(
     localparam ADDR_GAP_CFG             = 6'd44;  // 0xB0: future GAP config
     localparam ADDR_POSTPROC_CFG        = 6'd45;  // 0xB4: future extended postproc config
 
-    // Phase U8-a: IRQ registers (extended 7-bit address space, 0x100-0x10C)
+    // 阶段 U8-a：中断寄存器（扩展 7 位地址空间，0x100-0x10C）
     localparam ADDR_IRQ_EN              = 7'd64;  // 0x100: [1:0]=irq_en (bit0=done, bit1=error)
     localparam ADDR_IRQ_STATUS          = 7'd65;  // 0x104: [1:0]=irq_status R/O
     localparam ADDR_IRQ_CLEAR           = 7'd66;  // 0x108: [1:0]=irq_clear W1C
@@ -406,7 +406,7 @@ module npu_ctrl #(
     assign s_axi_rresp  = rresp_reg;
 
     // ============================================================
-    // Internal registers
+    // 内部寄存器
     // ============================================================
     reg  [31:0] cfg_task_type;
     reg  [31:0] cfg_input_addr;
@@ -438,7 +438,7 @@ module npu_ctrl #(
     reg  [31:0] cfg_add_out_mult;
     reg  [31:0] cfg_add_out_shift;
 
-    // Status registers (HW-managed)
+    // 状态寄存器（硬件管理）
     reg         busy;
     reg         done;
     reg         error;
@@ -754,11 +754,11 @@ module npu_ctrl #(
     assign add_out_multiplier = add_out_mult_r;
     assign add_out_shift = add_out_shift_r;
 
-    // Phase U8-a: NPU IRQ output
+    // 阶段 U8-a：NPU 中断输出
     assign npu_irq = |(irq_status & irq_en);
 
     // ============================================================
-    // AXI read data generation
+    // AXI 读数据生成
     // ============================================================
     wire [31:0] ctrl_value = {28'h0, error, done, busy, 1'b0};
     wire [31:0] status_value = {24'h0, error_code};

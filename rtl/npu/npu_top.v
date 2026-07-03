@@ -873,7 +873,7 @@ module npu_top #(
                                 16'd5;
 
     assign array_sum_in = {PE_COLS{32'h0}};
-    // Phase U6-a: dynamic PE array clock gating
+    // 阶段 U6-a：动态 PE 阵列时钟门控
     // Enable PE array clock only when NPU is active (not IDLE/DONE/ERROR).
     // Conservative: keeps clock on during all transitional and compute states.
     // Primary power saving: long idle periods between tasks.
@@ -1651,7 +1651,7 @@ module npu_top #(
     // ============================================================
 
     // --- Enhanced phase-level activity signals ---
-    // Phase U5-d: include GEMM/FC streaming states for perf counter coverage
+    // 阶段 U5-d：包含 GEMM/FC 流式状态以覆盖性能计数器
     wire perf_streaming_run   = (fsm_state == FSM_GEMM_STREAM_RUN);
     wire perf_streaming_store = (fsm_state == FSM_GEMM_STREAM_STORE);
     assign perf_compute_active = compute_fsm_active || perf_streaming_run;
@@ -1988,7 +1988,7 @@ module npu_top #(
                     integer wp_lanes_in_beat;
                     wp_remain = (wgt_pref_n_tile * wgt_pref_k_tile) - wgt_pref_lane_idx;
                     wp_beatsz = 32'd32 - {27'd0, wgt_pref_abs_byte_idx[4:0]};
-                    // Phase U5-b: same n_tile lane-per-beat limit as weight staging
+                    // 阶段 U5-b：与权重分级相同的 n_tile lane-per-beat 限制
                     wp_lanes_in_beat = (wgt_pref_n_tile == 16'd0) ? 32'd32 :
                         {16'd0, wgt_pref_n_tile} - (wgt_pref_lane_idx % {16'd0, wgt_pref_n_tile});
                     wp_count  = (wp_remain > 32'd32) ? 32'd32 : wp_remain;
@@ -2078,8 +2078,8 @@ module npu_top #(
                     integer ws_lanes_in_beat;
                     ws_remain = (wgt_stage_n_tile * wgt_stage_k_tile) - wgt_stage_lane_idx;
                     ws_beatsz = 32'd32 - {27'd0, wgt_stage_abs_byte_idx[4:0]};
-                    // Phase U5-b: limit lanes per beat to consecutive lanes within
-                    // the same B-matrix row.  For n_tile < 32, only n_tile lanes
+                    // 阶段 U5-b：限制每个 beat 的 lane 数量 to consecutive lanes within
+                    // 对于 n_tile < 32，仅 n_tile 个 lane 适配一个 32-byte beat内
                     // fit in one 32-byte beat (each lane shift of n_tile adds N
                     // bytes to the buffer index, crossing a beat boundary when
                     // N > 32 or when lane wraps to next row).

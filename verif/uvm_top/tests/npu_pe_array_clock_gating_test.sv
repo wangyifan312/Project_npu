@@ -1,7 +1,7 @@
 //=============================================================================
 // npu_pe_array_clock_gating_test.sv — Phase U6-a PE Array Clock Gating Test
 //
-// Verifies: dynamic PE array clock gating via existing tile_clk_en probe.
+// 验证： dynamic PE array clock gating via existing tile_clk_en probe.
 // When NPU is idle (FSM_IDLE/F_DONE/FSM_ERROR), ALL tile clock enables
 // should be 0. During active computation (GEMM/FC/Conv), at least some
 // tile clock enables should be 1.

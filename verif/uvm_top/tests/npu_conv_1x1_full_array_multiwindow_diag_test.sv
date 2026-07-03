@@ -4,7 +4,7 @@
 // Phase U7-a: renamed from npu_conv_1x1_fullcluster_multiwindow_diag_test.
 // CLUSTER_COUNT=1 final baseline — single 64×64 PE cluster.
 //
-// Purpose: Test 1x1 Conv with multi-window (4x4) output in full-array mode.
+// 目的： Test 1x1 Conv with multi-window (4x4) output in full-array mode.
 //   Single-cluster single-window variant PASSED (Test 1).
 //=============================================================================
 

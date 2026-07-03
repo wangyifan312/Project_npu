@@ -1,7 +1,7 @@
 //=============================================================================
-// soc_base_seq.sv — Base Sequence with AXI-Lite Convenience Tasks
+// soc_base_seq.sv — 带 AXI-Lite 便捷任务的基础序列
 //
-// Provides blocking axil_write32 / axil_read32 helpers that all derived
+// 提供阻塞式 axil_write32 / axil_read32 辅助函数 that all derived
 // sequences and test run_phase code can use for register-programming and
 // shared-RAM access.
 //=============================================================================
@@ -17,7 +17,7 @@ class soc_base_seq extends uvm_sequence #(axil_seq_item);
   endfunction
 
   //---------------------------------------------------------------------------
-  // axil_write32 — blocking AXI-Lite write
+  // axil_write32 — 阻塞式 AXI-Lite 写
   //---------------------------------------------------------------------------
   task axil_write32(bit [31:0] addr, bit [31:0] data, bit [3:0] strb = 4'hF);
     axil_seq_item tr;
@@ -33,7 +33,7 @@ class soc_base_seq extends uvm_sequence #(axil_seq_item);
   endtask
 
   //---------------------------------------------------------------------------
-  // axil_read32 — blocking AXI-Lite read
+  // axil_read32 — 阻塞式 AXI-Lite 读
   //---------------------------------------------------------------------------
   task axil_read32(bit [31:0] addr, output bit [31:0] data);
     axil_seq_item tr;

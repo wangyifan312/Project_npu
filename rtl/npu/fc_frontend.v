@@ -31,7 +31,7 @@ module fc_frontend #(
 );
 
     // ============================================================
-    // State machine
+    // 状态机
     // ============================================================
     localparam S_IDLE     = 2'd0;
     localparam S_STREAM   = 2'd1;  // streaming activations for current block

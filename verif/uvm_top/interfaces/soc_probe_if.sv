@@ -2,12 +2,12 @@
 
 interface soc_probe_if(input logic clk, input logic rst_n);
 
-  // NPU status from DUT port
+  // 来自 DUT 端口的 NPU 状态
   logic [31:0] npu_status;
   logic        npu_irq;        // Phase U8-a: NPU IRQ output
   logic        cpu_trap;       // Phase U8-b: PicoRV32 trap signal
 
-  // NPU DMA AXI4 read address channel (passive probe)
+  // NPU DMA AXI4 读地址通道（被动探针）
   logic         npu_m_arvalid;
   logic         npu_m_arready;
   logic [31:0]  npu_m_araddr;
@@ -85,8 +85,8 @@ interface soc_probe_if(input logic clk, input logic rst_n);
   logic [2:0]   npu_task_type;
 
   // ---------------------------------------------------------------------------
-  // Sticky activity observation (set by sampling, cleared by test)
-  // These accumulate over the NPU busy window via OR-sampling.
+  // Sticky 活动观测（采样设置，测试清除）
+  // 在 NPU busy 窗口期间通过 OR 采样累积。
   // ---------------------------------------------------------------------------
   bit [5:0]   observed_cluster_busy_mask;
   bit [5:0]   observed_cluster_valid_mask;

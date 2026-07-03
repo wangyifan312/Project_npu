@@ -1,7 +1,7 @@
 //=============================================================================
 // npu_conv_1x1_smoke_test.sv — 1x1 Kernel Convolution Smoke Test
 //
-// Test coverage:
+// 测试覆盖：
 //   - 3x3 input, 1x1 kernel, Cin=1, Cout=1, stride=1, valid padding
 //   - comv_cfg[1:0]=1 (1x1 kernel)
 //   - Single cluster mode

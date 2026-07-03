@@ -1,7 +1,7 @@
 //=============================================================================
 // npu_conv_3x3_multiwindow_diag_test.sv — Agent B Diagnostic Test 2
 //
-// Purpose: Test whether 3x3 Conv with multi-window (3x3) output hangs.
+// 目的： Test whether 3x3 Conv with multi-window (3x3) output hangs.
 //   If hangs → multi-window hang confirmed, same mechanism as Test 1
 //   If passes → issue specific to certain kernel/output size combinations
 //

@@ -1,7 +1,7 @@
 //=============================================================================
 // npu_conv_multichannel_test.sv — Multi-Channel Conv Smoke Test
 //
-// Test coverage:
+// 测试覆盖：
 //   - 3x3 input, Cin=2, Cout=2, 3x3 kernel, stride=1, valid padding
 //   - conv_cfg[1:0]=2 (3x3 kernel)
 //   - Single cluster mode (cluster_mode=2'd0)

@@ -8,7 +8,7 @@
 //   NOT used as primary TOPS or bandwidth evidence.
 //   Primary evidence: npu_conv_multiblock_test (TOPS) + npu_bandwidth_60pct_stress_test (BW).
 //
-// Purpose: Simultaneously evaluate FC compute TOPS and task-level AXI bandwidth.
+// 目的： Simultaneously evaluate FC compute TOPS and task-level AXI bandwidth.
 // Workload: FC 512→256 (GEMM-style), 131,072 MACs
 //   Input:  512 INT8 values
 //   Weight: 512×256 = 131,072 INT8 values

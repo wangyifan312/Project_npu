@@ -1,7 +1,7 @@
 //=============================================================================
 // npu_fc_streaming_fallback_test.sv — FC Streaming Fallback Phase U1
 //
-// Verifies: FC with bias_enabled falls back to legacy FC path
+// 验证： FC with bias_enabled falls back to legacy FC path
 // even when conv_cfg[5]=1 (streaming mode requested).
 //
 // fc_streaming_en = is_fc_mode && conv_cfg[5] && !bias_enabled

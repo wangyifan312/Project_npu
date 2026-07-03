@@ -1,7 +1,7 @@
 //=============================================================================
 // npu_add_requant_test.sv — ADD with Non-Identity Requant Smoke Test
 //
-// Test coverage:
+// 测试覆盖：
 //   - 8-element INT8 ADD with pre-requant and output requant
 //   - Pre-multipliers = 256, pre-shifts = 8  (effectively *256>>8 = identity)
 //   - Output multiplier = 128, output shift = 7  (effectively *128>>7 = identity)

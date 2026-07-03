@@ -1,5 +1,5 @@
-// npu_buffer: generic double-buffer with bank state machine
-// Two banks (A/B) support load/compute overlap via ping-pong.
+// npu_buffer：带 bank 状态机的通用双缓冲
+// 双 bank（A/B）通过乒乓操作支持加载/计算重叠。
 // HB1-B formal path uses 256-bit beat entries and synchronous reads.
 `timescale 1ns / 1ps
 
@@ -40,7 +40,7 @@ module npu_buffer #(
 );
 
     // ============================================================
-    // Bank states
+    // Bank 状态
     // ============================================================
     localparam B_EMPTY   = 2'd0;
     localparam B_LOADING = 2'd1;
@@ -48,13 +48,13 @@ module npu_buffer #(
     localparam B_USING   = 2'd3;
 
     // ============================================================
-    // Storage arrays (two banks)
+    // 存储阵列（双 bank）
     // ============================================================
     reg [DATA_WIDTH-1:0] bank_a [0:ENTRIES-1];
     reg [DATA_WIDTH-1:0] bank_b [0:ENTRIES-1];
 
     // ============================================================
-    // Bank state registers
+    // Bank 状态寄存器
     // ============================================================
     reg [1:0] state_a, state_b;
 

@@ -1,7 +1,7 @@
 //=============================================================================
 // npu_conv_5x5_singlewindow_diag_test.sv — Agent B Diagnostic Test 3
 //
-// Purpose: Verify 5x5 kernel single-window (1x1 output) still works in
+// 目的： Verify 5x5 kernel single-window (1x1 output) still works in
 //   single-cluster mode. This is the existing working shape (5x5 input,
 //   5x5 kernel, valid conv → 1x1 output), tested in single-cluster to
 //   establish a baseline.

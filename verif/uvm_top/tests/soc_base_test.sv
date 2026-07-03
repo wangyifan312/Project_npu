@@ -1,8 +1,8 @@
 //=============================================================================
-// soc_base_test.sv — Base UVM Test Class
+// soc_base_test.sv — UVM 基础测试类
 //
-// Creates the soc_top_env and prints the UVM topology at end_of_elaboration.
-// All concrete tests extend this class.
+// 创建 soc_top_env 并打印 UVM 拓扑 at end_of_elaboration.
+// 所有具体测试类继承此类。
 //=============================================================================
 
 `timescale 1ns / 1ps
@@ -43,7 +43,7 @@ class soc_base_test extends uvm_test;
     uvm_top.print_topology();
   endfunction
 
-  // Clear sticky probe observation fields before starting a new task.
+  // 清除 sticky 探针观测字段 before starting a new task.
   // Delegates to the interface's built-in clear function for simulator portability.
   task clear_probe_sticky();
     probe_vif.clear_sticky();

@@ -1,6 +1,6 @@
-// mac_pe: single MAC Processing Element for systolic array
-// INT8 activation × INT8 weight → INT32 accumulation
-// Weight-stationary: weight pre-loaded, activation flows left→right, sum flows top→bottom
+// mac_pe：脉动阵列的单 MAC 处理单元
+// INT8 激活 × INT8 权重 → INT32 累加
+// 权重驻留：权重预加载，激活从左向右流动，部分和从上向下流动
 `timescale 1ns / 1ps
 
 module mac_pe (

@@ -4,11 +4,11 @@
 // Phase U7-a: renamed from npu_fc_full_cluster_96out_test.
 // CLUSTER_COUNT=1 final baseline — single 64×64 PE cluster.
 //
-// Purpose: Prove the full 64×64 PE array (16×16 tiles, 4096 PEs) is activated
+// 目的： Prove the full 64×64 PE array (16×16 tiles, 4096 PEs) is activated
 // during FC compute. Uses FC task with 96 output channels, deterministic
 // pattern, verifies output correctness and array activity via sticky probes.
 //
-// Checks:
+// 检查：
 //   1. Output compare: 96 INT32 outputs matched golden
 //   2. PE array busy/valid/done observed via probe
 //   3. Full array active window: all tile enables asserted

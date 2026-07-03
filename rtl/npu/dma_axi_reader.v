@@ -1,4 +1,4 @@
-// dma_axi_reader: AXI4 read master for contiguous block DMA
+// dma_axi_reader：AXI4 读主设备，用于连续块 DMA
 // Splits large transfers into bursts (max 16 beats per burst)
 // Outputs data stream to buffer with backpressure (data_ready)
 `timescale 1ns / 1ps
@@ -11,7 +11,7 @@ module dma_axi_reader #(
     input  wire        clk,
     input  wire        rst_n,
 
-    // === Control interface ===
+    // === 控制接口 ===
     input  wire                        start,
     input  wire [AXI_ADDR_WIDTH-1:0]   base_addr,
     input  wire [31:0]                 byte_count,
@@ -25,7 +25,7 @@ module dma_axi_reader #(
     output wire                        data_valid,
     input  wire                        data_ready,
 
-    // === AXI4 Read Master ===
+    // === AXI4 读主设备 ===
     output wire [AXI_ADDR_WIDTH-1:0]   m_axi_araddr,
     output wire                        m_axi_arvalid,
     input  wire                        m_axi_arready,
@@ -58,7 +58,7 @@ module dma_axi_reader #(
     localparam ERR_INTERNAL= 8'h22;
 
     // ============================================================
-    // State machine
+    // 状态机
     // ============================================================
     localparam S_IDLE    = 3'd0;
     localparam S_AR      = 3'd1;  // issuing read address
@@ -69,7 +69,7 @@ module dma_axi_reader #(
     reg [2:0] state;
 
     // ============================================================
-    // Internal registers
+    // 内部寄存器
     // ============================================================
     reg  [31:0] bytes_remaining;
     reg  [31:0] current_addr;
@@ -109,7 +109,7 @@ module dma_axi_reader #(
                             (base_addr[BEAT_BYTES_LOG2-1:0] != {BEAT_BYTES_LOG2{1'b0}});
 
     // ============================================================
-    // AXI4 AR channel
+    // AXI4 AR 通道
     // ============================================================
     wire ar_hs = m_axi_arvalid && m_axi_arready;
 
@@ -120,7 +120,7 @@ module dma_axi_reader #(
     assign m_axi_arvalid = (state == S_AR) && !ar_done;
 
     // ============================================================
-    // AXI4 R channel (read data)
+    // AXI4 R 通道 (read data)
     // ============================================================
     // Accept AXI read data when buffer is ready to receive
     assign m_axi_rready = data_ready;
@@ -128,7 +128,7 @@ module dma_axi_reader #(
     wire expected_rlast = (beat_counter == burst_len);
 
     // ============================================================
-    // State machine: sequential
+    // 状态机: sequential
     // ============================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

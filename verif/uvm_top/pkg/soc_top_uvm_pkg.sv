@@ -273,7 +273,7 @@ package soc_top_uvm_pkg;
   `include "npu_pe_array_clock_gating_test.sv"
 
   //---------------------------------------------------------------------------
-  // Phase U8-a: NPU IRQ reporting BFM test
+  // 阶段 U8-a：NPU 中断 reporting BFM test
   //---------------------------------------------------------------------------
   `include "npu_irq_reporting_test.sv"
 

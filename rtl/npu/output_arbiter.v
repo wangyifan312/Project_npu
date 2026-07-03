@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 
 // output_arbiter: single-cluster output pass-through (64x64 PE array).
-// With CLUSTER_COUNT=1: no round-robin needed — passes cluster 0 straight through.
+// CLUSTER_COUNT=1 时无需轮询 — 直通 cluster 0。
 
 module output_arbiter #(
     parameter CLUSTER_COUNT = 1,

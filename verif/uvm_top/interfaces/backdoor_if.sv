@@ -1,8 +1,8 @@
 //=============================================================================
-// backdoor_if.sv — Fast shared-RAM access for fixture data loading
+// backdoor_if.sv — 用于加载测试数据的快速共享 RAM 访问
 //
 // Provides task/function methods that UVM tests can call through a virtual
-// interface handle to bulk-load .memh files directly into the DUT shared RAM
+// 批量加载 .memh 文件到 DUT 共享 RAM 的接口
 // without going through slow per-word AXI-Lite writes.
 //
 // Interface tasks use $root hierarchical references to access the DUT RAM.
@@ -14,11 +14,11 @@
 
 interface backdoor_if;
 
-  // Large buffer for $readmemh — at interface scope to avoid VCS issues
+  // $readmemh 的大缓冲区 — 在接口作用域以避免 VCS 问题
   reg [31:0] words [0:131071];
 
   //---------------------------------------------------------------------------
-  // load_memh — load a .memh file directly into the DUT shared RAM
+  // load_memh — 将 .memh 文件直接加载到 DUT 共享 RAM
   //---------------------------------------------------------------------------
   task load_memh(input string fname, input int base_addr, input int nwords);
     int i;
@@ -35,7 +35,7 @@ interface backdoor_if;
   endtask
 
   //---------------------------------------------------------------------------
-  // read32 — read a single 32-bit word from the DUT shared RAM
+  // read32 — 从 DUT 共享 RAM 读取单个 32-bit 字
   //---------------------------------------------------------------------------
   function int read32(input int byte_addr);
     int beat_idx;

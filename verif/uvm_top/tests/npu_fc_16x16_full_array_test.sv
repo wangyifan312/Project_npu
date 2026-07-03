@@ -1,12 +1,12 @@
 //=============================================================================
 // npu_fc_16x16_full_array_test.sv — Single Cluster Full 16x16 Array Test
 //
-// Purpose: Prove a single cluster's full 16×16 PE array (4×4 tiles, 256 PEs)
+// 目的： Prove a single cluster's full 16×16 PE array (4×4 tiles, 256 PEs)
 // is completely enabled during FC compute.  Uses deterministic input/weight
 // patterns and verifies output correctness, cluster activity, and tile
 // enable coverage via hierarchical probes.
 //
-// Checks:
+// 检查：
 //   1. Output compare: 16 INT32 outputs matched golden
 //   2. cluster0 busy/valid/done observed via probe
 //   3. At least one cycle where all active tiles within cluster0 have

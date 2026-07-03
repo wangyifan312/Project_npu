@@ -1,7 +1,7 @@
 //=============================================================================
 // npu_conv_bias_requant_test.sv — Conv Bias + Requant Smoke Test
 //
-// Test coverage:
+// 测试覆盖：
 //   - 5x5 input, 5x5 kernel, Cin=1, Cout=2, stride=1, valid padding
 //   - conv_cfg[4]=1 (bias enabled), conv_cfg[1:0]=0 (5x5 kernel)
 //   - INT32 bias = {10, 20} added to raw MAC output
