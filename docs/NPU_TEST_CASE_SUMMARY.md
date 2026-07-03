@@ -4,7 +4,7 @@
 
 | 项目 | 数量 |
 |------|------|
-| active registered tests | **56** |
+| active registered tests | **57** |
 | archived tests | **5** |
 | orphan tests | **0** |
 | UVM_ERROR | **0** |
@@ -29,7 +29,8 @@
 | **NPU IRQ (U8-a)** | **1** | BFM-level IRQ protocol verification |
 | **CPU-running smoke (U8-b)** | **3** | PicoRV32 boot/polling/IRQ smoke |
 | **DMA read partial mask (U9-a1)** | **2** | DMA read-side data_strb partial beat zero-padding |
-| **Total active** | **56** | — |
+| **DMA buffer capacity guard (U9-a2)** | **1** | task_checker rejects input/weight exceeding buffer bank capacity |
+| **Total active** | **57** | — |
 
 ## 3. Smoke / Basic Tests
 
@@ -184,7 +185,22 @@
 - **不是 4KB boundary split**
 - `soc_base_test` 是 abstract base class，不计入 active concrete tests 数量
 
-## 16. Archived Tests
+## 16. DMA Buffer Capacity Guard Test (U9-a2)
+
+| Test | Purpose | Key Coverage | Result |
+|------|---------|-------------|--------|
+| `npu_dma_buffer_capacity_guard_test` | Buffer capacity overflow rejection | Case A: input_bytes overflow → ERR_BUF_OVERFLOW; Case B: weight_bytes overflow → ERR_BUF_OVERFLOW; Case C/D: legal sizes NOT falsely rejected | 4/4 PASS |
+
+**U9-a2 说明：**
+- `task_checker` 新增 `BUF_ENTRIES`/`DMA_DATA_W` 参数，计算 `BUF_BANK_BYTES = 512 KiB`
+- `input_bytes > BUF_BANK_BYTES` → `ERR_BUF_OVERFLOW (0x0D)`
+- `weight_bytes > BUF_BANK_BYTES` → `ERR_BUF_OVERFLOW (0x0D)`
+- 等于 BUF_BANK_BYTES 允许，大于则拒绝
+- overflow 时不会启动 DMA
+- **不是修改 DMA reader/writer**
+- **不是修改 MatrixOp、PE array、IRQ CSR**
+
+## 17. Archived Tests
 
 | Test | 归档原因 |
 |------|----------|
@@ -196,7 +212,7 @@
 
 存档位置: `verif/uvm_top/tests/archive/`
 
-## 17. 回归套件
+## 18. 回归套件
 
 | 套件 | 测试数 | 运行方式 |
 |------|--------|----------|
@@ -207,7 +223,8 @@
 | NPU IRQ | 1 | 默认 BFM mode |
 | CPU-running smoke | 3 | `+TB_AXIL_ENABLE=0`（由 run_uvm.sh 透传至 simv） |
 | DMA read partial mask (U9-a1) | 2 | 默认 BFM mode |
-| Full active regression | 56 | 全部 |
+| DMA buffer capacity guard (U9-a2) | 1 | 默认 BFM mode |
+| Full active regression | 57 | 全部 |
 
 **CPU-running test 运行注意：**
 - `soc_cpu_npu_irq_smoke_test` 必须使用 `+TB_AXIL_ENABLE=0`

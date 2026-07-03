@@ -7,7 +7,7 @@
 | 最终交付 tag | `npu-final-delivery-v1.5-clean` |
 | main HEAD | `d5d2828` |
 | 架构基线 | single-cluster 64×64 PE NPU (CLUSTER_COUNT=1) |
-| active registered tests | **56** |
+| active registered tests | **57** |
 | archived tests | **5** |
 | orphan tests | **0** |
 | UVM_ERROR | **0** |
@@ -82,6 +82,12 @@ Output: PE array → output_arbiter → acc_buffer → store_pack → write_beat
 - `act_read_path` / `weight_read_path` 写 buffer 前 `dma_data_out & strb_mask` 清零无效 byte
 - AXI read 保持 256-bit full-width INCR burst（ARSIZE=3'd5）
 - **不是 narrow burst，不是 variable-size burst，不是 unaligned DMA**
+
+**DMA buffer capacity guard (U9-a2):**
+- `task_checker` 在任务启动前检查 `input_bytes` 和 `weight_bytes` 是否超过单 buffer bank 容量
+- `BUF_ENTRIES = 16384`, `DMA_DATA_W = 256`, `BUF_BANK_BYTES = 512 KiB`
+- 超过则拒绝任务并返回 `ERR_BUF_OVERFLOW (0x0D)`
+- 等于 BUF_BANK_BYTES 允许，大于则拒绝
 
 **MatrixOp streaming path (GST):**
 ```
@@ -195,6 +201,7 @@ PE array → result_tile_bank → GST store engine → write_beat_fifo → DMA w
 | PE array clock gating | ✅ U6-a |
 | NPU IRQ reporting | ✅ U8-a + U8-b |
 | DMA read partial beat zero-padding | ✅ U9-a1 |
+| DMA buffer capacity guard | ✅ U9-a2 |
 | multi-cluster | ❌ CLUSTER_COUNT=1 最终基线 |
 | 512-bit AXI | ❌ 未实现 |
 | general Conv MatrixOp | ❌ 未实现 |

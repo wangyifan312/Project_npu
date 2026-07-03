@@ -14,7 +14,7 @@
 | 模块 | 文件 | 功能 |
 |------|------|------|
 | `npu_ctrl` | `rtl/npu/npu_ctrl.v` | AXI-Lite CSR register file (128 registers, 7-bit address)。含 task 控制、地址/维度配置、perf counter readout、requant/add/gap 配置、CLUSTER_MODE/MASK (reserved)、**IRQ CSR (0x100/0x104/0x108)** |
-| `task_checker` | `rtl/npu/task_checker.v` | 任务参数合法性检查。验证 task_type、地址对齐、地址范围、bias/requant 参数、Conv/Pool 维度。输出 checks_pass/error_code |
+| `task_checker` | `rtl/npu/task_checker.v` | 任务参数合法性检查。验证 task_type、地址对齐、地址范围、bias/requant 参数、Conv/Pool 维度。**U9-a2: 新增 buffer capacity check（`input_bytes`/`weight_bytes` ≤ `BUF_BANK_BYTES = 512 KiB`），溢出返回 `ERR_BUF_OVERFLOW (0x0D)`**。输出 checks_pass/error_code |
 | `block_scheduler` | `rtl/npu/block_scheduler.v` | 输出 block 拆分。Conv 按输出行拆分，FC/GEMM 直通 |
 | `cluster_scheduler` | `rtl/npu/cluster_scheduler.v` | Cluster enable 控制。CLUSTER_COUNT=1 时始终 enable cluster[0] |
 | `perf_counter` | `rtl/npu/perf_counter.v` | 性能计数器。记录 cycle、DMA beats、array/compute/store/collect active cycles、bus active、MAC count、stall 统计、valid bytes |
