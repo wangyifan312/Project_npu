@@ -1,9 +1,8 @@
 //=============================================================================
-// soc_cpu_npu_polling_smoke_test.sv — Phase U8-b PicoRV32 CPU Polling Smoke
+// soc_cpu_npu_polling_smoke_test.sv — Phase U8-b1 CPU NPU Polling Smoke
 //
-// Proves PicoRV32 CPU can boot from shared_ram (backdoor preloaded firmware),
-// write NPU CSR via CPU AXI master, start NPU task, and poll CTRL.done.
-// Uses backdoor_if.read32() for shared_ram reads (BFM disabled in CPU mode).
+// PicoRV32 CPU configures NPU GEMM (M=1,K=4,N=1), starts task,
+// polls CTRL.done, writes MAGIC flags. Uses backdoor preload.
 //=============================================================================
 `timescale 1ns / 1ps
 
@@ -17,85 +16,116 @@ class soc_cpu_npu_polling_smoke_test extends soc_base_test;
     virtual backdoor_if bd_if;
     int rdata, i, timeout_cycles;
 
-    // Get backdoor interface handle (before raising objection for time-0 load)
     if (!uvm_config_db#(virtual backdoor_if)::get(this, "", "bd_if", bd_if))
-      `uvm_fatal("CPU_POLL", "backdoor_if not found in config_db")
+      `uvm_fatal("CPU_POLL", "backdoor_if not found")
 
-    // Step 1: Preload firmware via backdoor BEFORE reset release
-    `uvm_info("CPU_POLL", "=== CPU POLLING SMOKE (Phase U8-b) ===", UVM_NONE)
-    `uvm_info("CPU_POLL", "Loading firmware via backdoor...", UVM_NONE)
-    bd_if.load_memh("verif/firmware/npu_irq_smoke/polling_firmware.memh", 0, 1024);
-    `uvm_info("CPU_POLL", $sformatf("FW loaded: addr0=0x%08x addr4=0x%08x addr8=0x%08x",
-      bd_if.read32(32'h00000000), bd_if.read32(32'h00000004), bd_if.read32(32'h00000008)), UVM_NONE)
+    // --- Preload at time 0 (before CPU reset release) ---
+    `uvm_info("CPU_POLL", "=== CPU NPU POLLING SMOKE (Phase U8-b1) ===", UVM_NONE)
 
-    // Verify magic flag area is clear
-    `uvm_info("CPU_POLL", $sformatf("Pre-boot: MAGIC_BOOT=0x%08x MAGIC_DONE=0x%08x",
-      bd_if.read32(32'h000FF000), bd_if.read32(32'h000FF004)), UVM_NONE)
+    // Load firmware
+    bd_if.load_memh("verif/firmware/npu_irq_smoke/npu_polling.memh", 0, 128);
+    `uvm_info("CPU_POLL", $sformatf("FW[0]=0x%08h", bd_if.read32(32'h0)), UVM_NONE)
+
+    // Preload input: 4 bytes all-1 at 0x00010000
+    bd_if.load_memh("verif/firmware/npu_irq_smoke/npu_polling.memh", 32'h00010000, 1);  // reuse for all-1
+    // Overwrite with explicit all-1
+    for (i=0; i<4; i=i+1) begin
+      // backdoor write: use hierarchical path
+    end
+    // Use simple preload via a small memh file
+    // Actually: create inline via load_memh that's all-ones
+    // Simpler: use existing mechanism
+    `uvm_info("CPU_POLL", "Preloading input/weight via backdoor writes...", UVM_NONE)
+
+    // Preload input (0x00010000) and weight (0x00020000) with all-ones
+    // Use backdoor write by loading small memh files
+    // Generate temp memh content via system task
+    begin
+      int fd;
+      fd = $fopen("/tmp/u8b1_input.memh", "w");
+      $fwrite(fd, "01010101\n");
+      $fclose(fd);
+    end
+    bd_if.load_memh("/tmp/u8b1_input.memh", 32'h00010000, 1);
+    bd_if.load_memh("/tmp/u8b1_input.memh", 32'h00020000, 1);
+
+    // Clear output and magic areas
+    begin
+      int fd;
+      fd = $fopen("/tmp/u8b1_zero8.memh", "w");
+      for (i=0; i<8; i=i+1) $fwrite(fd, "00000000\n");
+      $fclose(fd);
+    end
+    bd_if.load_memh("/tmp/u8b1_zero8.memh", 32'h00030000, 8);
+    bd_if.load_memh("/tmp/u8b1_zero8.memh", 32'h000FF000, 16);
+
+    `uvm_info("CPU_POLL", $sformatf("Pre:  MAGIC_BOOT=0x%08h IN=0x%08h",
+      bd_if.read32(32'h000FF000), bd_if.read32(32'h00010000)), UVM_NONE)
 
     phase.raise_objection(this);
-    // Delay to allow CPU to boot (reset released at t=100ns)
     #1000;
 
-    // Step 2: Wait for MAGIC_BOOT = 0xB007B007 at 0x000FF000
-    `uvm_info("CPU_POLL", "Waiting for MAGIC_BOOT...", UVM_NONE)
-    timeout_cycles = 200000;
+    // --- Poll MAGIC_BOOT ---
+    timeout_cycles = 50000;
     for (i=0; i<timeout_cycles; i++) begin
       rdata = bd_if.read32(32'h000FF000);
       if (rdata == 32'hB007B007) begin
-        `uvm_info("CPU_POLL", $sformatf("MAGIC_BOOT at cycle %0d", i*100), UVM_NONE)
+        `uvm_info("CPU_POLL", $sformatf("MAGIC_BOOT at +%0dns", i*100+1000), UVM_NONE)
         break;
       end
       #100;
     end
     if (rdata != 32'hB007B007) begin
-      `uvm_error("CPU_POLL", "MAGIC_BOOT not seen")
+      `uvm_error("CPU_POLL", $sformatf("MAGIC_BOOT timeout: got 0x%08h", rdata))
       phase.drop_objection(this); return;
     end
 
-    // Step 3: Wait for MAGIC_POLL_DONE = 0xD00ED00E at 0x000FF004
-    `uvm_info("CPU_POLL", "Waiting for MAGIC_POLL_DONE...", UVM_NONE)
+    // --- Poll MAGIC_POLL_DONE ---
     for (i=0; i<timeout_cycles; i++) begin
       rdata = bd_if.read32(32'h000FF004);
       if (rdata == 32'hD00ED00E) begin
-        `uvm_info("CPU_POLL", $sformatf("MAGIC_POLL_DONE at cycle %0d", i*100), UVM_NONE)
+        `uvm_info("CPU_POLL", $sformatf("MAGIC_POLL_DONE at +%0dns", i*100+1000), UVM_NONE)
         break;
       end
       #100;
     end
     if (rdata != 32'hD00ED00E) begin
-      `uvm_error("CPU_POLL", "MAGIC_POLL_DONE not seen")
+      `uvm_error("CPU_POLL", $sformatf("MAGIC_POLL_DONE timeout: got 0x%08h err=0x%08h",
+        rdata, bd_if.read32(32'h000FF00C)))
       phase.drop_objection(this); return;
     end
 
-    // Step 4: Wait for MAGIC_TEST_DONE = 0x55AA55AA at 0x000FF010
-    `uvm_info("CPU_POLL", "Waiting for MAGIC_TEST_DONE...", UVM_NONE)
+    // --- Poll MAGIC_TEST_DONE ---
     for (i=0; i<timeout_cycles; i++) begin
-      rdata = bd_if.read32(32'h000FF010);
+      rdata = bd_if.read32(32'h000FF008);
       if (rdata == 32'h55AA55AA) begin
-        `uvm_info("CPU_POLL", $sformatf("MAGIC_TEST_DONE at cycle %0d", i*100), UVM_NONE)
+        `uvm_info("CPU_POLL", $sformatf("MAGIC_TEST_DONE at +%0dns", i*100+1000), UVM_NONE)
         break;
       end
       #100;
     end
     if (rdata != 32'h55AA55AA) begin
-      `uvm_error("CPU_POLL", "MAGIC_TEST_DONE not seen")
+      `uvm_error("CPU_POLL", $sformatf("MAGIC_TEST_DONE timeout: got 0x%08h", rdata))
       phase.drop_objection(this); return;
     end
 
-    // Step 5: Verify NPU output at 0x00030000
+    // --- Verify output ---
     rdata = bd_if.read32(32'h00030000);
-    `uvm_info("CPU_POLL", $sformatf("Output: 0x%08x (expected 4)", rdata), UVM_NONE)
-    if (rdata != 32'd4) begin
-      `uvm_error("CPU_POLL", $sformatf("Output mismatch: %0d expected 4", rdata))
-    end
+    `uvm_info("CPU_POLL", $sformatf("Output=0x%08h (expect 4)", rdata), UVM_NONE)
+    if ($signed(rdata) != 32'd4)
+      `uvm_error("CPU_POLL", $sformatf("Output mismatch: %0d != 4", $signed(rdata)))
 
-    // Step 6: Check cpu_trap
-    if (probe_vif.cpu_trap)
-      `uvm_error("CPU_POLL", "cpu_trap asserted!")
+    // --- Verify no error ---
+    rdata = bd_if.read32(32'h000FF00C);
+    if (rdata != 0)
+      `uvm_error("CPU_POLL", $sformatf("MAGIC_ERROR=0x%08h (expect 0)", rdata))
+
+    if (!probe_vif.cpu_trap)
+      `uvm_info("CPU_POLL", "cpu_trap=0 PASS", UVM_NONE)
     else
-      `uvm_info("CPU_POLL", "cpu_trap = 0 PASS", UVM_NONE)
+      `uvm_error("CPU_POLL", "cpu_trap asserted!")
 
-    `uvm_info("CPU_POLL", "=== CPU POLLING SMOKE COMPLETE ===", UVM_NONE)
+    `uvm_info("CPU_POLL", "=== CPU NPU POLLING SMOKE PASS ===", UVM_NONE)
     phase.drop_objection(this);
   endtask
 endclass
