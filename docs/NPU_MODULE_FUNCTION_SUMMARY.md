@@ -29,10 +29,10 @@
 
 | 模块 | 文件 | 功能 |
 |------|------|------|
-| `dma_axi_reader` | `rtl/npu/dma_axi_reader.v` | AXI4 read master。支持 INCR burst (max 16 beats)，RLAST 验证。**U9-a1: 新增 `data_strb` 输出，基于 transfer-level `bytes_remaining` 计算 partial final beat 有效 byte mask** |
+| `dma_axi_reader` | `rtl/npu/dma_axi_reader.v` | AXI4 read master。支持 INCR burst (max 16 beats)，RLAST 验证。**U9-a1: 新增 `data_strb` 输出。U9-a3: 4KB boundary auto-split** |
 | `act_read_path` | `rtl/npu/act_read_path.v` | Activation DMA reader wrapper。**U9-a1: 使用 `data_strb` 展开 bit-level mask，写入 act_buffer 前清零无效 byte** |
 | `weight_read_path` | `rtl/npu/weight_read_path.v` | Weight DMA reader wrapper。**U9-a1: 使用 `data_strb` 展开 bit-level mask，写入 wgt_buffer 前清零无效 byte** |
-| `dma_axi_writer` | `rtl/npu/dma_axi_writer.v` | AXI4 write master。Phase B2 next-beat preload，WSTRB 计算，burst splitting |
+| `dma_axi_writer` | `rtl/npu/dma_axi_writer.v` | AXI4 write master。Phase B2 next-beat preload，WSTRB 计算，burst splitting。**U9-a3: 4KB boundary auto-split** |
 | `write_beat_fifo` | `rtl/npu/write_beat_fifo.v` | 256-bit beat FIFO (depth 64)。store_pack → DMA writer 缓冲 |
 
 ## Buffer / Memory

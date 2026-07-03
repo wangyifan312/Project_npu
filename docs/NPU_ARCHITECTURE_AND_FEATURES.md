@@ -7,7 +7,7 @@
 | 最终交付 tag | `npu-final-delivery-v1.5-clean` |
 | main HEAD | `d5d2828` |
 | 架构基线 | single-cluster 64×64 PE NPU (CLUSTER_COUNT=1) |
-| active registered tests | **58** |
+| active registered tests | **61** |
 | archived tests | **6** |
 | orphan tests | **0** |
 | UVM_ERROR | **0** |
@@ -88,6 +88,13 @@ Output: PE array → output_arbiter → acc_buffer → store_pack → write_beat
 - `BUF_ENTRIES = 16384`, `DMA_DATA_W = 256`, `BUF_BANK_BYTES = 512 KiB`
 - 超过则拒绝任务并返回 `ERR_BUF_OVERFLOW (0x0D)`
 - 等于 BUF_BANK_BYTES 允许，大于则拒绝
+
+**AXI4 4KB boundary burst split (U9-a3):**
+- DMA reader 和 writer 的 burst 计算均加入 4KB boundary 限制
+- 跨 4KB 时自动拆分 burst，不返回 error
+- 所有 AR/AW burst 满足: `(addr[11:0] + ((len+1) << size)) <= 4096`
+- ARSIZE/AWSIZE 保持 3'd5, ARBURST/AWBURST 保持 INCR
+- **不是 narrow burst，不是 variable-size burst，不是 unaligned DMA**
 
 **MatrixOp streaming path (GST):**
 ```
@@ -202,12 +209,13 @@ PE array → result_tile_bank → GST store engine → write_beat_fifo → DMA w
 | NPU IRQ reporting | ✅ U8-a + U8-b |
 | DMA read partial beat zero-padding | ✅ U9-a1 |
 | DMA buffer capacity guard | ✅ U9-a2 |
+| AXI4 4KB boundary split | ✅ U9-a3 |
 | multi-cluster | ❌ CLUSTER_COUNT=1 最终基线 |
 | 512-bit AXI | ❌ 未实现 |
 | general Conv MatrixOp | ❌ 未实现 |
 | descriptor queue | ❌ 未实现 |
 | full software driver stack | ❌ 仅 minimal bare-metal firmware smoke |
-| 4KB boundary split (AXI4) | ❌ 未实现 |
+| 4KB boundary split (AXI4) | ✅ U9-a3 (auto-split, not error) |
 | narrow burst | ❌ 未实现 |
 | variable-size burst | ❌ 未实现 |
 | unaligned DMA | ❌ 未实现 |
