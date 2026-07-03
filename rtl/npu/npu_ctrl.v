@@ -166,8 +166,8 @@ module npu_ctrl #(
     localparam ADDR_REQUANT2_SHIFT      = 6'd31;  // 0x7C: [5:0]=shift
     localparam ADDR_REQUANT3_MULT       = 6'd32;  // 0x80
     localparam ADDR_REQUANT3_SHIFT      = 6'd33;  // 0x84: [5:0]=shift
-    localparam ADDR_CLUSTER_MODE        = 6'd34;  // 0x88: [1:0]=cluster mode
-    localparam ADDR_CLUSTER_MASK        = 6'd35;  // 0x8C: [5:0]=cluster mask
+    localparam ADDR_CLUSTER_MODE        = 6'd34;  // 0x88: [1:0]=cluster mode (reserved, CLUSTER_COUNT=1)
+    localparam ADDR_CLUSTER_MASK        = 6'd35;  // 0x8C: [5:0]=cluster mask (reserved, only bit[0] used)
     localparam ADDR_VERSION             = 6'd36;  // 0x90: R1a register map version
     localparam ADDR_CAPABILITY          = 6'd37;  // 0x94: supported RTL capability bits
     localparam ADDR_CONV_CFG            = 6'd38;  // 0x98: future generalized Conv config
