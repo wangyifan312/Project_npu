@@ -15,7 +15,8 @@
 
 | Directory | Contents | Count |
 |-----------|----------|-------|
-| `verif/uvm_top/tests/` | UVM test classes | 56 files (55 registered + 1 orphan) |
+| `verif/uvm_top/tests/` | UVM test classes (active) | 50 registered tests |
+| `verif/uvm_top/tests/archive/` | Archived legacy tests (U7-a) | 5 files (not in regression) |
 | `verif/uvm_top/sequences/` | Reusable test sequences | 13 files |
 | `verif/uvm_top/pkg/` | UVM package (includes all) | 1 file |
 | `verif/uvm_top/checkers/` | Pipeline checker (stub) | 1 file |
@@ -40,8 +41,8 @@
 | H. Error path | 3 | Invalid task, misaligned addr, start-while-busy |
 | I. Cluster / array structural | 6 | Cluster mode, mask, full array, probe verification |
 | J. Diagnostic / debug | 5 | Conv multi-cluster, frontend hang diag |
-| **Total** | **55 registered** | — |
-| Orphan | 1 | `npu_fc_b1_diag.sv` (not in package) |
+| **Total active** | **50 registered** | — |
+| Archived (U7-a) | 5 | Legacy multi-cluster / diagnostic tests |
 
 ---
 
@@ -50,7 +51,9 @@
 | Check | Result |
 |-------|--------|
 | Tests in package also on disk | ✅ All 55 included tests exist |
-| Tests on disk also in package | ⚠️ 1 orphan: `npu_fc_b1_diag.sv` |
+| Tests on disk also in package | ✅ All active tests registered; 5 archived separately |
+| Orphan tests | 0 |
+| Archived tests (Phase U7-a) | 5: `npu_cluster_mode_test`, `npu_cluster_mask_sweep_test`, `npu_perf_counter_scaling_test`, `npu_conv_1x1_dual_32oc_diag_test`, `npu_fc_b1_diag` |
 | Base test registered | ✅ `soc_base_test.sv` |
 | Shared RAM test registered | ✅ `soc_shared_ram_rw_test.sv` |
 
@@ -126,13 +129,12 @@
 
 | # | Test Name | Purpose | Status |
 |---|-----------|---------|--------|
-| 35 | `npu_perf_counter_scaling_test` | Perf counters: 1/2/6 cluster scaling | PASS |
-| 36 | `npu_peak_throughput_test` | FC 64→64: full 4096 PE throughput | PASS |
-| 37 | `npu_fc_128x128_peak_test` | FC 128×128 peak TOPS measurement | PASS |
-| 38 | `npu_gemm_pipeline_bw_tops_test` | GEMM pipeline BW+TOPS (EXPERIMENTAL) | Historical FAIL |
-| 39 | `npu_conv_multiblock_test` | Conv multi-block: 3 blocks pipeline | PASS |
-| 40 | `npu_lenet_1_test` | Full LeNet-5 9-layer pipeline | PASS |
-| 41 | `npu_conv_1x1_full_96oc_diag_test` | 1×1 Conv full cluster, 96 output channels | PASS |
+| 35 | `npu_peak_throughput_test` | FC 64→64: full 4096 PE throughput | PASS |
+| 36 | `npu_fc_128x128_peak_test` | FC 128×128 peak TOPS measurement | PASS |
+| 37 | `npu_gemm_pipeline_bw_tops_test` | GEMM pipeline BW+TOPS (EXPERIMENTAL) | Historical FAIL |
+| 38 | `npu_conv_multiblock_test` | Conv multi-block: 3 blocks pipeline | PASS |
+| 39 | `npu_lenet_1_test` | Full LeNet-5 9-layer pipeline | PASS |
+| 40 | `npu_conv_1x1_full_96oc_diag_test` | 1×1 Conv 96 output channels | PASS |
 
 ### 5.8 Error Path Tests
 
@@ -146,21 +148,18 @@
 
 | # | Test Name | Purpose | Status |
 |---|-----------|---------|--------|
-| 45 | `npu_cluster_mode_test` | Single/dual/full cluster modes | PASS |
-| 46 | `npu_cluster_mask_sweep_test` | Cluster mask sweep: single/dual/full/mask | PASS |
-| 47 | `npu_fc_16x16_full_array_test` | Full 16×16 PE array activation, sticky probe | PASS |
-| 48 | `npu_fc_full_cluster_96out_test` | All clusters simultaneously active via sticky probe | PASS |
+| 41 | `npu_fc_16x16_full_array_test` | Full 16×16 tile array activation, sticky probe | PASS |
+| 42 | `npu_fc_full_array_activation_test` | Full 64×64 PE array activation (renamed U7-a) | PASS |
 
 ### 5.10 Diagnostic / Debug Tests
 
 | # | Test Name | Purpose | Status |
 |---|-----------|---------|--------|
-| 49 | `npu_conv_1x1_single_16oc_diag_test` | Single-cluster Conv 16oc baseline | PASS |
-| 50 | `npu_conv_1x1_dual_32oc_diag_test` | Dual-cluster Conv fingerprint | PASS |
-| 51 | `npu_conv_1x1_multiwindow_diag_test` | 1×1 Conv multi-window hang test | PASS |
-| 52 | `npu_conv_3x3_multiwindow_diag_test` | 3×3 Conv multi-window hang test | PASS |
-| 53 | `npu_conv_5x5_singlewindow_diag_test` | 5×5 Conv single-window baseline | PASS |
-| 54 | `npu_conv_1x1_fullcluster_multiwindow_diag_test` | Full-cluster multi-window hang test | PASS |
+| 43 | `npu_conv_1x1_single_16oc_diag_test` | Single-cluster Conv 16oc baseline | PASS |
+| 44 | `npu_conv_1x1_multiwindow_diag_test` | 1×1 Conv multi-window hang test | PASS |
+| 45 | `npu_conv_3x3_multiwindow_diag_test` | 3×3 Conv multi-window hang test | PASS |
+| 46 | `npu_conv_5x5_singlewindow_diag_test` | 5×5 Conv single-window baseline | PASS |
+| 47 | `npu_conv_1x1_full_array_multiwindow_diag_test` | Full-array multi-window hang test (renamed U7-a) | PASS |
 
 ### 5.11 Base Test (not a standalone test)
 
@@ -168,11 +167,17 @@
 |---|-----------|---------|
 | 55 | `soc_base_test` | Base class for all tests; creates env, enables monitors |
 
-### 5.12 Orphan Test (not registered in package)
+### 5.12 Archived Tests (Phase U7-a, not in active regression)
 
-| # | Test Name | Purpose | Status |
-|---|-----------|---------|--------|
-| O1 | `npu_fc_b1_diag` | B1 FC multi-tile mismatch diagnostic (pre-fix fingerprint) | Not registered |
+| # | Test Name | Archive Reason |
+|---|-----------|----------------|
+| A1 | `npu_cluster_mode_test` | Multi-cluster modes; CLUSTER_COUNT=1 renders mode>0 as NO-OP |
+| A2 | `npu_cluster_mask_sweep_test` | Multi-cluster mask sweep; only mask[0] valid for CLUSTER_COUNT=1 |
+| A3 | `npu_perf_counter_scaling_test` | 1/2/6 cluster scaling; meaningless for CLUSTER_COUNT=1 |
+| A4 | `npu_conv_1x1_dual_32oc_diag_test` | Dual-cluster Conv diagnostic; CLUSTER_COUNT=1 |
+| A5 | `npu_fc_b1_diag` | Historical FC B1 multi-tile mismatch diagnostic; pre-fix fingerprint |
+
+All archived files preserved in `verif/uvm_top/tests/archive/`.
 
 ---
 
@@ -204,13 +209,13 @@ npu_conv_1x1_smoke_test, npu_pool_smoke_test,
 npu_requant_smoke_test, npu_bandwidth_60pct_stress_test
 ```
 
-### 6.4 Low-Power Regression (2 tests)
+### 6.4 Low-Power Regression (1 test)
 
 ```
-npu_pe_array_clock_gating_test, npu_perf_counter_scaling_test
+npu_pe_array_clock_gating_test
 ```
 
-### 6.5 Full Stress Regression (all 55 registered tests)
+### 6.5 Full Stress Regression (all 50 registered tests)
 
 Run time: ~2-3 hours at 200MHz simulation.
 
@@ -279,12 +284,13 @@ vcs -full64 -sverilog -timescale=1ns/1ps -ntb_opts uvm-1.2 \
 
 | Metric | Value |
 |--------|-------|
-| Total test files | 56 |
-| Registered tests | 55 |
-| Orphan tests (not in package) | 1 (`npu_fc_b1_diag.sv`) |
+| Total test files | 55 (50 active + 5 archived) |
+| Active registered tests | 50 |
+| Archived tests (U7-a, not in regression) | 5 |
+| Orphan tests (not in package) | 0 |
 | Base test class | 1 (`soc_base_test`) |
-| Concrete test classes | 54 |
-| Tests with PASS status | 53 |
+| Concrete test classes (active) | 49 |
+| Tests with PASS status (active) | 48 |
 | Tests with FAIL status (pre-existing, known) | 0 in baseline, 1 historical (`gemm_pipeline_bw_tops_test`) |
 | UVM sequences | 13 |
 | Checker files | 1 (stub) |
@@ -292,3 +298,4 @@ vcs -full64 -sverilog -timescale=1ns/1ps -ntb_opts uvm-1.2 \
 | Interfaces | 3 |
 | **UVM_ERROR** | 0 (for all baseline regression) |
 | **UVM_FATAL** | 0 (for all baseline regression) |
+| **Baseline** | Single-cluster 64×64 PE NPU, CLUSTER_COUNT=1 |
