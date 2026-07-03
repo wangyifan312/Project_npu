@@ -17,17 +17,20 @@ class soc_cpu_npu_polling_smoke_test extends soc_base_test;
     virtual backdoor_if bd_if;
     int rdata, i, timeout_cycles;
 
-    phase.raise_objection(this);
-    #200;
-
-    // Get backdoor interface handle
+    // Get backdoor interface handle (before raising objection for time-0 load)
     if (!uvm_config_db#(virtual backdoor_if)::get(this, "", "bd_if", bd_if))
       `uvm_fatal("CPU_POLL", "backdoor_if not found in config_db")
 
-    // Step 1: Preload firmware via backdoor
+    // Step 1: Preload firmware via backdoor BEFORE reset release
     `uvm_info("CPU_POLL", "=== CPU POLLING SMOKE (Phase U8-b) ===", UVM_NONE)
     `uvm_info("CPU_POLL", "Loading firmware via backdoor...", UVM_NONE)
     bd_if.load_memh("verif/firmware/npu_irq_smoke/polling_firmware.memh", 0, 1024);
+    `uvm_info("CPU_POLL", $sformatf("Firmware loaded. Word[0]=0x%08x Word[4]=0x%08x",
+      bd_if.read32(0), bd_if.read32(4)), UVM_NONE)
+
+    phase.raise_objection(this);
+    // Delay to allow CPU to boot (reset released at t=100ns)
+    #1000;
 
     // Step 2: Wait for MAGIC_BOOT = 0xB007B007 at 0x000FF000
     `uvm_info("CPU_POLL", "Waiting for MAGIC_BOOT...", UVM_NONE)
