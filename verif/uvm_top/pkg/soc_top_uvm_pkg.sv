@@ -302,6 +302,13 @@ package soc_top_uvm_pkg;
   //---------------------------------------------------------------------------
   `include "npu_dma_buffer_boundary_legal_test.sv"
 
+  //---------------------------------------------------------------------------
+  // Phase U9-a3: AXI4 4KB boundary split tests
+  //---------------------------------------------------------------------------
+  `include "npu_dma_read_4kb_boundary_split_test.sv"
+  `include "npu_dma_write_4kb_boundary_split_test.sv"
+  `include "npu_dma_4kb_boundary_mixed_test.sv"
+
 endpackage
 
 `endif // SOC_TOP_UVM_PKG_SV

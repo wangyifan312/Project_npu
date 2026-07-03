@@ -110,6 +110,18 @@ class axi4_dma_monitor extends uvm_monitor;
           `uvm_warning("DMA_MON", $sformatf("Read ARADDR=0x%08h not 32-byte aligned", rd_addr))
           read_protocol_errors++;
         end
+        // U9-a3: check AR burst does not cross 4KB boundary
+        begin
+          int unsigned burst_bytes;
+          int unsigned offset;
+          burst_bytes = (int'(rd_arlen) + 1) << int'(rd_arsize);
+          offset = rd_addr[11:0];
+          if (offset + burst_bytes > 4096) begin
+            `uvm_error("AXI_4KB", $sformatf("AR burst crosses 4KB: addr=0x%08h len=%0d size=%0d bytes=%0d offset=%0d",
+              rd_addr, rd_arlen, rd_arsize, burst_bytes, offset))
+            read_protocol_errors++;
+          end
+        end
 
         `uvm_info("DMA_MON", $sformatf("READ burst start: addr=0x%08h len=%0d", rd_addr, rd_expected_beats), UVM_MEDIUM)
       end
@@ -179,6 +191,18 @@ class axi4_dma_monitor extends uvm_monitor;
         if (wr_addr[4:0] != 5'd0) begin
           `uvm_warning("DMA_MON", $sformatf("Write AWADDR=0x%08h not 32-byte aligned", wr_addr))
           write_protocol_errors++;
+        end
+        // U9-a3: check AW burst does not cross 4KB boundary
+        begin
+          int unsigned burst_bytes;
+          int unsigned offset;
+          burst_bytes = (int'(wr_awlen) + 1) << int'(wr_awsize);
+          offset = wr_addr[11:0];
+          if (offset + burst_bytes > 4096) begin
+            `uvm_error("AXI_4KB", $sformatf("AW burst crosses 4KB: addr=0x%08h len=%0d size=%0d bytes=%0d offset=%0d",
+              wr_addr, wr_awlen, wr_awsize, burst_bytes, offset))
+            write_protocol_errors++;
+          end
         end
 
         `uvm_info("DMA_MON", $sformatf("WRITE burst start: addr=0x%08h len=%0d", wr_addr, wr_expected_beats), UVM_MEDIUM)
