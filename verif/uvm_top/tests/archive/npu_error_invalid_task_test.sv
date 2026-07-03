@@ -1,8 +1,11 @@
 //=============================================================================
-// npu_error_invalid_task_test.sv — Invalid Task Type Error Path Test
+// npu_error_invalid_task_test.sv — Invalid Task Type Error Path Test (ARCHIVED U9-a2)
 //
-// Verifies that an unsupported task_type value triggers
-// ERR_INVALID_TASK_TYPE (0x01).  Valid task types are 0-5; type 6 is invalid.
+// Originally verified that task_type=6 triggers ERR_INVALID_TASK_TYPE (0x01).
+// TASK_VECTOR_RELU=6 was later added to the valid task enum (all 0-7 are now valid).
+// Hardware masks cfg_task_type to [2:0] in npu_ctrl.v:526, so all 8 values are
+// valid — ERR_INVALID_TASK_TYPE (0x01) and ERR_UNSUPPORTED_TASK (0x0A) are
+// unreachable dead code.
 //=============================================================================
 
 `timescale 1ns / 1ps
@@ -34,15 +37,15 @@ class npu_error_invalid_task_test extends soc_base_test;
     `uvm_info("TEST", "=== npu_error_invalid_task_test: Invalid Task Type Error ===", UVM_NONE)
 
     //-----------------------------------------------------------------------
-    // Step 1: Write TASK_TYPE = 3'd6 (invalid — only 0-5 are valid)
-    //   Other registers are set to valid values so only task_type triggers the error.
+    // Step 1: Write TASK_TYPE = 3'd6 (was invalid when test written;
+    //   now TASK_VECTOR_RELU=6 is valid — test archived U9-a2)
     //-----------------------------------------------------------------------
-    `uvm_info("TEST", "Configuring NPU with invalid task_type=6...", UVM_NONE)
+    `uvm_info("TEST", "Configuring NPU with task_type=6 (archived test)...", UVM_NONE)
 
-    seq.axil_write32(`NPU_REG_TASK_TYPE,   32'd6);              // INVALID: 6 not recognized
-    seq.axil_write32(`NPU_REG_INPUT_ADDR,  32'h0000_0000);      // 64B-aligned, non-null
-    seq.axil_write32(`NPU_REG_WEIGHT_ADDR, 32'h0000_0040);      // 64B-aligned, non-null
-    seq.axil_write32(`NPU_REG_OUTPUT_ADDR, 32'h0000_0080);      // 64B-aligned, non-null
+    seq.axil_write32(`NPU_REG_TASK_TYPE,   32'd6);              // now TASK_VECTOR_RELU
+    seq.axil_write32(`NPU_REG_INPUT_ADDR,  32'h0000_0000);      // 64B-aligned
+    seq.axil_write32(`NPU_REG_WEIGHT_ADDR, 32'h0000_0040);      // 64B-aligned
+    seq.axil_write32(`NPU_REG_OUTPUT_ADDR, 32'h0000_0080);      // 64B-aligned
     seq.axil_write32(`NPU_REG_INPUT_BYTES,  32'd25);
     seq.axil_write32(`NPU_REG_WEIGHT_BYTES, 32'd25);
     seq.axil_write32(`NPU_REG_OUTPUT_BYTES, 32'd25);

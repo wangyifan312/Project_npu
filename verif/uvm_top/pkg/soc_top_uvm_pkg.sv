@@ -170,7 +170,8 @@ package soc_top_uvm_pkg;
   // Error-path tests
   //---------------------------------------------------------------------------
   `include "npu_error_misaligned_addr_test.sv"
-  `include "npu_error_invalid_task_test.sv"
+  // npu_error_invalid_task_test.sv archived (U9-a2): ERR_INVALID_TASK_TYPE (0x01)
+  // is unreachable — hardware masks task_type to [2:0], all 8 values 0-7 valid.
   `include "npu_start_while_busy_test.sv"
 
   //---------------------------------------------------------------------------
