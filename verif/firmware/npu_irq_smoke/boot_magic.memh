@@ -1,0 +1,16 @@
+// Corrected boot magic firmware — PicoRV32 RV32I
+// Writes 0xB007B007 to 0x000FF000, then infinite loops at JAL
+// Fixed: JAL x0, 0 (loop at self), NOT JAL x0, -8 (which re-executed ADDI)
+// Verified via clang --target=riscv32 -march=rv32i assembler
+//
+// 0x0: LUI x5, 0x000FF   → x5 = 0x000FF000 (MAGIC address)
+// 0x4: LUI x6, 0xB007B   → x6 = 0xB007B000
+// 0x8: ADDI x6, x6, 0x7  → x6 = 0xB007B007 (BOOT_MAGIC)
+// 0xC: SW x6, 0(x5)      → mem[0x000FF000] = 0xB007B007
+// 0x10: JAL x0, 0         → infinite loop at 0x10
+
+000FF297
+B007B337
+00730313
+0062A023
+0000006F

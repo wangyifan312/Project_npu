@@ -1,0 +1,185 @@
+// Minimal PicoRV32 polling firmware for soc_cpu_npu_polling_smoke_test
+// RISC-V RV32I hand-assembled, loaded by backdoor load_memh at shared_ram[0x0]
+// PROGADDR_RESET = 0x00000000
+// Stack at 0x00001000
+
+// Reset vector: jump to main
+@00000000
+// j main (offset = main - 0 = 0x10 bytes = 1 instruction)
+// jal x0, main  =>  imm[20|10:1|11|19:12] = 0x000001 (2 bytes per insn, 0x10/2=8 => 0x008)
+// Actually, C.J (compressed jump) won't work without COMPRESSED_ISA check
+// Use JAL x0, offset: opcode=1101111, rd=00000, imm=0x00010 (2-byte aligned, >>1 = 0x008, not enough)
+// Actually for 0x10 byte offset: imm[20|10:1|11|19:12] -> 0x10 >> 1 = 8 = 0b1000
+// imm[10:1] = 0b0000010000? No, RV32I JAL immediate encoding:
+// imm = {imm[20], imm[10:1], imm[11], imm[19:12], 1'b0}
+// For 0x10 offset (16 bytes): binary 10000
+// imm[20]=0, imm[10:1]=0000000000 (10 bits), imm[11]=0, imm[19:12]=00000001
+// JAL encoding: imm[20]@31, imm[10:1]@30:21, imm[11]@20, imm[19:12]@19:12, rd@11:7=00000, opcode@6:0=1101111
+// = 0_0000000000_0_00000001_00000_1101111
+// = 0x0000006F... no that's not right either
+// Let me just use a simpler approach: put the code directly at 0x0
+
+// === Entry at 0x00000000 ===
+// Stack setup: lui sp, 0x1 => sp = 0x1000
+// RISC-V: LUI rd, imm20 => opcode=0110111, rd=sp(x2)=00010, imm20=0x00001
+// = imm20[31:12]@31:12 | rd@11:7 | opcode@6:0
+// = 0x00001_00010_0110111 = 0x000010B7
+000010B7
+// addi sp, sp, 0 => sp = 0x1000 + 0 = 0x1000
+// ADDI: opcode=0010011, rd=00010, rs1=00010, imm12=0x000
+// = imm12[31:20]@31:20 | rs1@19:15 | 000@14:12 | rd@11:7 | opcode@6:0
+// = 0x000_00010_000_00010_0010011 = 0x00010113
+00010113
+
+// === Write MAGIC_BOOT = 0xB007B007 to 0x000FF000 ===
+// lui t0, 0xB007B => t0[31:12] = 0xB007B, lower 12 = 0
+// LUI: rd=5(t0), imm=0xB007B => 0xB007B_00101_0110111
+B007B297
+// addi t0, t0, 0x007 => t0 = 0xB007B007
+// Actually 0xB007B << 12 = 0xB007B000. Need to add 0x007.
+// ADDI rd=5, rs1=5, imm=0x007 => 0x007_00101_000_00101_0010011 = 0x00728293
+00728293
+// lui t1, 0x000FF => t1[31:12] = 0x000FF
+// LUI: imm=0x000FF, rd=6(t1) => 0x000FF_00110_0110111 = 0x000FF337
+000FF337
+// sw t0, 0(t1): store word at [t1+0]
+// SW: opcode=0100011, imm[11:5]@31:25, rs2@24:20, rs1@19:15, 010@14:12, imm[4:0]@11:7
+// rs2=t0(5), rs1=t1(6), imm=0
+// = 0_0000000_00101_00110_010_00000_0100011 = 0x00532023
+00532023
+
+// === Preload input: write 0x01010101 to 0x00010000 ===
+// lui t0, 0x01010 => t0 = 0x01010000
+01010297
+// addi t0, t0, 0x101 => t0 = 0x01010101
+10128293
+// lui t1, 0x00010 => t1 = 0x00010000
+00010337
+// sw t0, 0(t1)
+00532023
+
+// === Preload weight: write 0x01010101 to 0x00020000 ===
+// t0 already = 0x01010101, reuse
+// lui t1, 0x00020 => t1 = 0x00020000
+00020337
+// sw t0, 0(t1)
+00532023
+
+// === Clear output: write 0x00000000 to 0x00030000 ===
+// lui t0, 0x0 (x0 is always 0, use it)
+// lui t1, 0x00030 => t1 = 0x00030000
+00030337
+// sw x0, 0(t1) => store zero
+00032023
+
+// === Configure NPU CSR at 0x10000000 ===
+// Helper: t2 = NPU_BASE
+// lui t2, 0x10000 => t2 = 0x10000000
+10000397
+
+// ---- TASK_TYPE = 7 (GEMM) at offset 0x08 ----
+// li t0, 7
+00700293
+// sw t0, 8(t2)
+0053A423
+
+// ---- CONV_CFG = 0x20 (streaming) at offset 0x98 ----
+// li t0, 0x20
+02000293
+// sw t0, 0x98(t2)
+0253AC23
+
+// ---- INPUT_ADDR = 0x00010000 at offset 0x0C ----
+// lui t0, 0x00010
+00010297
+// sw t0, 0x0C(t2)
+0053A623
+
+// ---- WEIGHT_ADDR = 0x00020000 at offset 0x10 ----
+// lui t0, 0x00020
+00020297
+// sw t0, 0x10(t2)
+0053A823
+
+// ---- OUTPUT_ADDR = 0x00030000 at offset 0x14 ----
+// lui t0, 0x00030
+00030297
+// sw t0, 0x14(t2)
+0053AA23
+
+// ---- INPUT_BYTES = 4 at offset 0x18 ----
+// li t0, 4
+00400293
+// sw t0, 0x18(t2)
+0053AC23
+
+// ---- WEIGHT_BYTES = 4 at offset 0x1C ----
+// li t0, 4 (reuse)
+// sw t0, 0x1C(t2)
+0053AE23
+
+// ---- OUTPUT_BYTES = 4 at offset 0x20 ----
+// sw t0, 0x20(t2)
+0253A023
+
+// ---- DIM_IN = {1'h1, 1'h1} = 0x00010001 at offset 0x24 ----
+// lui t0, 0x00010
+00010297
+// addi t0, t0, 1 => 0x00010001
+00128293
+// sw t0, 0x24(t2)
+0253A223
+
+// ---- DIM_OUT = {1'h1, 1'h4} = 0x00010004 at offset 0x28 ----
+// lui t0, 0x00010
+00010297
+// addi t0, t0, 4 => 0x00010004
+00428293
+// sw t0, 0x28(t2)
+0253A423
+
+// ---- CLUSTER_MODE = 0 at offset 0x88 ----
+// sw x0, 0x88(t2)
+0203A423
+
+// ---- CLUSTER_MASK = 1 at offset 0x8C ----
+// li t0, 1
+00100293
+// sw t0, 0x8C(t2)
+0253A623
+
+// === Start NPU: write CTRL = 1 at offset 0x00 ===
+// li t0, 1
+00100293
+// sw t0, 0(t2)
+0053A023
+
+// === Poll done: read CTRL at offset 0x00, check bit[2] ===
+// poll_loop:
+// lw t0, 0(t2)
+0003A283
+// andi t0, t0, 4 (bit[2]=done)
+0042F293
+// beqz t0, poll_loop (offset = -2 instructions = -8 bytes)
+FE029CE3
+
+// === Done! Write MAGIC_POLL_DONE = 0xD00ED00E to 0x000FF004 ===
+// lui t0, 0xD00ED
+D00ED297
+// addi t0, t0, 0x00E => 0xD00ED00E
+00E28293
+// lui t1, 0x000FF
+000FF337
+// sw t0, 4(t1)
+00532223
+
+// === Write MAGIC_TEST_DONE = 0x55AA55AA to 0x000FF010 ===
+// lui t0, 0x55AA5
+55AA5297
+// addi t0, t0, 0x5AA => 0x55AA55AA
+5AA28293
+// sw t0, 0x10(t1)
+00532823
+
+// === Infinite loop ===
+0000006F

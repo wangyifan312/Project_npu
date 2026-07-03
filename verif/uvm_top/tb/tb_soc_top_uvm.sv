@@ -13,6 +13,19 @@ module tb_soc_top_uvm;
   // Clock and reset
   reg clk;
   reg rst_n;
+  reg tb_axil_enable;
+
+  // Phase U8-b: default BFM mode (1), CPU mode via +TB_AXIL_ENABLE=0
+  initial begin
+    int tb_axil_val;
+    tb_axil_enable = 1'b1;
+    if ($value$plusargs("TB_AXIL_ENABLE=%0d", tb_axil_val)) begin
+      tb_axil_enable = tb_axil_val[0];
+      $display("[U8B] TB_AXIL_ENABLE=%0d (from plusarg)", tb_axil_enable);
+    end else begin
+      $display("[U8B] TB_AXIL_ENABLE=1 (default, no plusarg)");
+    end
+  end
 
   // Interfaces
   axil_if      axil_vif(.clk(clk), .rst_n(rst_n));
@@ -30,7 +43,7 @@ module tb_soc_top_uvm;
   ) u_top (
     .clk            (clk),
     .rst_n          (rst_n),
-    .tb_axil_enable (1'b1),
+    .tb_axil_enable (tb_axil_enable),
 
     // AXI-Lite TB interface — write address
     .tb_awvalid     (axil_vif.awvalid),
@@ -59,7 +72,7 @@ module tb_soc_top_uvm;
     .tb_rdata       (axil_vif.rdata),
     .tb_rresp       (axil_vif.rresp),
 
-    .cpu_trap       (),
+    .cpu_trap       (probe_vif.cpu_trap),
     .npu_status     (probe_vif.npu_status),
     .npu_irq        (probe_vif.npu_irq)
   );

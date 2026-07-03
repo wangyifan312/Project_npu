@@ -1,0 +1,81 @@
+
+npu_polling.elf:     file format elf32-littleriscv
+
+
+Disassembly of section .memory:
+
+00000000 <_start>:
+   0:	000ff2b7          	lui	t0,0xff
+   4:	b007b337          	lui	t1,0xb007b
+   8:	00730313          	addi	t1,t1,7 # b007b007 <end+0xb007af1d>
+   c:	0062a023          	sw	t1,0(t0) # ff000 <end+0xfef16>
+  10:	100003b7          	lui	t2,0x10000
+  14:	00700293          	li	t0,7
+  18:	0053a423          	sw	t0,8(t2) # 10000008 <end+0xfffff1e>
+  1c:	02000293          	li	t0,32
+  20:	0853ac23          	sw	t0,152(t2)
+  24:	000102b7          	lui	t0,0x10
+  28:	0053a623          	sw	t0,12(t2)
+  2c:	000202b7          	lui	t0,0x20
+  30:	0053a823          	sw	t0,16(t2)
+  34:	000302b7          	lui	t0,0x30
+  38:	0053aa23          	sw	t0,20(t2)
+  3c:	00400293          	li	t0,4
+  40:	0053ac23          	sw	t0,24(t2)
+  44:	0053ae23          	sw	t0,28(t2)
+  48:	0253a023          	sw	t0,32(t2)
+  4c:	000102b7          	lui	t0,0x10
+  50:	00128293          	addi	t0,t0,1 # 10001 <end+0xff17>
+  54:	0253a223          	sw	t0,36(t2)
+  58:	000102b7          	lui	t0,0x10
+  5c:	00428293          	addi	t0,t0,4 # 10004 <end+0xff1a>
+  60:	0253a423          	sw	t0,40(t2)
+  64:	0803a423          	sw	zero,136(t2)
+  68:	00100293          	li	t0,1
+  6c:	0853a623          	sw	t0,140(t2)
+  70:	00100293          	li	t0,1
+  74:	0053a023          	sw	t0,0(t2)
+
+00000078 <poll_loop>:
+  78:	0003a283          	lw	t0,0(t2)
+  7c:	0042f313          	andi	t1,t0,4
+  80:	02031863          	bnez	t1,b0 <task_done>
+  84:	0082f313          	andi	t1,t0,8
+  88:	00031463          	bnez	t1,90 <task_error>
+  8c:	fedff06f          	j	78 <poll_loop>
+
+00000090 <task_error>:
+  90:	0043a283          	lw	t0,4(t2)
+  94:	0ff2f293          	andi	t0,t0,255
+  98:	dead0337          	lui	t1,0xdead0
+  9c:	00130313          	addi	t1,t1,1 # dead0001 <end+0xdeacff17>
+  a0:	00530333          	add	t1,t1,t0
+  a4:	000ff2b7          	lui	t0,0xff
+  a8:	0062a623          	sw	t1,12(t0) # ff00c <end+0xfef22>
+  ac:	0200006f          	j	cc <done_loop>
+
+000000b0 <task_done>:
+  b0:	d00ed337          	lui	t1,0xd00ed
+  b4:	00e30313          	addi	t1,t1,14 # d00ed00e <end+0xd00ecf24>
+  b8:	000ff2b7          	lui	t0,0xff
+  bc:	0062a223          	sw	t1,4(t0) # ff004 <end+0xfef1a>
+  c0:	55aa5337          	lui	t1,0x55aa5
+  c4:	5aa30313          	addi	t1,t1,1450 # 55aa55aa <end+0x55aa54c0>
+  c8:	0062a423          	sw	t1,8(t0)
+
+000000cc <done_loop>:
+  cc:	0000006f          	j	cc <done_loop>
+  d0:	1941                	addi	s2,s2,-16
+  d2:	0000                	unimp
+  d4:	7200                	flw	fs0,32(a2)
+  d6:	7369                	lui	t1,0xffffa
+  d8:	01007663          	bgeu	zero,a6,e4 <done_loop+0x18>
+  dc:	0000000f          	fence	unknown,unknown
+  e0:	7205                	lui	tp,0xfffe1
+  e2:	3376                	fld	ft6,376(sp)
+  e4:	6932                	flw	fs2,12(sp)
+  e6:	7032                	flw	ft0,44(sp)
+  e8:	0030                	addi	a2,sp,8
+
+000000ea <end>:
+	...

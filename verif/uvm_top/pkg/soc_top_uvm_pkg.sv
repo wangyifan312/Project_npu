@@ -277,6 +277,14 @@ package soc_top_uvm_pkg;
   //---------------------------------------------------------------------------
   `include "npu_irq_reporting_test.sv"
 
+  //---------------------------------------------------------------------------
+  // Phase U8-b: CPU-running boot magic smoke test (minimal PicoRV32 validation)
+  //---------------------------------------------------------------------------
+  `include "soc_cpu_boot_magic_smoke_test.sv"
+  `include "soc_cpu_npu_polling_smoke_test.sv"
+
+  `include "soc_cpu_npu_irq_smoke_test.sv"
+
 endpackage
 
 `endif // SOC_TOP_UVM_PKG_SV
