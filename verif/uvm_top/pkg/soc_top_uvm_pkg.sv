@@ -296,6 +296,11 @@ package soc_top_uvm_pkg;
   //---------------------------------------------------------------------------
   `include "npu_dma_buffer_capacity_guard_test.sv"
 
+  //---------------------------------------------------------------------------
+  // Phase U9-a2: DMA buffer exact boundary legal tests
+  //---------------------------------------------------------------------------
+  `include "npu_dma_buffer_boundary_legal_test.sv"
+
 endpackage
 
 `endif // SOC_TOP_UVM_PKG_SV
