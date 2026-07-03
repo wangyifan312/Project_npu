@@ -1,0 +1,12 @@
+// Simplest possible firmware: store 0xDEADBEEF to 0x000FF000
+// LUI x5, 0xDEADB → 0xDEADB297 (rd=x5=5)
+// ADDI x5, x5, 0xEEF → 0xEEF28293 (actually: LUI gives 0xDEADB000, add 0xEEF = 0xDEADBEEF)
+// LUI x6, 0x000FF → 0x000FF337 (rd=x6=6)
+// SW x5, 0(x6) → 0x00532023
+// J -8 → 0xFF9FF06F
+
+DEADB297
+EEF28293
+000FF337
+00532023
+FF9FF06F
