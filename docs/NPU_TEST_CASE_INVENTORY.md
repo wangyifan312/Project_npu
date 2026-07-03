@@ -15,7 +15,7 @@
 
 | Directory | Contents | Count |
 |-----------|----------|-------|
-| `verif/uvm_top/tests/` | UVM test classes (active) | 50 registered tests |
+| `verif/uvm_top/tests/` | UVM test classes (active) | 51 registered tests |
 | `verif/uvm_top/tests/archive/` | Archived legacy tests (U7-a) | 5 files (not in regression) |
 | `verif/uvm_top/sequences/` | Reusable test sequences | 13 files |
 | `verif/uvm_top/pkg/` | UVM package (includes all) | 1 file |
@@ -167,7 +167,15 @@
 |---|-----------|---------|
 | 55 | `soc_base_test` | Base class for all tests; creates env, enables monitors |
 
-### 5.12 Archived Tests (Phase U7-a, not in active regression)
+### 5.12 NPU IRQ / Interrupt Reporting Tests (Phase U8-a)
+
+| # | Test Name | Purpose | Task | Config | Related Phase | Status |
+|---|-----------|---------|------|--------|---------------|--------|
+| 48 | `npu_irq_reporting_test` | BFM-level IRQ: done/error pending, enable gating, W1C clear, B2B (7 sub-tests) | GEMM=7, error test | streaming=0x20 | **U8-a** | **PASS** |
+
+**Note:** U8-a is BFM-level verification only. No CPU-running interrupt firmware is implemented. IRQ CSRs at 0x100/0x104/0x108 in extended NPU CSR space (512B window).
+
+### 5.13 Archived Tests (Phase U7-a, not in active regression)
 
 | # | Test Name | Archive Reason |
 |---|-----------|----------------|
@@ -215,7 +223,13 @@ npu_requant_smoke_test, npu_bandwidth_60pct_stress_test
 npu_pe_array_clock_gating_test
 ```
 
-### 6.5 Full Stress Regression (all 50 registered tests)
+### 6.5 NPU IRQ Regression (1 test)
+
+```
+npu_irq_reporting_test
+```
+
+### 6.6 Full Stress Regression (all 51 registered tests)
 
 Run time: ~2-3 hours at 200MHz simulation.
 
