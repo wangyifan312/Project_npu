@@ -43,6 +43,7 @@ module npu_ctrl #(
     output wire                        task_go,      // high only after checks pass
     output wire                        task_start,
     output wire [2:0]                  task_type,
+    output wire                        task_type_reserved_invalid,  // U9-b4: high bits non-zero
     output wire [31:0]                 input_addr,
     output wire [31:0]                 weight_addr,
     output wire [31:0]                 output_addr,
@@ -523,7 +524,7 @@ module npu_ctrl #(
             cfg_add_out_shift <= 32'd0;
         end else if (write_hs && wr_allowed && is_write_addr_valid(wr_addr)) begin
             case (wr_addr)
-                ADDR_TASK_TYPE:    cfg_task_type    <= apply_wstrb(cfg_task_type, write_data, write_strb) & 32'h0000_0007;
+                ADDR_TASK_TYPE:    cfg_task_type    <= apply_wstrb(cfg_task_type, write_data, write_strb);  // U9-b4: preserve full 32b for reserved-bit check
                 ADDR_INPUT_ADDR:   cfg_input_addr   <= apply_wstrb(cfg_input_addr, write_data, write_strb);
                 ADDR_WEIGHT_ADDR:  cfg_weight_addr  <= apply_wstrb(cfg_weight_addr, write_data, write_strb);
                 ADDR_OUTPUT_ADDR:  cfg_output_addr  <= apply_wstrb(cfg_output_addr, write_data, write_strb);
@@ -722,6 +723,7 @@ module npu_ctrl #(
 
     assign task_start    = task_start_r;
     assign task_type     = task_type_r;
+    assign task_type_reserved_invalid = |cfg_task_type[31:3];  // U9-b4: detect illegal high bits
     assign input_addr    = input_addr_r;
     assign weight_addr   = weight_addr_r;
     assign output_addr   = output_addr_r;

@@ -16,6 +16,7 @@ module task_checker #(
 
     // Task parameters (from npu_ctrl latched outputs)
     input  wire [2:0]  task_type,
+    input  wire        task_type_reserved_invalid,  // U9-b4: |TASK_TYPE[31:3] != 0
     input  wire [31:0] input_addr,
     input  wire [31:0] weight_addr,
     input  wire [31:0] output_addr,
@@ -400,7 +401,10 @@ module task_checker #(
     // Priority-encoded error
     always @(*) begin
         error_code_comb = ERR_NONE;
-        if (!task_type_known)
+        // U9-b4: reject task if TASK_TYPE[31:3] has non-zero reserved bits
+        if (task_type_reserved_invalid)
+            error_code_comb = ERR_INVALID_TASK_TYPE;
+        else if (!task_type_known)
             error_code_comb = ERR_INVALID_TASK_TYPE;
         else if (!task_type_supported)
             error_code_comb = ERR_UNSUPPORTED_TASK;

@@ -207,6 +207,7 @@ module npu_top #(
     // ============================================================
     wire        task_start;
     wire [2:0]  task_type;
+    wire        task_type_reserved_invalid;  // U9-b4
     wire [31:0] input_addr, weight_addr, output_addr;
     wire [31:0] input_bytes, weight_bytes, output_bytes;
     wire [15:0] input_h, input_w, input_c, output_c;
@@ -302,6 +303,7 @@ module npu_top #(
         .ctrl_busy(ctrl_busy), .ctrl_done(ctrl_done),
         .ctrl_error(ctrl_error), .ctrl_error_code(ctrl_error_code),
         .task_go(task_go), .task_start(task_start), .task_type(task_type),
+        .task_type_reserved_invalid(task_type_reserved_invalid),  // U9-b4
         .input_addr(input_addr), .weight_addr(weight_addr), .output_addr(output_addr),
         .input_bytes(input_bytes), .weight_bytes(weight_bytes), .output_bytes(output_bytes),
         .input_h(input_h), .input_w(input_w), .input_c(input_c), .output_c(output_c),
@@ -360,7 +362,8 @@ module npu_top #(
         .DMA_DATA_W(AXI_DMA_DATA_W)
     ) u_checker (
         .clk(clk), .rst_n(rst_n), .task_start(task_start),
-        .task_type(task_type), .input_addr(input_addr), .weight_addr(weight_addr),
+        .task_type(task_type), .task_type_reserved_invalid(task_type_reserved_invalid),  // U9-b4
+        .input_addr(input_addr), .weight_addr(weight_addr),
         .output_addr(output_addr), .input_bytes(input_bytes), .weight_bytes(weight_bytes),
         .output_bytes(output_bytes), .input_h(input_h), .input_w(input_w),
         .input_c(input_c), .output_c(output_c), .relu_en(relu_en), .pool_en(pool_en),
