@@ -310,6 +310,11 @@ package soc_top_uvm_pkg;
   `include "npu_dma_4kb_boundary_mixed_test.sv"
   `include "npu_dma_writer_forced_4kb_split_test.sv"
 
+  //---------------------------------------------------------------------------
+  // Phase U9-b4: invalid TASK_TYPE high bits test
+  //---------------------------------------------------------------------------
+  `include "npu_invalid_task_type_high_bits_test.sv"
+
 endpackage
 
 `endif // SOC_TOP_UVM_PKG_SV
