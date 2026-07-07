@@ -1,31 +1,31 @@
-// mac_tile_4x4: 4×4 systolic array tile (flat ports for iverilog compatibility)
-// INT8 act × INT8 weight → INT32 accumulation, weight-stationary
+// mac_tile_4x4: 4×4 脉动阵列 tile（扁平端口以兼容 iverilog）
+// INT8 激活 × INT8 权重 → INT32 累加，权重驻留
 `timescale 1ns / 1ps
 
 module mac_tile_4x4 (
     input  wire        clk,
     input  wire        rst_n,
 
-    // Activations: 4 inputs (one per row), flow left→right
+    // 激活: 4 个输入（每行一个），从左→右流动
     input  wire [7:0]  act_in_0,
     input  wire [7:0]  act_in_1,
     input  wire [7:0]  act_in_2,
     input  wire [7:0]  act_in_3,
 
-    // Partial sums from top: 4 inputs (one per column)
+    // 来自顶部的部分和: 4 个输入（每列一个）
     input  wire [31:0] sum_in_0,
     input  wire [31:0] sum_in_1,
     input  wire [31:0] sum_in_2,
     input  wire [31:0] sum_in_3,
 
-    // Weights: 4×4 (flat, row-major: w[0][0], w[0][1], ..., w[3][3])
+    // 权重: 4×4（扁平，行优先: w[0][0], w[0][1], ..., w[3][3]）
     input  wire [7:0]  weight_00, weight_01, weight_02, weight_03,
     input  wire [7:0]  weight_10, weight_11, weight_12, weight_13,
     input  wire [7:0]  weight_20, weight_21, weight_22, weight_23,
     input  wire [7:0]  weight_30, weight_31, weight_32, weight_33,
     input  wire        weight_ld,
 
-    // Outputs
+    // 输出
     output wire [7:0]  act_out_0,
     output wire [7:0]  act_out_1,
     output wire [7:0]  act_out_2,
@@ -36,7 +36,7 @@ module mac_tile_4x4 (
     output wire [31:0] sum_out_3
 );
 
-    // Re-pack for internal wiring
+    // 重新打包为内部连线
     wire [7:0]  act_in  [0:3];
     wire [31:0] sum_in  [0:3];
     wire [7:0]  weight [0:3][0:3];
@@ -68,7 +68,7 @@ module mac_tile_4x4 (
     assign sum_out_2 = sum_out[2];
     assign sum_out_3 = sum_out[3];
 
-    // Internal wiring
+    // 内部连线
     wire [7:0]  act_h [0:3][0:4];
     wire [31:0] sum_v [0:4][0:3];
 

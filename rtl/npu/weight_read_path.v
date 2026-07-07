@@ -1,6 +1,6 @@
-// weight_read_path: weight read DMA wrapper
-// Wraps dma_axi_reader, provides buffer write port interface
-// Spec §4.2: logically separate from act_read_path, shares AXI4 read port externally
+// weight_read_path: 权重读取 DMA 封装
+// 封装 dma_axi_reader，提供 buffer 写端口接口
+//  与 act_read_path 逻辑分离，外部共享 AXI4 读端口
 `timescale 1ns / 1ps
 
 module weight_read_path #(
@@ -12,7 +12,7 @@ module weight_read_path #(
     input  wire        clk,
     input  wire        rst_n,
 
-    // Control
+    // 控制
     input  wire                        start,
     input  wire [AXI_ADDR_W-1:0]       base_addr,
     input  wire [31:0]                 byte_count,
@@ -21,12 +21,12 @@ module weight_read_path #(
     output wire [7:0]                  error_code,
     output wire                        busy,
 
-    // Buffer write port (to npu_buffer)
+    // Buffer 写端口（至 npu_buffer）
     output wire [BUF_ADDR_W-1:0]       buf_wr_addr,
     output wire [BUF_DATA_W-1:0]       buf_wr_data,
     output wire                        buf_wr_en,
 
-    // AXI4 Read Master (shared bus)
+    // AXI4 读 Master（共享总线）
     output wire [AXI_ADDR_W-1:0]       m_axi_araddr,
     output wire                        m_axi_arvalid,
     input  wire                        m_axi_arready,
@@ -49,7 +49,7 @@ module weight_read_path #(
 
     assign dma_data_ready = 1'b1;
 
-    // Expand byte-level strb to bit-level mask for zeroing invalid bytes
+    // 将字节级 strb 扩展为位级掩码以清零无效字节
     wire [BUF_DATA_W-1:0] strb_mask;
     genvar gi;
     generate

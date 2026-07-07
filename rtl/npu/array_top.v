@@ -1,29 +1,29 @@
-// array_top: systolic array from 4x4 MAC tiles, iverilog-compatible flat ports
-// Total: TILE_ROWS*4 MAC rows × TILE_COLS*4 MAC columns
+// array_top: 由 4x4 MAC tile 构成的脉动阵列，iverilog 兼容的扁平端口
+// 总计: TILE_ROWS*4 MAC 行 × TILE_COLS*4 MAC 列
 `timescale 1ns / 1ps
 
 module array_top #(
-    parameter TILE_ROWS = 2,   // default small for testing
+    parameter TILE_ROWS = 2,   // 测试用默认小值
     parameter TILE_COLS = 2
 ) (
     input  wire        clk,
     input  wire        rst_n,
 
-    // Activations: (TILE_ROWS*4) × 8-bit, flow left→right
-    // Packed as flat vector: act_row_r = act_in[r*8 +: 8]
+    // 激活: (TILE_ROWS*4) × 8-bit，从左→右流动
+    // 扁平向量打包：act_row_r = act_in[r*8 +: 8]
     input  wire [(TILE_ROWS*4*8)-1:0] act_in_flat,
 
-    // Partial sums from top: (TILE_COLS*4) × 32-bit
+    // 来自顶部的部分和: (TILE_COLS*4) × 32-bit
     input  wire [(TILE_COLS*4*32)-1:0] sum_in_flat,
 
-    // Weights: TILE_ROWS*TILE_COLS*4*4 × 8-bit (flat)
+    // 权重: TILE_ROWS*TILE_COLS*4*4 × 8-bit（扁平）
     input  wire [(TILE_ROWS*TILE_COLS*16*8)-1:0] weight_flat,
     input  wire        weight_ld,
 
-    // Output partial sums: (TILE_COLS*4) × 32-bit
+    // 输出部分和: (TILE_COLS*4) × 32-bit
     output wire [(TILE_COLS*4*32)-1:0] sum_out_flat,
 
-    // Clock gating per tile (flat enable vector)
+    // 每 tile 时钟门控（扁平使能向量）
     input  wire [(TILE_ROWS*TILE_COLS)-1:0] tile_clk_en_flat
 );
 
@@ -31,21 +31,21 @@ module array_top #(
     localparam PE_COLS = TILE_COLS * 4;
     localparam N_TILES = TILE_ROWS * TILE_COLS;
 
-    // Helper function: get tile row, col from flat index
-    // Flat index = tr * TILE_COLS + tc
+    // 辅助函数：从扁平索引获取 tile 行、列
+    // 扁平索引 = tr * TILE_COLS + tc
 
-    // Internal wires: horizontal activation between tiles (flat)
-    // act_h[(tr*TILE_COLS + tc)*4 + k] = activation at tile(tr,tc) PE row k, entering this tile
-    // The +1 offset in tc means "after this tile" = input to next tile
+    // 内部连线：tile 间水平激活（扁平）
+    // act_h[(tr*TILE_COLS + tc)*4 + k] = tile(tr,tc) PE 行 k 的激活值，进入本 tile
+    // tc 的 +1 偏移表示"本 tile 之后" = 下一 tile 的输入
     wire [(TILE_ROWS * (TILE_COLS+1) * 4 * 8)-1:0] act_tile_flat;
-    // Vertical sums between tiles
+    // tile 间垂直部分和
     wire [((TILE_ROWS+1) * TILE_COLS * 4 * 32)-1:0] sum_tile_flat;
 
-    // Gated clocks per tile
-    // Phase U6-a: low-phase latch for clean clock gating.
-    // RTL simulation: models standard ICG behavior where enable
-    // is stable during clk high.  ASIC: replace with library ICG cell.
-    // FPGA: replace with BUFGCE or clock-enable primitive.
+    // 每 tile 门控时钟
+    // Phase U6-a: 低相位锁存器实现干净时钟门控。
+    // RTL 仿真：模拟标准 ICG 行为，其中使能
+    // 在 clk 高电平期间保持稳定。ASIC：替换为库 ICG 单元。
+    // FPGA：替换为 BUFGCE 或时钟使能原语。
     wire [N_TILES-1:0] gated_clk;
     reg  [N_TILES-1:0] tile_clk_en_latched;
 
@@ -56,7 +56,7 @@ module array_top #(
     end
 
     // ============================================================
-    // Generate tiles
+    // 生成 tile
     // ============================================================
     genvar ti;
     generate
@@ -69,15 +69,15 @@ module array_top #(
             localparam integer sum_out_base = ((tr + 1) * TILE_COLS + tc) * 4 * 32;
             localparam integer wt_base      = ti * 16 * 8;
 
-            // Gated clock with latched enable (ICG-style)
+            // 带锁存使能的门控时钟（ICG 风格）
             assign gated_clk[ti] = clk & tile_clk_en_latched[ti];
 
-            // Connections: first tile in row gets external activation
+            // 连接：行中第一个 tile 接收外部激活
             if (tc == 0) begin : act_from_ext
                 assign act_tile_flat[act_in_base +: 32] = act_in_flat[tr*4*8 +: 32];
             end
 
-            // Connections: first tile row gets external sum
+            // 连接：第一行 tile 接收外部部分和
             if (tr == 0) begin : sum_from_ext
                 assign sum_tile_flat[sum_in_base +: 128] = sum_in_flat[tc*4*32 +: 128];
             end
@@ -120,7 +120,7 @@ module array_top #(
                 .sum_out_3  (sum_tile_flat[sum_out_base +  96 +: 32])
             );
 
-            // Sum output from last tile row
+            // 最后一行 tile 输出部分和
             if (tr == TILE_ROWS - 1) begin : sum_to_ext
                 assign sum_out_flat[tc*4*32 +: 128] = sum_tile_flat[sum_out_base +: 128];
             end

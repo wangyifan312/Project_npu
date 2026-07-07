@@ -25,7 +25,7 @@ module compute_core #(
     output wire                                     any_cluster_busy,
     output wire                                     all_enabled_done,
 
-    // Phase 2: continuous streaming mode
+    // 连续流模式
     input  wire                                     continuous_mode,
     input  wire                                     stream_active
 );

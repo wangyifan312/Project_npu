@@ -1,13 +1,13 @@
-// top.v: CPU+NPU heterogeneous processor — top-level integration
-// PicoRV32 (AXI-Lite) → AXI Interconnect → Memory + NPU registers
-// NPU DMA (AXI4) → Memory
+// top.v: CPU+NPU 异构处理器 — 顶层集成
+// PicoRV32 (AXI-Lite) → AXI 互连 → 存储器 + NPU 寄存器
+// NPU DMA (AXI4) → 存储器
 `timescale 1ns / 1ps
 
 module top #(
     parameter AXI_ADDR_W = 32,
     parameter AXI_DATA_W = 32,
     parameter AXI_DMA_DATA_W = 256,
-    parameter SHARED_RAM_DEPTH = 32768,  // 1 MB shared memory: 32768 x 256-bit beats
+    parameter SHARED_RAM_DEPTH = 32768,  // 1 MB 共享内存：32768 x 256-bit beat
     parameter NPU_BUF_ENTRIES = 16384,
     parameter NPU_BUF_ADDR_W = 14,
     parameter NPU_TILE_ROWS = 16,
@@ -36,14 +36,14 @@ module top #(
     output wire [31:0] tb_rdata,
     output wire [1:0]  tb_rresp,
 
-    // Debug/trace outputs
+    // 调试/跟踪输出
     output wire        cpu_trap,
-    output wire [31:0] npu_status,  // {error, done, busy, 1'b0} for quick debug
-    output wire        npu_irq       // Phase U8-a: NPU IRQ output
+    output wire [31:0] npu_status,  // {error, done, busy, 1'b0} 用于快速调试
+    output wire        npu_irq       // Phase U8-a: NPU IRQ 输出
 );
 
     // ============================================================
-    // CPU ↔ Interconnect AXI-Lite
+    // CPU ↔ 互连 AXI-Lite
     // ============================================================
     wire        cpu_core_awvalid, cpu_core_awready;
     wire [31:0] cpu_core_awaddr;
@@ -82,7 +82,7 @@ module top #(
     wire [1:0]  cpu_rresp;
 
     // ============================================================
-    // PicoRV32 CPU (AXI-Lite version)
+    // PicoRV32 CPU (AXI-Lite 版本)
     // ============================================================
     picorv32_axi #(
         .PROGADDR_RESET(32'h0000_0000),
@@ -91,7 +91,7 @@ module top #(
         .ENABLE_FAST_MUL(1),
         .ENABLE_DIV    (1),
         .COMPRESSED_ISA(1),
-        .ENABLE_IRQ    (1)          // Phase U8-b: enable IRQ support
+        .ENABLE_IRQ    (1)          // Phase U8-b: 启用 IRQ 支持
     ) u_cpu (
         .clk            (clk),
         .resetn         (rst_n && !tb_axil_enable),
@@ -156,7 +156,7 @@ module top #(
     assign tb_rresp   = tb_axil_enable ? cpu_rresp   : 2'b00;
 
     // ============================================================
-    // Interconnect → NPU registers AXI-Lite
+    // 互连 → NPU 寄存器 AXI-Lite
     // ============================================================
     wire        npu_awvalid, npu_awready;
     wire [31:0] npu_awaddr;
@@ -172,7 +172,7 @@ module top #(
     wire [1:0]  npu_rresp;
 
     // ============================================================
-    // Interconnect → Memory AXI-Lite
+    // 互连 → 存储器 AXI-Lite
     // ============================================================
     wire        mem_awvalid, mem_awready;
     wire [31:0] mem_awaddr;
@@ -188,7 +188,7 @@ module top #(
     wire [1:0]  mem_rresp;
 
     // ============================================================
-    // NPU AXI4 master signals (DMA)
+    // NPU AXI4 主设备信号 (DMA)
     // ============================================================
     wire        npu_m_arvalid, npu_m_arready;
     wire [31:0] npu_m_araddr;
@@ -212,7 +212,7 @@ module top #(
     wire        npu_m_bvalid, npu_m_bready;
     wire [1:0]  npu_m_bresp;
 
-    // AXI4 RAM slave signals (from interconnect)
+    // AXI4 RAM 从设备信号（来自互连）
     wire        mem4_awvalid, mem4_awready;
     wire [31:0] mem4_awaddr;
     wire [7:0]  mem4_awlen;
@@ -234,12 +234,12 @@ module top #(
     wire        mem4_rlast;
     wire [1:0]  mem4_rresp;
 
-    // NPU status
+    // NPU 状态
     wire        npu_busy, npu_done, npu_error;
     wire [7:0]  npu_error_code;
 
     // ============================================================
-    // AXI Interconnect
+    // AXI 互连
     // ============================================================
     axi_interconnect #(
         .CPU_AXI_DATA_W(AXI_DATA_W),
@@ -247,7 +247,7 @@ module top #(
     ) u_interconnect (
         .clk          (clk),
         .rst_n        (rst_n),
-        // CPU side
+        // CPU 侧
         .cpu_awvalid  (cpu_awvalid),
         .cpu_awready  (cpu_awready),
         .cpu_awaddr   (cpu_awaddr),
@@ -267,7 +267,7 @@ module top #(
         .cpu_rready   (cpu_rready),
         .cpu_rdata    (cpu_rdata),
         .cpu_rresp    (cpu_rresp),
-        // NPU register side
+        // NPU 寄存器侧
         .npu_awvalid  (npu_awvalid),
         .npu_awready  (npu_awready),
         .npu_awaddr   (npu_awaddr),
@@ -285,7 +285,7 @@ module top #(
         .npu_rready   (npu_rready),
         .npu_rdata    (npu_rdata),
         .npu_rresp    (npu_rresp),
-        // Memory side
+        // 存储器侧
         .mem_awvalid  (mem_awvalid),
         .mem_awready  (mem_awready),
         .mem_awaddr   (mem_awaddr),
@@ -303,7 +303,7 @@ module top #(
         .mem_rready   (mem_rready),
         .mem_rdata    (mem_rdata),
         .mem_rresp    (mem_rresp),
-        // DMA pass-through: NPU AXI4 master → Interconnect → Memory AXI4 slave
+        // DMA 直通：NPU AXI4 主设备 → 互连 → 存储器 AXI4 从设备
         .dma_arvalid  (npu_m_arvalid),
         .dma_araddr   (npu_m_araddr),
         .dma_arlen    (npu_m_arlen),
@@ -357,7 +357,7 @@ module top #(
     );
 
     // ============================================================
-    // Unified Shared Memory (CPU + NPU DMA access same physical RAM)
+    // 统一共享内存（CPU + NPU DMA 访问同一物理 RAM）
     // ============================================================
     shared_ram #(
         .CPU_AXI_DATA_W(AXI_DATA_W),
@@ -366,7 +366,7 @@ module top #(
     ) u_shared_ram (
         .clk            (clk),
         .rst_n          (rst_n),
-        // CPU AXI-Lite port
+        // CPU AXI-Lite 端口
         .cpu_awvalid    (mem_awvalid),
         .cpu_awready    (mem_awready),
         .cpu_awaddr     (mem_awaddr),
@@ -384,7 +384,7 @@ module top #(
         .cpu_rready     (mem_rready),
         .cpu_rdata      (mem_rdata),
         .cpu_rresp      (mem_rresp),
-        // NPU DMA AXI4 port
+        // NPU DMA AXI4 端口
         .npu_awvalid    (mem4_awvalid),
         .npu_awready    (mem4_awready),
         .npu_awaddr     (mem4_awaddr),
@@ -413,7 +413,7 @@ module top #(
     );
 
     // ============================================================
-    // NPU Top-Level (register file + task_checker + DMA + buffers + compute)
+    // NPU 顶层（寄存器文件 + task_checker + DMA + 缓冲区 + 计算）
     // ============================================================
     npu_top #(
         .AXI_DATA_W(AXI_DATA_W),
@@ -476,7 +476,7 @@ module top #(
         .npu_irq           (npu_irq_int)
     );
 
-    // Status output for debug
+    // 调试状态输出
     assign npu_status = {24'h0, npu_error, npu_done, npu_busy, 1'b0};
 
 endmodule

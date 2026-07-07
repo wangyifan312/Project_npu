@@ -1,7 +1,7 @@
-// requant_i32_to_i8: signed INT32 -> INT8 requant with layer-wise multiplier/shift
-// Arithmetic:
+// requant_i32_to_i8: 有符号 INT32 -> INT8 requant，使用逐层 multiplier/shift
+// 算术：
 //   q = clamp( round_to_nearest( acc * multiplier / 2^shift ), -128, 127 )
-// Rounding rule is symmetric "round half away from zero" to match Python utilities.
+// 舍入规则为对称"四舍五入远离零"，以匹配 Python 工具。
 `timescale 1ns / 1ps
 
 module requant_i32_to_i8 (

@@ -1,6 +1,6 @@
-// dma_axi_writer: AXI4 write master for contiguous block DMA
-// Reads data stream from buffer, writes to AXI4 memory in bursts
-// Handles burst splitting (max 16 beats per burst)
+// dma_axi_writer: 连续块DMA的AXI4写主端
+// 从缓冲区读取数据流，以突发方式写入AXI4内存
+// 处理突发分割（每突发最多16拍）
 `timescale 1ns / 1ps
 
 module dma_axi_writer #(
@@ -11,7 +11,7 @@ module dma_axi_writer #(
     input  wire        clk,
     input  wire        rst_n,
 
-    // === Control interface ===
+    // === 控制接口 ===
     input  wire                        start,
     input  wire [AXI_ADDR_WIDTH-1:0]   base_addr,
     input  wire [31:0]                 byte_count,
@@ -19,20 +19,20 @@ module dma_axi_writer #(
     output wire                        error,
     output wire [7:0]                  error_code,
     output wire                        busy,
-    output wire                        write_txn_active,  // high during S_AW|S_WDATA|S_WAIT_B
+    output wire                        write_txn_active,  // 在S_AW|S_WDATA|S_WAIT_B期间为高
 
-    // === FIFO level (delayed AW) ===
+    // === FIFO级别（延迟AW）===
     input  wire [5:0]                  fifo_level,
 
-    // === Producer done (no more data will arrive) ===
+    // === 生产者完成（不会再有数据到达）===
     input  wire                        producer_done,
 
-    // === Data input ===
+    // === 数据输入 ===
     input  wire [AXI_DATA_WIDTH-1:0]   data_in,
     input  wire                        data_valid,
     output wire                        data_ready,
 
-    // === AXI4 Write Master ===
+    // === AXI4 写主端 ===
     output wire [AXI_ADDR_WIDTH-1:0]   m_axi_awaddr,
     output wire                        m_axi_awvalid,
     input  wire                        m_axi_awready,
@@ -61,13 +61,13 @@ module dma_axi_writer #(
     localparam ERR_NONE      = 8'h00;
     localparam ERR_BRESP     = 8'h30;
     localparam ERR_ALIGN     = 8'h31;
-    localparam ERR_UNDERFLOW = 8'h32;  // producer stopped early, not enough data
+    localparam ERR_UNDERFLOW = 8'h32;  // 生产者提前停止，数据不足
 
     // ============================================================
-    // State machine
+    // 状态机
     // ============================================================
     localparam S_IDLE      = 3'd0;
-    localparam S_WAIT_DATA = 3'd6;  // wait for FIFO to fill
+    localparam S_WAIT_DATA = 3'd6;  // 等待FIFO填满
     localparam S_AW        = 3'd1;
     localparam S_WDATA     = 3'd2;
     localparam S_WAIT_B    = 3'd3;
@@ -77,7 +77,7 @@ module dma_axi_writer #(
     reg [2:0] state, next_state;
 
     // ============================================================
-    // Burst calculation with AXI4 4KB boundary split (U9-a3)
+    // 突发计算，带AXI4 4KB边界分割（U9-a3）
     // burst_beats = min(ceil(bytes/BEAT_BYTES), MAX_BURST_LEN, beats_to_4KB)
     // ============================================================
     function [7:0] calc_burst_beats_4kb;
@@ -91,10 +91,10 @@ module dma_axi_writer #(
             if (bytes == 32'd0) begin
                 calc_burst_beats_4kb = 8'd0;
             end else begin
-                // ceil(bytes / BEAT_BYTES)
+                // 向上取整(bytes / BEAT_BYTES)
                 beats_by_bytes = (bytes + BEAT_BYTES - 1) >> BEAT_BYTES_LOG2;
 
-                // AXI4: one burst must not cross a 4KB (4096-byte) boundary
+                // AXI4: 一个突发不能跨越4KB（4096字节）边界
                 bytes_to_4kb = 32'd4096 - {20'd0, addr[11:0]};
                 beats_to_4kb = bytes_to_4kb >> BEAT_BYTES_LOG2;
 
@@ -114,7 +114,7 @@ module dma_axi_writer #(
         end
     endfunction
 
-    // Legacy wrapper for backward compatibility
+    // 遗留封装，用于向后兼容
     function [7:0] calc_burst_beats;
         input [31:0] bytes;
         begin
@@ -135,7 +135,7 @@ module dma_axi_writer #(
     endfunction
 
     // ============================================================
-    // Internal registers
+    // 内部寄存器
     // ============================================================
     reg  [31:0] bytes_remaining;
     reg  [31:0] current_addr;
@@ -143,11 +143,11 @@ module dma_axi_writer #(
     reg  [7:0]  burst_len;
     reg  [7:0]  beat_counter;
     reg         aw_done;
-    reg         w_done;     // all W beats sent for this burst
-    reg         b_valid_r;  // internally latched BVALID-like state
+    reg         w_done;     // 此突发的所有W拍已发送
+    reg         b_valid_r;  // 内部锁存的类BVALID状态
 
     // ============================================================
-    // Remaining bytes after current burst (clamped to avoid underflow)
+    // 当前突发后的剩余字节数（钳位以避免下溢）
     // ============================================================
     wire [31:0] burst_byte_count = {24'h0, beats_in_burst} * BEAT_BYTES;
     wire [31:0] remaining_after_burst = (bytes_remaining <= burst_byte_count)
@@ -164,28 +164,28 @@ module dma_axi_writer #(
                             (base_addr[BEAT_BYTES_LOG2-1:0] != {BEAT_BYTES_LOG2{1'b0}});
 
     // ============================================================
-    // AXI4 AW channel
+    // AXI4 AW通道
     // ============================================================
     wire aw_hs = m_axi_awvalid && m_axi_awready;
 
     assign m_axi_awaddr  = current_addr;
     assign m_axi_awlen   = burst_len;
     assign m_axi_awsize  = BEAT_BYTES_LOG2[2:0];
-    assign m_axi_awburst = 2'b01;  // INCR
+    assign m_axi_awburst = 2'b01;  // INCR（递增）
     assign m_axi_awvalid = (state == S_AW) && !aw_done;
 
     // ============================================================
-    // AXI4 W channel
+    // AXI4 W通道
     // ============================================================
     reg [AXI_DATA_WIDTH-1:0] wdata_r;
     reg [STRB_W-1:0]         wstrb_r;
     reg                      wlast_r;
     reg                      wvalid_r;
 
-    // Phase B2: next-beat preload buffer — eliminates 1-cycle bubble
-    //   next_valid=1 means next_{data,strb,last} holds the beat after current.
-    //   On w_hs: if next_valid, transfer next→wdata_r (wvalid stays 1).
-    //   data_ready = !next_valid || w_hs (accept new beat when buffer free or freeing).
+    // Phase B2: 下一拍预取缓冲区 — 消除1周期气泡
+    //   next_valid=1表示next_{data,strb,last}保存当前拍之后的下一拍。
+    //   在w_hs时：如果next_valid，将next传输到wdata_r（wvalid保持1）。
+    //   data_ready = !next_valid || w_hs（缓冲区空闲或即将空闲时接受新拍）。
     reg                      next_valid;
     reg [AXI_DATA_WIDTH-1:0] next_data;
     reg [STRB_W-1:0]         next_strb;
@@ -193,15 +193,15 @@ module dma_axi_writer #(
 
     wire w_hs = m_axi_wvalid && m_axi_wready;
 
-    // data_ready: accept upstream data when next buffer is free, OR when w_hs
-    // will consume the current beat and free up the pipeline this cycle.
+    // data_ready: 当next缓冲区空闲，或w_hs将在本周期消耗当前拍并释放流水线时，
+    // 接受上游数据。
     assign data_ready = (state == S_WDATA) && !w_done && (!next_valid || w_hs);
 
-    // next_ready: combinational — true if next beat is/will-be available.
-    // Used by w_hs to decide whether to keep WVALID high after handshake.
+    // next_ready: 组合逻辑 — 当下一拍可用/即将可用时为真。
+    // 由w_hs用于决定握手后是否保持WVALID为高。
     wire next_ready = next_valid || (data_valid && data_ready);
 
-    // Valid bytes for the beat AFTER the current one (used for next wstrb/wlast)
+    // 当前拍之后下一拍的有效字节数（用于next wstrb/wlast）
     wire [31:0] bytes_sent_next = {24'h0, beat_counter + 8'h1} * BEAT_BYTES;
     wire [31:0] bytes_left_next = (bytes_remaining <= bytes_sent_next)
                                   ? 32'h0
@@ -216,19 +216,19 @@ module dma_axi_writer #(
     assign m_axi_wstrb  = wstrb_r;
 
     // ============================================================
-    // AXI4 B channel
+    // AXI4 B通道
     // ============================================================
-    assign m_axi_bready = 1'b1;  // always ready for response
+    assign m_axi_bready = 1'b1;  // 始终准备好接收响应
 
-    // P0-1 FIX: effective level includes pre-fetched beat in next_valid.
-    // Without this, S_WAIT_DATA deadlocks when next_valid has a carried-over
-    // beat but fifo_level alone doesn't meet the threshold.
+    // P0-1 FIX: 有效级别包含next_valid中预取的拍。
+    // 若无此修正，当next_valid有遗留拍但仅fifo_level不满足阈值时，
+    // S_WAIT_DATA会死锁。
     wire [6:0] eff_level = {1'b0, fifo_level} + {6'd0, next_valid};
 
     wire promote_now = !wvalid_r && next_valid;
 
     // ============================================================
-    // State machine
+    // 状态机
     // ============================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -274,7 +274,7 @@ module dma_axi_writer #(
                 end
 
                 S_WAIT_DATA: begin
-                    // P1-1: full-burst priority first, then tail, then underflow error.
+                    // P1-1: 优先完整突发，其次尾部，最后下溢错误。
                     if (eff_level >= {2'd0, beats_in_burst})
                         state <= S_AW;
                     else if (producer_done && (eff_level > 6'd0)) begin
@@ -287,7 +287,7 @@ module dma_axi_writer #(
                 end
 
                 S_AW: begin
-                    // next_valid preserved: pre-fetched beat belongs to next burst
+                    // next_valid保留：预取的拍属于下一突发
                     if (aw_hs) begin
                         aw_done <= 1'b1;
                         state <= S_WDATA;
@@ -295,14 +295,13 @@ module dma_axi_writer #(
                 end
 
                 S_WDATA: begin
-                    // Phase B2: next-beat preload pipeline — 1 beat/cycle.
-                    // P0-1 FIX: next_last uses conditional to handle the race
-                    // between preload and promotion. When next_valid=1 and w_hs=1,
-                    // the next beat will be promoted to main this cycle, so the
-                    // new preload is at beat_counter+2, not beat_counter+1.
-                    // P0-1 FIX: promote step uses current burst's (beat_counter==burst_len)
-                    // instead of carried-over next_last, because next_last was computed
-                    // for the PREVIOUS burst and is incorrect for the NEW burst.
+                    // Phase B2: 下一拍预取流水线 — 1拍/周期。
+                    // P0-1 FIX: next_last使用条件处理预取与提升之间的竞争。
+                    // 当next_valid=1且w_hs=1时，下一拍将在本周期被提升到主寄存器，
+                    // 因此新预取对应beat_counter+2，而非beat_counter+1。
+                    // P0-1 FIX: 提升步骤使用当前突发的(beat_counter==burst_len)
+                    // 而非遗留的next_last，因为next_last是为前一个突发计算的，
+                    // 对新突发不正确。
                     if (!wvalid_r && next_valid) begin
                         wdata_r     <= next_data;
                         wstrb_r     <= next_strb;
@@ -311,11 +310,11 @@ module dma_axi_writer #(
                         next_valid  <= 1'b0;
                     end
 
-                    // Load from FIFO: two-stage check allows loading main+next in 1 cycle.
-                    // P0-1 FIX: promote_now gates main-load to prevent overwrite
-                    // when Step 1 just promoted next→main (wvalid_r still 0 PRE-NBA).
-                    // Preload condition also widened to (wvalid_r || promote_now) so
-                    // new-burst first-cycle preload isn't starved.
+                    // 从FIFO加载：两阶段检查允许在1周期内加载main+next。
+                    // P0-1 FIX: promote_now门控主加载，防止Step 1刚将next提升到
+                    // main时（PRE-NBA中wvalid_r仍为0）发生覆盖。
+                    // 预取条件也放宽到(wvalid_r || promote_now)，使新突发的
+                    // 首周期预取不会被饿死。
                     if (data_valid) begin
                         if (!wvalid_r && !promote_now) begin
                             wdata_r  <= data_in;
@@ -323,7 +322,7 @@ module dma_axi_writer #(
                             wlast_r  <= (beat_counter == burst_len);
                             wvalid_r <= 1'b1;
                         end
-                        // Re-check: after first pop, next entry may be available.
+                        // 再次检查：第一次弹出后，下一个条目可能可用。
                         if (data_valid) begin
                             if ((wvalid_r || promote_now) && (!next_valid || w_hs)) begin
                                 next_data  <= data_in;
@@ -335,7 +334,7 @@ module dma_axi_writer #(
                         end
                     end
 
-                    // W channel handshake
+                    // W通道握手
                     if (w_hs) begin
                         if (wlast_r) begin
                             w_done      <= 1'b1;
@@ -360,24 +359,23 @@ module dma_axi_writer #(
                             beat_counter <= beat_counter + 8'h1;
                         end
                     end
-                    // P0-1 FIX: removed redundant else-if (!wvalid_r && next_valid).
-                    // Step 1 (top of S_WDATA) already promotes next→main unconditionally,
-                    // using the correct (beat_counter==burst_len) for wlast.  Keeping
-                    // a duplicate here would overwrite wlast_r with stale next_last.
+                    // P0-1 FIX: 移除了冗余的else-if (!wvalid_r && next_valid)。
+                    // Step 1（S_WDATA顶部）已无条件将next提升到main，
+                    // 使用正确的(beat_counter==burst_len)计算wlast。
+                    // 此处保留重复逻辑会用过时的next_last覆盖wlast_r。
                 end
 
                 S_WAIT_B: begin
                     if (m_axi_bvalid && m_axi_bready) begin
-                        // Check for BRESP error
+                        // 检查BRESP错误
                         if (m_axi_bresp != 2'b00) begin
                             state <= S_ERROR;
                         end else if ((bytes_remaining == 32'h0) && !next_valid) begin
                             state <= S_DONE;
                         end else if (bytes_remaining == 32'h0) begin
-                            // P0-1 FIX: next_valid has pre-fetched beat.  Only send
-                            // it if wlast=1 (genuine tail beat).  If wlast=0, the
-                            // beat belongs to a non-existent next burst and must be
-                            // discarded to avoid deadlock in S_WDATA.
+                            // P0-1 FIX: next_valid有预取的拍。仅当wlast=1（真正的尾部拍）
+                            // 时发送。若wlast=0，该拍属于不存在的下一突发，
+                            // 必须丢弃以避免S_WDATA死锁。
                             if (!next_last) begin
                                 next_valid <= 1'b0;
                                 state <= S_DONE;
@@ -387,7 +385,7 @@ module dma_axi_writer #(
                                 state <= S_WDATA;
                             end
                         end else begin
-                            // Next burst: bytes_remaining already holds remaining count
+                            // 下一突发：bytes_remaining已保存剩余计数
                             beat_counter    <= 8'h0;
                             beats_in_burst  <= calc_burst_beats_4kb(bytes_remaining, current_addr);
                             burst_len       <= calc_burst_beats_4kb(bytes_remaining, current_addr) - 8'h1;
@@ -415,11 +413,11 @@ module dma_axi_writer #(
     end
 
     // ============================================================
-    // Error detection (latched on entering S_ERROR)
+    // 错误检测（进入S_ERROR时锁存）
     // ============================================================
     reg         error_r;
     reg  [7:0]  error_code_r;
-    // P1-1: underflow detection combinatorially
+    // P1-1: 下溢检测，组合逻辑
     wire underflow_condition = (state == S_WAIT_DATA) && producer_done &&
                                (eff_level == 6'd0) && (bytes_remaining > 32'h0);
 
@@ -443,7 +441,7 @@ module dma_axi_writer #(
     end
 
     // ============================================================
-    // Done strobe (only in S_DONE, never in S_ERROR)
+    // Done脉冲（仅在S_DONE，绝不在S_ERROR）
     // ============================================================
     reg done_r;
     always @(posedge clk or negedge rst_n) begin

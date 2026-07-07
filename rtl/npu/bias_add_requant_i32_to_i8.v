@@ -1,7 +1,7 @@
-// bias_add_requant_i32_to_i8: optional INT32 folded bias add before existing requant primitive.
-// R1c keeps requant_i32_to_i8 arithmetic unchanged and makes the ordering explicit:
-//   accumulator INT32 -> optional + folded bias INT32 -> optional ReLU
-//   -> requant_i32_to_i8 -> INT8.
+// bias_add_requant_i32_to_i8: 在现有requant原语之前可选的INT32折叠bias加法。
+// R1c 保持 requant_i32_to_i8 算术不变，并使顺序显式化：
+//   累加器 INT32 -> 可选 + 折叠bias INT32 -> 可选 ReLU
+//   -> requant_i32_to_i8 -> INT8。
 `timescale 1ns / 1ps
 
 module bias_add_requant_i32_to_i8 (

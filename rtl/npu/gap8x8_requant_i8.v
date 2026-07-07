@@ -1,10 +1,10 @@
-// gap8x8_requant_i8: R1e GAP8x8 foundation.
-// Numeric ordering:
-//   INT8 feature-map values -> INT32 spatial sum
-//   divide by 64 using signed round-half-away-from-zero shift
-//   optional requant_i32_to_i8 -> INT8 output
-// This module reuses requant_i32_to_i8 for optional post-requant and does not
-// alter the existing requant primitive semantics.
+// gap8x8_requant_i8: R1e GAP8x8 基础模块。
+// 数值顺序：
+//   INT8 特征图值 -> INT32 空间求和
+//   使用有符号 round-half-away-from-zero 移位除以 64
+//   可选 requant_i32_to_i8 -> INT8 输出
+// 本模块复用 requant_i32_to_i8 进行可选后requant，不改变
+// 现有 requant 原语的语义。
 `timescale 1ns / 1ps
 
 module gap8x8_requant_i8 (

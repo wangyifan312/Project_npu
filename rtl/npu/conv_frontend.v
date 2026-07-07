@@ -1,24 +1,24 @@
-// conv_frontend: convolution window generator skeleton for 5x5/3x3/1x1 modes
-// Multi-channel: line buffer stores C_in channels at each spatial position (HWC layout)
-// Window extraction: 25 spatial values for a selected input channel
-// Sliding window: line buffer holds 5 rows, shifts up as new rows arrive
+// conv_frontend: 5x5/3x3/1x1 模式卷积窗口生成器骨架
+// 多通道：行缓冲区在每个空间位置存储 C_in 个通道（HWC 布局）
+// 窗口提取：选定输入通道的 25 个空间值
+// 滑动窗口：行缓冲区保留 5 行，新行到达时向上移位
 `timescale 1ns / 1ps
 
 module conv_frontend #(
-    parameter MAX_W    = 32,   // max input feature map width
-    parameter MAX_C_IN = 64,   // max input channels
-    parameter AW       = 11    // log2(MAX_W * MAX_C_IN) for line buffer addressing
+    parameter MAX_W    = 32,   // 最大输入特征图宽度
+    parameter MAX_C_IN = 64,   // 最大输入通道数
+    parameter AW       = 11    // 行缓冲区寻址的 log2(MAX_W * MAX_C_IN)
 ) (
     input  wire        clk,
     input  wire        rst_n,
 
-    // Input: streaming activation data from act_buffer (HWC layout, INT8 per byte)
+    // 输入：来自 act_buffer 的流式激活数据（HWC 布局，每字节 INT8）
     input  wire [7:0]  act_data,
     input  wire        act_valid,
     output wire        act_ready,
 
-    // Output: 5x5 window as 25-element vector (row-major: w[r*5+c])
-    // Window values are for the currently selected input channel
+    // 输出：5x5 窗口，表示为 25 元素向量（行优先：w[r*5+c]）
+    // 窗口值为当前选定输入通道的值
     output wire [7:0]  window_00, window_01, window_02, window_03, window_04,
     output wire [7:0]  window_10, window_11, window_12, window_13, window_14,
     output wire [7:0]  window_20, window_21, window_22, window_23, window_24,
@@ -26,30 +26,30 @@ module conv_frontend #(
     output wire [7:0]  window_40, window_41, window_42, window_43, window_44,
     output wire        window_valid,
 
-    // Channel selection: which input channel to extract (0..C_in-1)
-    input  wire [5:0]  channel_sel,   // selected input channel
+    // 通道选择：要提取哪个输入通道（0..C_in-1）
+    input  wire [5:0]  channel_sel,   // 选定的输入通道
 
-    // Control
-    input  wire [15:0] input_w,         // feature map width
-    input  wire [15:0] input_h,         // feature map height (informational)
-    input  wire [15:0] input_c,         // number of input channels (1..MAX_C_IN)
-    input  wire [31:0] conv_cfg,        // R1b: kernel/stride/padding control
-    input  wire [15:0] block_out_rows,  // output rows for this block
-    input  wire [15:0] block_in_rows,   // input rows for this block (= block_out_rows + 4)
-    input  wire        start,           // pulse to begin
-    input  wire        window_hold,     // npu_top busy: pause window advancement
-    output wire        done,            // all windows for this block generated
-    output wire [15:0] cur_row,         // current window row
-    output wire [15:0] cur_col          // current window column
+    // 控制
+    input  wire [15:0] input_w,         // 特征图宽度
+    input  wire [15:0] input_h,         // 特征图高度（仅供参考）
+    input  wire [15:0] input_c,         // 输入通道数（1..MAX_C_IN）
+    input  wire [31:0] conv_cfg,        // R1b：卷积核/步长/填充控制
+    input  wire [15:0] block_out_rows,  // 本块的输出行数
+    input  wire [15:0] block_in_rows,   // 本块的输入行数（= block_out_rows + 4）
+    input  wire        start,           // 启动脉冲
+    input  wire        window_hold,     // npu_top 忙碌：暂停窗口推进
+    output wire        done,            // 本块所有窗口已生成
+    output wire [15:0] cur_row,         // 当前窗口行
+    output wire [15:0] cur_col          // 当前窗口列
 );
 
-    // Maximum line width = MAX_W * MAX_C_IN bytes per row
+    // 最大行宽 = MAX_W * MAX_C_IN 字节每行
     localparam MAX_LINE_W = MAX_W * MAX_C_IN;
 
-    // Line buffer: 5 rows x MAX_LINE_W x 8 bits
+    // 行缓冲区：5 行 x MAX_LINE_W x 8 位
     reg [7:0] lb [0:4][0:MAX_LINE_W-1];
 
-    // State machine
+    // 状态机
     localparam S_IDLE              = 3'd0;
     localparam S_LOAD_FIRST_5      = 3'd1;
     localparam S_COMPUTE           = 3'd2;
@@ -59,7 +59,7 @@ module conv_frontend #(
 
     reg [2:0]  state;
     reg [15:0] curr_row, curr_col;
-    reg [15:0] load_row, load_col;     // loading position (byte index within row)
+    reg [15:0] load_row, load_col;     // 加载位置（行内字节索引）
     reg [15:0] rows_loaded;
     reg [15:0] total_out_rows;
     reg [15:0] total_out_cols;
@@ -69,12 +69,12 @@ module conv_frontend #(
     reg [15:0] stride_r;
     reg [15:0] pad_r;
     reg [15:0] prefill_rows;
-    integer    lb_base_row;           // logical input row currently stored in lb[0]
+    integer    lb_base_row;           // 当前存储在 lb[0] 中的逻辑输入行
     reg        load_phase;
     reg        shift_now;
     reg        flush_lb;
-    reg  [3:0] stride_shift_cnt;   // remaining shifts for stride>1 row transition
-    reg        stride_first_shift;  // 1 = first S_SHIFT visit (advance curr_row)
+    reg  [3:0] stride_shift_cnt;   // stride>1 行切换时的剩余移位次数
+    reg        stride_first_shift;  // 1 = 首次进入 S_SHIFT（推进 curr_row）
     integer    si, sj;
 
     wire [1:0] conv_kernel_sel = conv_cfg[1:0];
@@ -165,7 +165,7 @@ module conv_frontend #(
                 state          <= S_LOAD_FIRST_5;
             end else case (state)
                 S_IDLE: begin
-                    // start handled with priority above
+                    // start 已在上方优先处理
                 end
 
                 S_LOAD_FIRST_5: begin
@@ -227,7 +227,7 @@ module conv_frontend #(
                             load_col <= 16'd0;
                             rows_loaded <= rows_loaded + 16'd1;
                             load_phase <= 1'b0;
-                            // For stride>1, may need additional shifts to cover the stride gap
+                            // 对于 stride>1，可能需要额外移位来覆盖步长间隙
                             if (stride_shift_cnt > 4'd0) begin
                                 stride_shift_cnt <= stride_shift_cnt - 4'd1;
                                 shift_now <= 1'b1;
@@ -266,10 +266,10 @@ module conv_frontend #(
     assign done = done_r;
 
     // ============================================================
-    // Compact window extraction. 5x5 legacy remains ports [0:24].
-    // 3x3 uses ports [0:8], 1x1 uses port [0]. Stride/same padding are
-    // accepted as a control/frontend skeleton; boundary rows for same/stride2
-    // still require R1b+ datapath verification before ResNet numerical use.
+    // 紧凑窗口提取。5x5 沿用原有端口 [0:24]。
+    // 3x3 使用端口 [0:8]，1x1 使用端口 [0]。stride/same padding
+    // 作为控制/前端骨架被接受；same/stride2 的边界行
+    // 在 ResNet 数值使用前仍需 R1b+ 数据路径验证。
     // ============================================================
     reg [7:0] compact_window [0:24];
     integer kr;
@@ -290,9 +290,9 @@ module conv_frontend #(
                 if ((kr < kernel_size_r) && (kc < kernel_size_r)) begin
                     idx = kr * kernel_size_r + kc;
                     if (conv_same_pad && (input_h <= kernel_size_r)) begin
-                        // Preserve the compact alias smoke contract used by R1g:
-                        // tiny 3x3 aliases are not full-shape same-padding
-                        // evidence and keep the pre-R1h line-buffer placement.
+                        // 保留 R1g 使用的紧凑别名冒烟合约：
+                        // 小型 3x3 别名不是完整尺寸 same-padding
+                        // 证据，保持 R1h 之前的行缓冲区位置。
                         logical_src_row = kr;
                         lb_row = kr;
                     end else begin

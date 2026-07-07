@@ -1,17 +1,17 @@
-// dma_axi_reader: AXI4 read master for contiguous block DMA
-// Splits large transfers into bursts (max 16 beats per burst)
-// Outputs data stream to buffer with backpressure (data_ready)
+// dma_axi_reader: 连续块DMA的AXI4读主端
+// 将大传输拆分为多个突发（每突发最多16拍）
+// 输出数据流到缓冲区，支持背压（data_ready）
 `timescale 1ns / 1ps
 
 module dma_axi_reader #(
     parameter AXI_DATA_WIDTH = 256,
     parameter AXI_ADDR_WIDTH = 32,
-    parameter MAX_BURST_LEN  = 16   // max beats per AXI burst
+    parameter MAX_BURST_LEN  = 16   // 每AXI突发的最大拍数
 ) (
     input  wire        clk,
     input  wire        rst_n,
 
-    // === Control interface ===
+    // === 控制接口 ===
     input  wire                        start,
     input  wire [AXI_ADDR_WIDTH-1:0]   base_addr,
     input  wire [31:0]                 byte_count,
@@ -20,13 +20,13 @@ module dma_axi_reader #(
     output wire [7:0]                  error_code,
     output wire                        busy,
 
-    // === Data output (to buffer) ===
+    // === 数据输出（到缓冲区）===
     output wire [AXI_DATA_WIDTH-1:0]   data_out,
     output wire                        data_valid,
     input  wire                        data_ready,
     output wire [(AXI_DATA_WIDTH/8)-1:0] data_strb,
 
-    // === AXI4 Read Master ===
+    // === AXI4 读主端 ===
     output wire [AXI_ADDR_WIDTH-1:0]   m_axi_araddr,
     output wire                        m_axi_arvalid,
     input  wire                        m_axi_arready,
@@ -42,57 +42,57 @@ module dma_axi_reader #(
 );
 
     // ============================================================
-    // Derived parameters
+    // 派生参数
     // ============================================================
-    localparam BEAT_BYTES = AXI_DATA_WIDTH / 8;  // bytes per beat
-    localparam STRB_WIDTH = AXI_DATA_WIDTH / 8;  // byte-enable width
+    localparam BEAT_BYTES = AXI_DATA_WIDTH / 8;  // 每拍字节数
+    localparam STRB_WIDTH = AXI_DATA_WIDTH / 8;  // 字节使能位宽
     localparam BEAT_BYTES_LOG2 = (AXI_DATA_WIDTH == 32)  ? 2 :
                                  (AXI_DATA_WIDTH == 64)  ? 3 :
                                  (AXI_DATA_WIDTH == 128) ? 4 :
                                  (AXI_DATA_WIDTH == 256) ? 5 : 5;
 
     // ============================================================
-    // Error codes
+    // 错误码
     // ============================================================
     localparam ERR_NONE    = 8'h00;
-    localparam ERR_RRESP   = 8'h20;  // AXI read response error
-    localparam ERR_ALIGN   = 8'h21;  // address misalignment
+    localparam ERR_RRESP   = 8'h20;  // AXI读响应错误
+    localparam ERR_ALIGN   = 8'h21;  // 地址未对齐
     localparam ERR_INTERNAL= 8'h22;
 
     // ============================================================
-    // State machine
+    // 状态机
     // ============================================================
     localparam S_IDLE    = 3'd0;
-    localparam S_AR      = 3'd1;  // issuing read address
-    localparam S_DATA    = 3'd2;  // receiving data beats
+    localparam S_AR      = 3'd1;  // 发送读地址
+    localparam S_DATA    = 3'd2;  // 接收数据拍
     localparam S_DONE    = 3'd3;
     localparam S_ERROR   = 3'd4;
 
     reg [2:0] state;
 
     // ============================================================
-    // Internal registers
+    // 内部寄存器
     // ============================================================
     reg  [31:0] bytes_remaining;
     reg  [31:0] current_addr;
-    reg  [7:0]  beats_in_burst;   // total beats in current burst
-    reg  [7:0]  beat_counter;     // beats received in current burst
-    reg  [7:0]  burst_len;        // ARLEN for current burst (= beats - 1)
-    reg         ar_done;          // AR handshake complete
+    reg  [7:0]  beats_in_burst;   // 当前突发中的总拍数
+    reg  [7:0]  beat_counter;     // 当前突发中已接收的拍数
+    reg  [7:0]  burst_len;        // 当前突发的ARLEN（= 拍数 - 1）
+    reg         ar_done;          // AR握手完成
 
-    // Output data stage (registered, handles backpressure)
+    // 输出数据级（寄存器输出，处理背压）
     reg         data_valid_r;
     reg  [AXI_DATA_WIDTH-1:0] data_out_r;
     reg  [STRB_WIDTH-1:0]     data_strb_r;
 
     // ============================================================
-    // Byte strobe generation — transfer-level, not burst-level
-    // bytes_before_beat = bytes remaining in ENTIRE transfer before THIS beat
+    // 字节使能生成 — 传输级，而非突发级
+    // bytes_before_beat = 在此拍之前整个传输中剩余的字节数
     // ============================================================
     wire [31:0] bytes_before_beat;
     assign bytes_before_beat = bytes_remaining - ({24'h0, beat_counter} * BEAT_BYTES);
 
-    // Generate strb: full beat → all 1's; partial final beat → low N bytes only
+    // 生成strb：完整拍→全1；部分最后拍→仅低N字节
     function [STRB_WIDTH-1:0] gen_strb;
         input [31:0] valid_bytes;
         integer i;
@@ -106,9 +106,9 @@ module dma_axi_reader #(
     endfunction
 
     // ============================================================
-    // Next burst calculation with AXI4 4KB boundary split (U9-a3)
+    // 下一突发计算，带AXI4 4KB边界分割（U9-a3）
     // burst_beats = min(ceil(bytes/BEAT_BYTES), MAX_BURST_LEN, beats_to_4KB)
-    // Rounds up to whole beats (partial last beat is padded).
+    // 向上取整到完整拍（部分最后拍被填充）。
     // ============================================================
     function [7:0] calc_burst_beats_4kb;
         input [31:0] bytes;
@@ -121,14 +121,14 @@ module dma_axi_reader #(
             if (bytes == 32'd0) begin
                 calc_burst_beats_4kb = 8'd0;
             end else begin
-                // ceil(bytes / BEAT_BYTES)
+                // 向上取整(bytes / BEAT_BYTES)
                 beats_by_bytes = (bytes + BEAT_BYTES - 1) >> BEAT_BYTES_LOG2;
 
-                // AXI4: one burst must not cross a 4KB (4096-byte) boundary
+                // AXI4: 一个突发不能跨越4KB（4096字节）边界
                 bytes_to_4kb = 32'd4096 - {20'd0, addr[11:0]};
                 beats_to_4kb = bytes_to_4kb >> BEAT_BYTES_LOG2;
 
-                // Safety: with 32B-aligned addr this is >= 1; guard against 0
+                // 安全保护：32B对齐地址下此值>=1；防止为0
                 if (beats_to_4kb == 32'd0)
                     beats_to_4kb = 32'd1;
 
@@ -145,8 +145,7 @@ module dma_axi_reader #(
         end
     endfunction
 
-    // Legacy wrapper kept for internal readability where addr is implicit.
-    // All new code uses calc_burst_beats_4kb directly.
+    // 遗留封装，保留用于内部可读性（addr隐含时）。所有新代码直接使用calc_burst_beats_4kb。
     function [7:0] calc_burst_beats;
         input [31:0] bytes;
         begin
@@ -154,7 +153,7 @@ module dma_axi_reader #(
         end
     endfunction
 
-    // Remaining bytes after current burst (clamped to 0 to avoid underflow)
+    // 当前突发后的剩余字节数（钳位到0以避免下溢）
     wire [31:0] burst_byte_count = {24'h0, beats_in_burst} * BEAT_BYTES;
     wire [31:0] remaining_after_burst = (bytes_remaining <= burst_byte_count)
                                         ? 32'h0
@@ -163,26 +162,26 @@ module dma_axi_reader #(
                             (base_addr[BEAT_BYTES_LOG2-1:0] != {BEAT_BYTES_LOG2{1'b0}});
 
     // ============================================================
-    // AXI4 AR channel
+    // AXI4 AR通道
     // ============================================================
     wire ar_hs = m_axi_arvalid && m_axi_arready;
 
     assign m_axi_araddr  = current_addr;
     assign m_axi_arlen   = burst_len;
     assign m_axi_arsize  = BEAT_BYTES_LOG2[2:0];
-    assign m_axi_arburst = 2'b01;  // INCR (incrementing address)
+    assign m_axi_arburst = 2'b01;  // INCR（递增地址）
     assign m_axi_arvalid = (state == S_AR) && !ar_done;
 
     // ============================================================
-    // AXI4 R channel (read data)
+    // AXI4 R通道（读数据）
     // ============================================================
-    // Accept AXI read data when buffer is ready to receive
+    // 当缓冲区准备好接收时，接受AXI读数据
     assign m_axi_rready = data_ready;
     wire r_hs = m_axi_rvalid && m_axi_rready;
     wire expected_rlast = (beat_counter == burst_len);
 
     // ============================================================
-    // State machine: sequential
+    // 状态机：时序逻辑
     // ============================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -211,7 +210,7 @@ module dma_axi_reader #(
                             current_addr    <= base_addr;
                             ar_done         <= 1'b0;
                             beat_counter    <= 8'h0;
-                            // Compute first burst with 4KB boundary split
+                            // 计算第一个突发，带4KB边界分割
                             beats_in_burst  <= calc_burst_beats_4kb(byte_count, base_addr);
                             burst_len       <= calc_burst_beats_4kb(byte_count, base_addr) - 8'h1;
                             state <= S_AR;
@@ -220,7 +219,7 @@ module dma_axi_reader #(
                 end
 
                 S_AR: begin
-                    // Clear any stale data_valid from previous burst boundary
+                    // 清除来自前一个突发边界的残留data_valid
                     if (data_valid_r && data_ready)
                         data_valid_r <= 1'b0;
                     if (ar_hs) begin
@@ -231,21 +230,21 @@ module dma_axi_reader #(
 
                 S_DATA: begin
                     if (r_hs) begin
-                        // Check for RRESP error before accepting data
+                        // 在接受数据前检查RRESP错误
                         if (m_axi_rresp != 2'b00) begin
                             state <= S_ERROR;
                         end else if (m_axi_rlast != expected_rlast) begin
                             state <= S_ERROR;
                         end else begin
-                            // Receive a data beat
+                            // 接收一拍数据
                             data_valid_r <= 1'b1;
                             data_out_r   <= m_axi_rdata;
                             data_strb_r  <= gen_strb(bytes_before_beat);
                             beat_counter <= beat_counter + 8'h1;
 
-                            // Check if last beat in burst
+                            // 检查是否为突发中的最后一拍
                             if (expected_rlast) begin
-                                // Update for next burst
+                                // 为下一突发更新
                                 current_addr    <= current_addr + ({24'h0, beats_in_burst} * BEAT_BYTES);
                                 bytes_remaining <= remaining_after_burst;
 
@@ -275,7 +274,7 @@ module dma_axi_reader #(
                 end
 
                 S_ERROR: begin
-                    // Hold error state, drain any pending data
+                    // 保持错误状态，排空任何待处理数据
                     if (data_valid_r && data_ready)
                         data_valid_r <= 1'b0;
                     if (!start)
@@ -288,7 +287,7 @@ module dma_axi_reader #(
     end
 
     // ============================================================
-    // Error detection (latched on entering S_ERROR)
+    // 错误检测（进入S_ERROR时锁存）
     // ============================================================
     reg         error_r;
     reg  [7:0]  error_code_r;
@@ -313,9 +312,9 @@ module dma_axi_reader #(
     end
 
     // ============================================================
-    // Outputs
+    // 输出
     // ============================================================
-    // Registered done strobe (only in S_DONE, never in S_ERROR)
+    // 寄存的done脉冲（仅在S_DONE，绝不在S_ERROR）
     reg done_r;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n)

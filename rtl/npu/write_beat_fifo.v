@@ -1,6 +1,6 @@
-// write_beat_fifo.v — 256-bit Write Beat FIFO
-// Combinational read: rd_data always shows front of queue when not empty.
-// Used between store_packer (producer) and dma_axi_writer (consumer).
+// write_beat_fifo.v — 256-bit 写节拍 FIFO
+// 组合逻辑读出：rd_data 在非空时始终展示队首数据。
+// 用于 store_packer（生产者）与 dma_axi_writer（消费者）之间。
 `timescale 1ns / 1ps
 
 module write_beat_fifo #(parameter DEPTH = 16) (

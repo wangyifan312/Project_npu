@@ -1,6 +1,6 @@
-// npu_top: NPU accelerator orchestration top for the formal single-cluster SoC baseline
-// Multi-channel Conv: temporal input-channel iteration with parallel output channels
-// Conv formal path: cluster_scheduler -> compute_core -> output_arbiter
+// npu_top: NPU 加速器编排顶层，用于正式单 cluster SoC 基线
+// 多通道 Conv：时间输入通道迭代，并行输出通道
+// Conv 正式路径：cluster_scheduler -> compute_core -> output_arbiter
 `timescale 1ns / 1ps
 
 module npu_top #(
@@ -19,7 +19,7 @@ module npu_top #(
     input  wire        clk,
     input  wire        rst_n,
 
-    // AXI4-Lite Slave
+    // AXI4-Lite 从接口
     input  wire                        s_axi_awvalid,
     output wire                        s_axi_awready,
     input  wire [AXI_ADDR_W-1:0]       s_axi_awaddr,
@@ -38,7 +38,7 @@ module npu_top #(
     output wire [AXI_DATA_W-1:0]       s_axi_rdata,
     output wire [1:0]                  s_axi_rresp,
 
-    // AXI4 Master Read
+    // AXI4 主接口读
     output wire [AXI_ADDR_W-1:0]       m_axi_araddr,
     output wire                        m_axi_arvalid,
     input  wire                        m_axi_arready,
@@ -51,7 +51,7 @@ module npu_top #(
     input  wire                        m_axi_rlast,
     input  wire [1:0]                  m_axi_rresp,
 
-    // AXI4 Master Write
+    // AXI4 主接口写
     output wire [AXI_ADDR_W-1:0]       m_axi_awaddr,
     output wire                        m_axi_awvalid,
     input  wire                        m_axi_awready,
@@ -67,12 +67,12 @@ module npu_top #(
     input  wire                        m_axi_bvalid,
     output wire                        m_axi_bready,
 
-    // Status
+    // 状态
     output wire                        npu_busy,
     output wire                        npu_done,
     output wire                        npu_error,
     output wire [7:0]                  npu_error_code,
-    output wire                        npu_irq       // Phase U8-a: IRQ output
+    output wire                        npu_irq       // IRQ 输出
 );
 
     localparam PE_ROWS = TILE_ROWS * 4;
@@ -91,7 +91,7 @@ module npu_top #(
     localparam [15:0] PE_COLS_16 = PE_COLS;
     localparam [15:0] KERNEL_SPATIAL_16 = KERNEL_SPATIAL;
 
-    // Main FSM states
+    // 主 FSM 状态
     localparam FSM_IDLE        = 5'd0;
     localparam FSM_LOAD_ACT    = 5'd1;
     localparam FSM_CF_START    = 5'd2;
@@ -162,17 +162,17 @@ module npu_top #(
     localparam FSM_GEMM_STREAM_RUN    = 6'd36;
     localparam FSM_GEMM_STREAM_DONE   = 6'd37;
     localparam FSM_GEMM_STREAM_STORE   = 6'd38;
-    localparam FSM_GEMM_STREAM_ACCUM   = 6'd40;  // Phase 3a: K-chunk loop check
+    localparam FSM_GEMM_STREAM_ACCUM   = 6'd40;  // K-chunk 循环检查
 
-    // Phase 3c: input-tile-loader micro-sequencer within FSM_GEMM_STREAM_LOAD_A
-    // Currently GEMM-scoped (gemm_a_load_*); intended to become common
-    // input_tile_loader in Phase 4.
+    // input-tile-loader 微序列器，位于 FSM_GEMM_STREAM_LOAD_A 内
+    // 当前为 GEMM 范围（gemm_a_load_*）；计划成为通用模块
+    // 后续输入 tile loader。
     localparam A_LOAD_IDLE    = 2'd0;
     localparam A_LOAD_REQ     = 2'd1;
     localparam A_LOAD_WAIT    = 2'd2;
     localparam A_LOAD_CAPTURE = 2'd3;
 
-    // COMPUTE sub-states
+    // COMPUTE 子状态
     localparam CP_WAIT_WIN = 3'd0;
     localparam CP_FEED_ACT = 3'd1;
     localparam CP_DRAIN    = 3'd2;
@@ -181,7 +181,7 @@ module npu_top #(
 
     reg [5:0]  fsm_state;
 
-    // P3: helper — compute FSM active in either FSM_COMPUTE or FSM_PIPE_RUN
+    // 辅助 — 计算 FSM 在 FSM_COMPUTE 或 FSM_PIPE_RUN 中均活跃
     wire compute_fsm_active = (fsm_state == FSM_COMPUTE) || (fsm_state == FSM_PIPE_RUN);
 
     reg [2:0]  comp_sub_state;
@@ -193,7 +193,7 @@ module npu_top #(
     reg [31:0] wgt_load_phase;
     reg        wgt_load_wait;
 
-    // Phase 2: FC shadow weight register — loaded during compute,
+    // FC 影子权重寄存器 — 在计算期间加载，
     // then swapped into wgt_load_reg after chunk completes
     reg [WGT_REG_BITS-1:0] wgt_load_reg_shadow;
     reg        fc_shadow_active;
@@ -203,11 +203,11 @@ module npu_top #(
     reg        fc_shadow_wait;
 
     // ============================================================
-    // npu_ctrl signals
+    // npu_ctrl 信号
     // ============================================================
     wire        task_start;
     wire [2:0]  task_type;
-    wire        task_type_reserved_invalid;  // U9-b4
+    wire        task_type_reserved_invalid;  // 保留位检测
     wire [31:0] input_addr, weight_addr, output_addr;
     wire [31:0] input_bytes, weight_bytes, output_bytes;
     wire [15:0] input_h, input_w, input_c, output_c;
@@ -262,7 +262,7 @@ module npu_top #(
     wire [31:0] perf_ar_handshake, perf_aw_handshake, perf_b_handshake, perf_bus_active;
     wire [31:0] perf_cluster_cfg;
 
-    // Enhanced performance counters
+    // 增强性能计数器
     wire [31:0] perf_compute_cycles, perf_load_cycles, perf_store_cycles, perf_collect_cycles;
     wire [31:0] perf_read_valid_bytes, perf_write_valid_bytes;
     wire [31:0] perf_mac_count_lo, perf_mac_count_hi;
@@ -303,7 +303,7 @@ module npu_top #(
         .ctrl_busy(ctrl_busy), .ctrl_done(ctrl_done),
         .ctrl_error(ctrl_error), .ctrl_error_code(ctrl_error_code),
         .task_go(task_go), .task_start(task_start), .task_type(task_type),
-        .task_type_reserved_invalid(task_type_reserved_invalid),  // U9-b4
+        .task_type_reserved_invalid(task_type_reserved_invalid),  // 保留位检测
         .input_addr(input_addr), .weight_addr(weight_addr), .output_addr(output_addr),
         .input_bytes(input_bytes), .weight_bytes(weight_bytes), .output_bytes(output_bytes),
         .input_h(input_h), .input_w(input_w), .input_c(input_c), .output_c(output_c),
@@ -332,7 +332,7 @@ module npu_top #(
         .perf_aw_handshake_i(perf_aw_handshake),
         .perf_b_handshake_i(perf_b_handshake),
         .perf_bus_active_i(perf_bus_active),
-        // Enhanced perf counters
+        // 增强性能计数器
         .perf_compute_cycles_i(perf_compute_cycles),
         .perf_load_cycles_i(perf_load_cycles),
         .perf_store_cycles_i(perf_store_cycles),
@@ -362,7 +362,7 @@ module npu_top #(
         .DMA_DATA_W(AXI_DMA_DATA_W)
     ) u_checker (
         .clk(clk), .rst_n(rst_n), .task_start(task_start),
-        .task_type(task_type), .task_type_reserved_invalid(task_type_reserved_invalid),  // U9-b4
+        .task_type(task_type), .task_type_reserved_invalid(task_type_reserved_invalid),  // 保留位检测
         .input_addr(input_addr), .weight_addr(weight_addr),
         .output_addr(output_addr), .input_bytes(input_bytes), .weight_bytes(weight_bytes),
         .output_bytes(output_bytes), .input_h(input_h), .input_w(input_w),
@@ -379,7 +379,7 @@ module npu_top #(
     );
 
     // ============================================================
-    // DMA instances (act, weight — shared AXI read mux)
+    // DMA 实例（act、weight — 共享 AXI 读多路复用器）
     // ============================================================
     reg         act_dma_start;
     reg  [31:0] act_dma_addr;
@@ -450,18 +450,18 @@ module npu_top #(
     // ============================================================
     reg         dma_wr_start, dma_wr_started;
     reg         block_bank;
-    reg         next_blk_prep;        // P3: step1: blk_done pulsed
-    reg         next_blk_wait;        // P3: step2: waiting for scheduler update
-    reg         next_dma_launched;    // P3: next block DMA launched during STORE
-    reg         pipe_mode;            // P3: full pipeline overlap active
-    reg         pipe_store_done;      // P3: store finished during pipe mode
+    reg         next_blk_prep;        // step1: blk_done 脉冲
+    reg         next_blk_wait;        // step2: 等待调度器更新
+    reg         next_dma_launched;    // 下一 block DMA 在 STORE 期间启动
+    reg         pipe_mode;            // 全流水线重叠活跃
+    reg         pipe_store_done;      // pipe 模式下 store 完成
     reg  [31:0] dma_wr_addr, dma_wr_bytes;
     wire        dma_wr_done, dma_wr_error, dma_wr_busy, dma_wr_txn_active;
     wire [7:0]  dma_wr_error_code;
     wire [AXI_DMA_DATA_W-1:0] dma_wr_data;
     wire        dma_wr_valid, dma_wr_ready;
 
-    // Write-beat FIFO wires (declared before use in dma_axi_writer)
+    // 写 beat FIFO 连线（在 dma_axi_writer 使用前声明）
     wire [255:0] wf_rd_data;
     wire [31:0]  wf_rd_strb;
     wire         wf_rd_last;
@@ -469,30 +469,30 @@ module npu_top #(
     wire [5:0]   wf_rd_level;
 
     // ============================================================
-    // Vector INT8 ReLU 256b — streaming datapath signals
+    // Vector INT8 ReLU 256b — 流式数据通路信号
     // ============================================================
-    reg  [31:0] vec_relu_beat_idx;     // beats received/processed
-    reg  [31:0] vec_relu_total_beats;  // total expected beats = (num_bytes + 31) >> 5
-    reg         vec_relu_out_wr_valid; // write_beat_fifo push valid
-    reg         vec_relu_read_done;    // act_dma_done latched (phase A complete)
-    reg         vec_relu_proc_active;  // phase B: processing beats from act_buffer
-    reg  [BUF_ADDR_W-1:0] vec_relu_rd_addr; // phase B: act_buffer read address
-    reg         vec_relu_rd_wait;      // 1-cycle buffer read latency wait
-    reg         vec_wr_done_latch;     // latch for dma_wr_done 1-cycle pulse
-    reg         vec_relu_proc_done;    // Phase B completed; waiting for writer
-    wire [255:0] vec_relu_result;      // 32-lane INT8 ReLU result (combinational)
+    reg  [31:0] vec_relu_beat_idx;     // 已接收/处理的 beat 数
+    reg  [31:0] vec_relu_total_beats;  // 预期总 beat 数 = (num_bytes + 31) >> 5
+    reg         vec_relu_out_wr_valid; // write_beat_fifo 推送有效
+    reg         vec_relu_read_done;    // act_dma_done 锁存（phase A 完成）
+    reg         vec_relu_proc_active;  // phase B: 处理来自 act_buffer 的 beat
+    reg  [BUF_ADDR_W-1:0] vec_relu_rd_addr; // phase B: act_buffer 读地址
+    reg         vec_relu_rd_wait;      // 1 周期 buffer 读延迟等待
+    reg         vec_wr_done_latch;     // dma_wr_done 1 周期脉冲锁存
+    reg         vec_relu_proc_done;    // Phase B 完成；等待 writer
+    wire [255:0] vec_relu_result;      // 32 lane INT8 ReLU 结果（组合逻辑）
 
-    // === DEBUG counters for vec_relu multi-burst correctness ===
-    reg [31:0] dbg_vec_push_count;     // successful FIFO pushes from Phase B
-    reg [31:0] dbg_vec_push_skip;      // skipped pushes (FIFO full)
-    reg [31:0] dbg_fifo_pop_count;     // FIFO pops (wf_rd_en)
+    // === vec_relu 多 burst 正确性调试计数器 ===
+    reg [31:0] dbg_vec_push_count;     // Phase B 成功 FIFO 推送次数
+    reg [31:0] dbg_vec_push_skip;      // 跳过的推送（FIFO 满）
+    reg [31:0] dbg_fifo_pop_count;     // FIFO 弹出（wf_rd_en）
     reg [31:0] dbg_w_hs_count;         // m_axi_wvalid && m_axi_wready
-    reg [31:0] dbg_vec_total_beats;    // snapshot of total_beats
-    reg        dbg_done_printed;       // only print once
-    reg [31:0] dbg_rd_issue_count;     // AR handshakes during vec read (phase A)
-    reg [31:0] dbg_rd_data_count;      // R handshakes during vec read (phase A)
-    reg [31:0] dbg_fifo_full_stall;    // times Phase B blocked by wf_wr_full
-    reg [31:0] dbg_cycle_cnt;          // cycle counter snapshot
+    reg [31:0] dbg_vec_total_beats;    // total_beats 快照
+    reg        dbg_done_printed;       // 仅打印一次
+    reg [31:0] dbg_rd_issue_count;     // vec 读取期间 AR 握手（phase A）
+    reg [31:0] dbg_rd_data_count;      // vec 读取期间 R 握手（phase A）
+    reg [31:0] dbg_fifo_full_stall;    // Phase B 被 wf_wr_full 阻塞的次数
+    reg [31:0] dbg_cycle_cnt;          // 周期计数器快照
 
     // producer_done: declared here, assigned after store_words_active definition
     wire dma_producer_done;
@@ -516,7 +516,7 @@ module npu_top #(
     );
 
     // ============================================================
-    // Buffer instances
+    // Buffer 实例
     // ============================================================
     wire [BUF_ADDR_W-1:0] act_rd_addr, wgt_rd_addr;
     wire [BUF_DATA_W-1:0] act_rd_data, wgt_rd_data;
@@ -542,14 +542,14 @@ module npu_top #(
     reg  [15:0] wgt_preload_cin;
     reg  [4:0]  wgt_preload_byte_offset;
     reg wgt_buf_flush;
-    // FC ping-pong weight DMA preload (Phase 1)
+    // FC ping-pong 权重 DMA 预加载
     reg        fc_preload_active;
     reg        fc_preload_done;
     reg        fc_preload_bank;
     reg [15:0] fc_preload_out_start;
     reg [15:0] fc_preload_tile_outputs;
-    reg [4:0]  fc_preload_byte_offset;  // P1: sub-beat offset for preload DMA
-    reg        fc_use_preload;           // P1: set when consuming preloaded weights
+    reg [4:0]  fc_preload_byte_offset;  // 预加载 DMA 的 sub-beat 偏移
+    reg        fc_use_preload;           // 使用预加载权重时设置
     npu_buffer #(.DATA_WIDTH(BUF_DATA_W), .ENTRIES(BUF_ENTRIES), .ADDR_WIDTH(BUF_ADDR_W))
     u_wgt_buffer (
         .clk(clk), .rst_n(rst_n),
@@ -595,8 +595,8 @@ module npu_top #(
     wire        cf_new_window = (cf_window_valid_i && (cf_cur_row != cf_last_row || cf_cur_col != cf_last_col));
     wire        cf_window_hold;
 
-    // FC formal path state. FC tiles output neurons across the shared
-    // single-cluster array and chunks long input vectors across PE rows.
+    // FC 正式路径状态。FC tile 在共享单 cluster 阵列上输出神经元，
+    // 并将长输入向量分块到 PE 行。
     reg [15:0] fc_out_start;
     reg [15:0] fc_tile_outputs;
     reg [15:0] fc_in_base;
@@ -604,14 +604,14 @@ module npu_top #(
     reg [31:0] fc_store_addr;
     reg [31:0] fc_store_bytes;
 
-    // GEMM mode: outer loop over M rows, each row = one FC/GEMV pass
-    reg [15:0] gemm_row_idx;     // current GEMM output row (0..M-1)
-    wire [15:0] gemm_M_val;      // M = input_h in GEMM mode
-    wire [15:0] gemm_N_val;      // N = output_c in GEMM mode
+    // GEMM 模式：外层循环遍历 M 行，每行 = 一次 FC/GEMV 传递
+    reg [15:0] gemm_row_idx;     // 当前 GEMM 输出行（0..M-1）
+    wire [15:0] gemm_M_val;      // GEMM 模式中 M = input_h
+    wire [15:0] gemm_N_val;      // GEMM 模式中 N = output_c
     assign gemm_M_val = input_h;
     assign gemm_N_val = output_c;
 
-    // GEMM weight retention cache
+    // GEMM 权重保留缓存
     reg        gemm_weight_valid;
     reg [31:0] gemm_weight_addr_cached;
     reg [15:0] gemm_weight_k_base_cached;
@@ -642,7 +642,7 @@ module npu_top #(
     );
 
     // ============================================================
-    // Formal single-cluster compute path
+    // 正式单 cluster 计算路径
     // ============================================================
     wire [(PE_ROWS*8)-1:0]    array_act_in;
     wire [(PE_COLS*32)-1:0]   array_sum_in;
@@ -679,13 +679,13 @@ module npu_top #(
     wire is_vec_relu_mode = (task_type == 3'd6);
     wire is_gemm_mode    = (task_type == 3'd7);
     wire gemm_row_streaming_en = is_gemm_mode && conv_cfg[5];
-    // Phase U4-b: FC streaming mode — FC matmul or matmul+ReLU routed through
-    // streaming GEMM pipeline.  ReLU handled via store_desc_relu_en in GST.
-    // FC with bias/requant still falls back to legacy.
+    // FC 流式模式 — FC matmul or matmul+ReLU routed through
+    // 流式 GEMM 管线。  ReLU handled via store_desc_relu_en in GST.
+    // 带 bias/requant 的 FC 仍回退到 legacy。
     wire fc_streaming_en    = is_fc_mode && conv_cfg[5] && !bias_enabled;
     wire matrix_streaming_en = gemm_row_streaming_en || fc_streaming_en;
     wire gemm_weight_hit = is_gemm_mode && gemm_weight_valid &&
-        !gemm_row_streaming_en &&  // Phase 3b: streaming GEMM bypasses legacy cache
+        !gemm_row_streaming_en &&  // 流式 GEMM 绕过旧版缓存
         (gemm_weight_k_base_cached == 16'd0) &&
         (gemm_weight_n_base_cached == 16'd0) &&
         (gemm_weight_k_size_cached == ((input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c)) &&
@@ -694,24 +694,24 @@ module npu_top #(
     wire [15:0] array_active_rows;
     wire [15:0] array_active_cols;
 
-    // Phase 4a-2: double-buffered input tile banks
+    // 双缓冲输入 tile bank
     reg [7:0]  input_tile_bank0 [0:7][0:63];
     reg [7:0]  input_tile_bank1 [0:7][0:63];
-    // Phase 4c-1: result_tile double buffer (abstracted from c_tile)
+    // result_tile 双缓冲（从 c_tile 抽象）
     reg signed [31:0] result_tile_bank0 [0:7][0:63];
     reg signed [31:0] result_tile_bank1 [0:7][0:63];
     reg        result_tile_valid_bank0 [0:7][0:63];
     reg        result_tile_valid_bank1 [0:7][0:63];
     reg        compute_result_bank;   // collector writes this bank
     reg        store_result_bank;     // STORE reads this bank
-    // Phase 5-3: output tile descriptor
+    // 输出 tile 描述符
     reg [15:0] out_tile_m_base;
     reg [15:0] out_tile_n_base;
     reg [15:0] out_tile_M;
     reg [15:0] out_tile_N;
     reg [31:0] out_tile_base_addr;
     reg [31:0] out_tile_row_stride;
-    // Phase 5-3: store descriptor locked at STORE start
+    // store 描述符在 STORE 开始时锁定
     reg [15:0] store_desc_m_base;
     reg [15:0] store_desc_n_base;
     reg [15:0] store_desc_M;
@@ -719,14 +719,14 @@ module npu_top #(
     reg [31:0] store_desc_base_addr;
     reg [31:0] store_desc_row_stride;
     reg        store_desc_bank;
-    // Phase U4-b: per-tile ReLU enable — latched with store_desc_* at STORE launch
+    // 每 tile ReLU 使能 — 在 STORE 启动时与 store_desc_* 一起锁存
     reg        store_desc_relu_en;
-    // Phase U4-d: output dtype — 0=INT32 (default), 1=INT8 (internal test hook only)
+    // 输出 dtype — 0=INT32（默认），1=INT8（仅内部测试钩子）
     reg        store_desc_output_dtype;
-    // Internal test hook (NOT a public CSR): conv_cfg[6] enables INT8 output format
-    // for FC streaming.  Default 0 → all existing paths remain INT32.
+    // 内部测试钩子（非公开 CSR）：conv_cfg[6] 使能 INT8 输出格式用于 FC 流式。
+    // 默认 0 → 所有现有路径保持 INT32。
     wire       int8_test_hook = fc_streaming_en && conv_cfg[6];
-    // Phase 4c-2: STORE micro-FSM inside FSM_GEMM_STREAM_STORE (single always block)
+    // STORE 微 FSM 位于 FSM_GEMM_STREAM_STORE 内（单个 always 块）
     localparam GST_PUSH_BEAT  = 3'd0;
     localparam GST_START      = 3'd1;
     localparam GST_START_CLR  = 3'd2;
@@ -734,41 +734,41 @@ module npu_top #(
     localparam GST_ADVANCE    = 3'd4;
     reg        gemm_store_eng_active;
     reg [2:0]  gemm_store_eng_phase;
-    reg        gemm_store_pending;   // Phase 4c-3: tile STORE pending launch
+    reg        gemm_store_pending;   // tile STORE 待启动
     reg [15:0] stream_cycle;
     reg [15:0] stream_capture_count;
     reg        stream_active;
     reg        stream_a_tile_loaded;
-    // Phase 4a-2: bank ownership and metadata
-    reg        input_load_bank;          // which bank loader writes
-    reg        input_compute_bank;       // which bank compute reads
-    reg        input_bank0_valid;        // bank0 has valid loaded data
-    reg        input_bank1_valid;        // bank1 has valid loaded data
-    reg [15:0] input_bank0_k_base;       // k_base for data in bank0
-    reg [15:0] input_bank1_k_base;       // k_base for data in bank1
-    reg [15:0] input_bank0_k_tile;       // k_tile for data in bank0
-    reg [15:0] input_bank1_k_tile;       // k_tile for data in bank1
-    // Phase 4a-3: background input tile prefetch during RUN
+    // bank 所有权和元数据
+    reg        input_load_bank;          // loader 写入的 bank
+    reg        input_compute_bank;       // 计算读取的 bank
+    reg        input_bank0_valid;        // bank0 有有效的已加载数据
+    reg        input_bank1_valid;        // bank1 有有效的已加载数据
+    reg [15:0] input_bank0_k_base;       // bank0 中数据的 k_base
+    reg [15:0] input_bank1_k_base;       // bank1 中数据的 k_base
+    reg [15:0] input_bank0_k_tile;       // bank0 中数据的 k_tile
+    reg [15:0] input_bank1_k_tile;       // bank1 中数据的 k_tile
+    // RUN 期间后台输入 tile 预取
     localparam PREF_IDLE    = 2'd0;
     localparam PREF_REQ     = 2'd1;
     localparam PREF_WAIT    = 2'd2;
     localparam PREF_CAPTURE = 2'd3;
     reg        input_prefetch_active;
     reg        input_prefetch_done;
-    reg        input_prefetch_bank;       // which bank prefetch writes
+    reg        input_prefetch_bank;       // 预取写入的 bank
     reg [1:0]  input_prefetch_phase;
     reg [2:0]  input_prefetch_row;
     reg [6:0]  input_prefetch_col;
     reg [15:0] input_prefetch_k_base;
     reg [15:0] input_prefetch_k_tile;
-    // Prefetch debug counters
+    // 预取调试计数器
     reg [15:0] input_prefetch_start_count;
     reg [15:0] input_prefetch_done_count;
     reg [15:0] input_prefetch_hit_count;
     reg [15:0] input_prefetch_stall_count;
     reg [15:0] input_prefetch_beat_count;
     reg [15:0] input_prefetch_byte_count;
-    // Phase 4b: weight staging micro-sequencer (GEMM-scoped)
+    // 权重暂存微序列器（GEMM 范围）
     localparam WGT_STAGE_IDLE    = 2'd0;
     localparam WGT_STAGE_REQ     = 2'd1;
     localparam WGT_STAGE_WAIT    = 2'd2;
@@ -776,7 +776,7 @@ module npu_top #(
     reg        wgt_stage_active;
     reg        wgt_stage_done;
     reg [1:0]  wgt_stage_phase;
-    reg [15:0] wgt_stage_lane_idx;   // byte index within lane (0..k_tile*n_tile-1)
+    reg [15:0] wgt_stage_lane_idx;   // lane 内字节索引（0..k_tile*n_tile-1）
     reg [15:0] wgt_stage_k_base;
     reg [15:0] wgt_stage_k_tile;
     reg [15:0] wgt_stage_n_start;
@@ -788,7 +788,7 @@ module npu_top #(
     reg [15:0] wgt_stage_valid_n_tile;
     reg [15:0] wgt_stage_beat_count;
     reg [15:0] wgt_stage_byte_count;
-    // Phase 4b-2: background weight prefetch during RUN
+    // RUN 期间后台权重预取
     localparam WGT_PREF_IDLE    = 2'd0;
     localparam WGT_PREF_REQ     = 2'd1;
     localparam WGT_PREF_WAIT    = 2'd2;
@@ -808,7 +808,7 @@ module npu_top #(
     reg [15:0] wgt_pref_stall_count;
     reg [15:0] wgt_pref_beat_count;
     reg [15:0] wgt_pref_byte_count;
-    // Phase 4b-2a: FSM entry debug counters
+    // FSM 入口调试计数器
     reg [15:0] dbg_load_array_entry;
     reg [15:0] dbg_wgt_ld_entry;
     reg [15:0] dbg_dual_hit_count;
@@ -816,28 +816,28 @@ module npu_top #(
     reg [15:0] dbg_accum_to_load_array;
     reg [15:0] gemm_store_row_idx;
     reg [15:0] gemm_store_beat_idx;
-    // Phase 3a: K-chunk streaming accumulation
+    // K-chunk 流式累加
     reg [15:0] gemm_stream_k_base;        // current K-chunk start offset (0, 64, 128, ...)
     reg [15:0] gemm_stream_k_chunk_idx;   // 0-based chunk index
-    reg        gemm_stream_first_chunk;    // 1 during first K-chunk
-    reg        gemm_stream_last_chunk;     // 1 during last K-chunk
+    reg        gemm_stream_first_chunk;    // 首个 K-chunk 期间为 1
+    reg        gemm_stream_last_chunk;     // 末尾 K-chunk 期间为 1
     localparam GEMM_STREAM_FIXED_DELAY = 1;
-    // Phase 5-1: M tile descriptor
-    reg [15:0] gemm_tile_m_base;    // global starting row of current M tile
+    // M tile 描述符
+    reg [15:0] gemm_tile_m_base;    // 当前 M tile 的全局起始行
     reg [15:0] gemm_tile_M;         // rows in current M tile (≤ 8)
-    // Phase 5-2: N tile descriptor
-    reg [15:0] gemm_tile_n_base;    // global starting column of current N tile
+    // N tile 描述符
+    reg [15:0] gemm_tile_n_base;    // 当前 N tile 的全局起始列
     reg [15:0] gemm_tile_N;         // columns in current N tile (≤ 64)
-    // Phase 3c: input-tile-loader micro-sequencer (GEMM-scoped, Phase 4→common)
-    reg        gemm_a_load_done;     // pulsed when micro-sequencer completes
+    // input-tile-loader 微序列器（GEMM 范围）
+    reg        gemm_a_load_done;     // 微序列器完成时脉冲
     reg [1:0]  gemm_a_load_phase;
     reg [2:0]  gemm_a_load_row;     // 0..gemm_tile_M-1
     reg [6:0]  gemm_a_load_col;     // 0..fc_chunk_inputs-1
-    // Phase 4a-1: beat-level debug counters
-    reg [15:0] gemm_a_load_beat_count;    // beats read in current LOAD_A
-    reg [15:0] gemm_a_load_byte_count;    // bytes captured
-    reg [5:0]  gemm_a_load_max_beats_per_row;  // max beats for any row
-    reg [15:0] gemm_a_load_unaligned_row_count; // rows with non-zero lane_start
+    // beat 级调试计数器
+    reg [15:0] gemm_a_load_beat_count;    // 当前 LOAD_A 中读取的 beat 数
+    reg [15:0] gemm_a_load_byte_count;    // 捕获的字节数
+    reg [5:0]  gemm_a_load_max_beats_per_row;  // 任意行的最大 beat 数
+    reg [15:0] gemm_a_load_unaligned_row_count; // 非零 lane_start 的行数
 
     wire [15:0] array_drain_offset;
     integer cluster_bus_idx;
@@ -859,7 +859,7 @@ module npu_top #(
     integer arb_prev_i;
     integer arb_global_col_i;
     integer arb_route_col_i;
-    // GEMM mode reuses FC array mapping: PE rows = K (input dim), PE cols = N (output dim)
+    // GEMM 模式复用 FC array 映射：PE rows = K（输入维度），PE cols = N（输出维度）
     wire fc_or_gemm = is_fc_mode || is_gemm_mode;
     wire [15:0] active_k = fc_or_gemm ? fc_chunk_inputs : conv_kernel_area;
     wire [15:0] stream_pipe_offset = PE_ROWS_16 - active_k + GEMM_STREAM_FIXED_DELAY;
@@ -874,16 +874,16 @@ module npu_top #(
                                 (cluster_count_i > 1) ? cluster_active_cols : output_c;
     assign collect_total_cols = fc_or_gemm ? array_active_cols : total_global_cols;
     // Drain latency is max(PE_ROWS - active_rows, 0) plus the fixed pipeline tail.
-    // Conv kernels can use more active rows than the physical PE row count.
+    // Conv 核可以使用比物理 PE 行数更多的活跃行。
     assign array_drain_offset = (PE_ROWS_16 > array_active_rows) ?
                                 (PE_ROWS_16 - array_active_rows + 16'd5) :
                                 16'd5;
 
     assign array_sum_in = {PE_COLS{32'h0}};
-    // Phase U6-a: dynamic PE array clock gating
-    // Enable PE array clock only when NPU is active (not IDLE/DONE/ERROR).
-    // Conservative: keeps clock on during all transitional and compute states.
-    // Primary power saving: long idle periods between tasks.
+    // 动态 PE array 时钟门控
+    // 仅在 NPU 活跃时（非 IDLE/DONE/ERROR）使能 PE array 时钟。
+    // 保守策略：在所有转换和计算状态期间保持时钟开启。
+    // 主要省电场景：任务之间的长空闲期。
     wire pe_array_clk_en_comb;
     assign pe_array_clk_en_comb = (fsm_state != FSM_IDLE) &&
                                   (fsm_state != FSM_DONE)  &&
@@ -939,7 +939,7 @@ module npu_top #(
         arb_route_col_i = 0;
         cluster_route_col_i = 0;
 
-        // Phase 2b-1: streaming output routing
+        // 流式输出路由
         if (matrix_streaming_en && (fsm_state == FSM_GEMM_STREAM_RUN)) begin
             if (perf_cluster_enable[0]) begin
                 integer s_col;
@@ -1064,20 +1064,20 @@ module npu_top #(
         .start(pp_start), .done(pp_done)
     );
 
-    // Per-input-channel tracking
-    reg [15:0] cin_idx;             // current input channel (0..input_c-1)
-    reg [15:0] cin_total;           // total input channels for this task
-    reg [31:0] wgt_per_cin;         // padded byte stride per input channel
+    // 每输入通道跟踪
+    reg [15:0] cin_idx;             // 当前输入通道（0..input_c-1）
+    reg [15:0] cin_total;           // 本任务的总输入通道数
+    reg [31:0] wgt_per_cin;         // 每输入通道的填充字节跨度
 
-    // Per-row activation hold: latched during FEED_ACT, driven continuously
-    // This allows activation to propagate through all columns (not just col 0)
+    // 每行激活保持：在 FEED_ACT 期间锁存，持续驱动
+    // 这允许激活传播到所有列（不仅仅是第 0 列）
     reg [7:0] act_held [0:PE_ROWS-1];
 
-    // Accumulation: per-window column accumulator (collect one column per cycle)
+    // 累加：每窗口列累加器（每周期收集一列）
     reg [15:0] acc_col_idx;         // which output column to accumulate
-    reg        acc_collect_wait;     // wait for synchronous acc_buffer read
+    reg        acc_collect_wait;     // 等待同步 acc_buffer 读取
     reg        acc_collect_skip_write;
-    reg [31:0] col_results [0:PE_COLS-1];  // latched array column results
+    reg [31:0] col_results [0:PE_COLS-1];  // 锁存的 array 列结果
     reg                 rq_acc_wr_en_r;
     reg [BUF_ADDR_W-1:0] rq_acc_wr_addr_r;
     reg [31:0]          rq_acc_wr_data_r;
@@ -1118,7 +1118,7 @@ module npu_top #(
     reg [31:0]          gap_acc_wr_data_r;
 
     // ============================================================
-    // perf counter
+    // 性能计数器
     // ============================================================
     wire perf_freeze, perf_task_active;
     assign perf_conv_array_active =
@@ -1172,7 +1172,7 @@ module npu_top #(
         .bus_active((m_axi_arvalid && m_axi_arready) || (m_axi_rvalid && m_axi_rready) ||
                     (m_axi_awvalid && m_axi_awready) || (m_axi_wvalid && m_axi_wready) ||
                     (m_axi_bvalid && m_axi_bready)),
-        // Enhanced inputs
+        // 增强输入
         .compute_active(perf_compute_active),
         .load_active(perf_load_active),
         .store_active(perf_store_active),
@@ -1186,7 +1186,7 @@ module npu_top #(
         .stall_acc(perf_stall_acc_evt),
         .stall_store(perf_stall_store_evt),
         .array_fill_drain(perf_array_fill_drain_evt),
-        // Outputs
+        // 输出
         .total_cycle_lo(perf_cycle_lo), .total_cycle_hi(perf_cycle_hi),
         .read_beat_count(perf_read_beats), .write_beat_count(perf_write_beats),
         .read_active_cycles(perf_read_active), .write_active_cycles(perf_write_active),
@@ -1195,7 +1195,7 @@ module npu_top #(
         .write_data_cycles(perf_write_data_cycles), .write_txn_cycles(perf_write_txn_cycles),
         .ar_handshake_cycles(perf_ar_handshake), .aw_handshake_cycles(perf_aw_handshake),
         .b_handshake_cycles(perf_b_handshake), .bus_active_cycles(perf_bus_active),
-        // Enhanced outputs
+        // 增强输出
         .compute_cycles(perf_compute_cycles),
         .load_cycles(perf_load_cycles),
         .store_cycles(perf_store_cycles),
@@ -1239,7 +1239,7 @@ module npu_top #(
         (fc_act_byte_idx + 32'd1) : fc_act_byte_idx;
     wire [BUF_ADDR_W-1:0] fc_act_beat_addr = fc_act_rd_byte_idx[BUF_ADDR_W+4:5];
     wire [HB_BEAT_BYTE_BITS-1:0] fc_act_byte_sel = fc_act_byte_idx[4:0];
-    // Phase 5-1: input-tile-loader address with M-tile support
+    // input-tile-loader 地址，带 M-tile 支持
     // global_m = gemm_tile_m_base + local_row
     // byte_idx = global_m * input_c + gemm_stream_k_base + col
     wire [31:0] gemm_a_load_global_m = {16'd0, gemm_tile_m_base} + {13'd0, gemm_a_load_row};
@@ -1249,7 +1249,7 @@ module npu_top #(
         {25'd0, gemm_a_load_col};
     wire [BUF_ADDR_W-1:0] gemm_a_load_beat_addr = gemm_a_load_byte_idx[BUF_ADDR_W+4:5];
     wire [HB_BEAT_BYTE_BITS-1:0] gemm_a_load_lane_start = gemm_a_load_byte_idx[4:0];
-    // Phase 4a-3: background prefetch byte-level address computation
+    // 后台预取字节级地址计算
     wire [31:0] input_prefetch_global_m = {16'd0, gemm_tile_m_base} + {13'd0, input_prefetch_row};
     wire [31:0] input_prefetch_byte_idx =
         input_prefetch_global_m * {16'd0, input_c} +
@@ -1257,8 +1257,8 @@ module npu_top #(
         {25'd0, input_prefetch_col};
     wire [BUF_ADDR_W-1:0] input_prefetch_beat_addr = input_prefetch_byte_idx[BUF_ADDR_W+4:5];
     wire [4:0] input_prefetch_lane_start = input_prefetch_byte_idx[4:0];
-    // Phase 4b: weight staging byte-level address computation
-    // Streaming (GEMM/FC): K-major iteration (all N for each K) for strided full-B read.
+    // 权重暂存字节级地址计算
+    // 流式（GEMM/FC）：K-major 迭代（每个 K 遍历所有 N）用于跨步完整 B 读取。
     // row = idx / n_tile, out = idx % n_tile → contiguous within each K row.
     // FC / legacy: N-major layout W[n][k] at byte_idx = n * K + k
     wire [31:0] wgt_stage_out_idx  = matrix_streaming_en ?
@@ -1281,7 +1281,7 @@ module npu_top #(
                                         + {27'd0, wgt_dma_byte_offset};
     wire [BUF_ADDR_W-1:0] wgt_stage_beat_addr = wgt_stage_abs_byte_idx[BUF_ADDR_W+4:5];
     wire [4:0] wgt_stage_byte_sel = wgt_stage_abs_byte_idx[4:0];
-    // Phase 5-2: background weight prefetch address (N-major for full B strided read)
+    // 后台权重预取地址
     wire [31:0] wgt_pref_out_idx = (wgt_pref_n_tile == 16'd0) ? 32'd0 :
                                     (wgt_pref_lane_idx % {16'd0, wgt_pref_n_tile});
     wire [31:0] wgt_pref_row_idx = (wgt_pref_n_tile == 16'd0) ? 32'd0 :
@@ -1383,7 +1383,7 @@ module npu_top #(
     assign cf_start = (fsm_state == FSM_CF_START) || (fsm_state == FSM_CIN_RESTART);
     assign cf_window_hold = !(fsm_state == FSM_COMPUTE && comp_sub_state == CP_WAIT_WIN && !cf_new_window);
 
-    // Activation feeder
+    // 激活馈送器
     reg [31:0]           act_feed_ptr;
     reg [1:0]            act_feed_byte;
     reg                  act_feed_wait;
@@ -1411,12 +1411,12 @@ module npu_top #(
     assign cf_act_valid = is_conv_mode && (fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_WAIT_WIN) &&
                           !act_feed_wait && !cf_done && (act_feed_done_cnt < blk_in_bytes[15:0]);
 
-    // Weight buffer read
+    // 权重 buffer 读取
     wire [BUF_ADDR_W-1:0] wgt_mac_addr;
     wire [31:0] fc_wgt_dma_base = blk_wgt_addr + fc_out_start * input_c;
-    // P1: preload next-tile weight base with correct byte alignment
+    // 预加载下一 tile 权重基地址，带正确字节对齐
     wire [31:0] fc_preload_wgt_base = blk_wgt_addr + (fc_out_start + fc_tile_outputs) * input_c;
-    // P1: combinational preload tile outputs (must be wire — used in same cycle as trigger)
+    // 组合逻辑预加载 tile outputs（必须是 wire — 与触发器同周期使用）
     wire [15:0] fc_preload_out_remaining = output_c - (fc_out_start + fc_tile_outputs);
     wire [15:0] fc_preload_tile_outputs_next = (fc_preload_out_remaining > fc_tile_capacity) ?
                                                 fc_tile_capacity : fc_preload_out_remaining;
@@ -1432,7 +1432,7 @@ module npu_top #(
     wire [31:0] bias_word = hb_beat_word(wgt_rd_data, bias_word_sel);
     wire [BUF_ADDR_W-1:0] rq_acc_rd_addr = rq_src_idx[BUF_ADDR_W-1:0];
 
-    // Phase 2: shadow-load buffer address (during FC compute)
+    // 影子加载缓冲区地址（FC 计算期间）
     wire [31:0] fc_shadow_out_idx_w = (fc_shadow_chunk_inputs == 16'd0) ? 32'd0 :
                                        (fc_shadow_phase / {16'd0, fc_shadow_chunk_inputs});
     wire [31:0] fc_shadow_row_idx_w = (fc_shadow_chunk_inputs == 16'd0) ? 32'd0 :
@@ -1452,8 +1452,8 @@ module npu_top #(
     assign wgt_rd_bank  = wgt_consume_bank;
 
     // ============================================================
-    // Weight → array mapping (registered, multi-cycle loading)
-    // Up to 25*C_out weights loaded per input channel
+    // 权重 → array 映射（已寄存，多周期加载）
+    // 每输入通道最多加载 25*C_out 个权重
     // ============================================================
     // wgt_load_reg: sized for full PE array (PE_ROWS x PE_COLS)
     reg        wgt_load_done_r;
@@ -1476,9 +1476,9 @@ module npu_top #(
     endgenerate
 
     // ============================================================
-    // array_act_in: skewed activation feeding with per-row hold
-    // During the feeding cycle for row r: drive cf_window[r] directly (combinational)
-    // After feeding: drive held value (registered) for column propagation
+    // array_act_in: 倾斜激活馈送，带每行保持
+    // 在行 r 的馈送周期期间：直接驱动 cf_window[r]（组合逻辑）
+    // 馈送之后：驱动保持值（已寄存）用于列传播
     // ============================================================
     wire act_feed_en = compute_fsm_active && (comp_sub_state == CP_FEED_ACT);
     wire stream_drive = matrix_streaming_en && (fsm_state == FSM_GEMM_STREAM_RUN);
@@ -1494,7 +1494,7 @@ module npu_top #(
             end
             wire [7:0] row_feed_val = fc_or_gemm ? cf_act_data : conv_row_feed_val;
             wire array_act_drive = (comp_sub_state == CP_FEED_ACT) || (comp_sub_state == CP_DRAIN);
-            // Phase 2b-1: stream skewed activation with row_active gate
+            // 流式倾斜激活，带 row_active 门控
             wire signed [31:0] s_m = $signed({16'd0, stream_cycle}) - $signed({26'd0, ai[5:0]});
             wire [7:0] s_act_b0 = input_tile_bank0[s_m[2:0]][ai[5:0]];
             wire [7:0] s_act_b1 = input_tile_bank1[s_m[2:0]][ai[5:0]];
@@ -1508,8 +1508,8 @@ module npu_top #(
         end
     endgenerate
 
-    // Latch per-row activations during FEED_ACT (skewed feeding)
-    // Clear on restart to prevent stale values from previous c_in iteration
+    // 在 FEED_ACT 期间锁存每行激活（倾斜馈送）
+    // 在重新启动时清除，防止来自上一个 c_in 迭代的过期值
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             integer ri;
@@ -1531,19 +1531,19 @@ module npu_top #(
     end
 
     // ============================================================
-    // postproc connection
+    // postproc 连接
     // ============================================================
     reg [31:0] pp_result;
 
     assign pp_data_in   = is_pool_mode ? act_pool_word : pp_result;
-    // Conv: write directly to acc_buffer via acc_partial (bypass postproc)
-    // Pool: feed postproc; FC: feed postproc (for ReLU after FC1)
+    // Conv: 通过 acc_partial 直接写入 acc_buffer（绕过 postproc）
+    // Pool: 送入 postproc；FC: 送入 postproc（用于 FC1 后的 ReLU）
     assign pp_data_valid = is_conv_mode ? 1'b0 :
                            is_pool_mode ? ((fsm_state == FSM_COMPUTE) && (comp_sub_state == CP_WAIT_WIN) &&
                                            !act_feed_wait && !pp_start && (act_feed_done_cnt < blk_in_bytes[15:0])) :
                            (compute_fsm_active && (comp_sub_state == CP_COLLECT));
     assign pp_data_ready = 1'b1;
-    // pp_start: pulse at start of compute (PRE_COMP for Conv/FC, COMPUTE entry for Pool)
+    // pp_start: 在计算开始时脉冲（Conv/FC 为 PRE_COMP，Pool 为 COMPUTE 入口）
     reg pp_start_r;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) pp_start_r <= 1'b0;
@@ -1555,10 +1555,10 @@ module npu_top #(
 
     // ============================================================
     // acc_buffer write: postproc output → acc_buffer (for final results)
-    // During Conv compute: acc_wr serves as partial sum store
+    // 在 Conv 计算期间：acc_wr 用作部分和存储
     // ============================================================
     reg [BUF_ADDR_W-1:0] acc_wr_ptr;
-    reg [BUF_ADDR_W-1:0] acc_partial_addr;  // partial sum address during COLLECT
+    reg [BUF_ADDR_W-1:0] acc_partial_addr;  // COLLECT 期间的部分和地址
     reg [31:0]           conv_collect_base_next;
     assign acc_wr_addr = (compute_fsm_active &&
                          ((comp_sub_state == CP_COLLECT) || (comp_sub_state == CP_DRAIN)))
@@ -1583,10 +1583,10 @@ module npu_top #(
                          (is_conv_mode || is_fc_mode || is_gemm_mode) ? array_acc_wr_data :
                          is_requant_mode ? rq_acc_wr_data_r :
                                            pp_data_out;
-    // P0 FIX: During CP_DRAIN, only enable accumulator writes AFTER drain_offset
-    // (i.e., when COLLECT has been properly initialized).  Before drain_offset,
-    // acc_col_idx is stale (from previous chunk) and acc_partial_addr may not
-    // be set correctly, causing spurious writes that corrupt partial sums.
+    // 在 CP_DRAIN 期间，仅在 drain_offset 之后使能累加器写入
+    // （即当 COLLECT 已正确初始化后）。在 drain_offset 之前，
+    // acc_col_idx 是过期的（来自上一 chunk），且 acc_partial_addr 可能
+    // 未正确设置，导致虚假写入而破坏部分和。
     wire drain_collect_active = (comp_sub_state == CP_DRAIN)
         ? (comp_drain_cnt >= array_drain_offset) : 1'b1;
     assign acc_wr_en   = add_write_phase ? add_acc_wr_en_r :
@@ -1642,23 +1642,23 @@ module npu_top #(
 
     // DMA writer: stream from acc_buffer during STORE
     // During CP_COLLECT: read the current column's old partial sum.
-    // Pipelined store states (P5: 1 word/cycle sustained)
-    localparam SP_IDLE    = 2'd0;  // idle / waiting for store to start
-    localparam SP_FIRST   = 2'd1;  // first read issued, data not yet valid
-    localparam SP_STREAM  = 2'd2;  // data valid every cycle, issue next read
-    localparam SP_PUSH    = 2'd3;  // beat assembled, push to FIFO
+    // 流水线 store 状态（每周期 1 word 持续吞吐）
+    localparam SP_IDLE    = 2'd0;  // 空闲 / 等待 store 开始
+    localparam SP_FIRST   = 2'd1;  // 首读取已发出，数据尚未有效
+    localparam SP_STREAM  = 2'd2;  // 每周期数据有效，发出下一读取
+    localparam SP_PUSH    = 2'd3;  // beat 已组装，推送到 FIFO
 
     reg [BUF_ADDR_W-1:0] dma_rd_ptr;
-    reg [BUF_ADDR_W-1:0] store_rd_prefetch;  // P5: prefetch pointer (1 ahead of dma_rd_ptr for pipelined reads)
+    reg [BUF_ADDR_W-1:0] store_rd_prefetch;  // 预取指针（比 dma_rd_ptr 超前 1，用于流水线读取）
     reg [1:0] store_pack_state;
 
     // ============================================================
-    // Enhanced performance counter event signals
-    // (placed here because they reference registers declared above)
+    // 增强性能计数器事件信号
+    // （放在此处是因为它们引用了上方声明的寄存器）
     // ============================================================
 
-    // --- Enhanced phase-level activity signals ---
-    // Phase U5-d: include GEMM/FC streaming states for perf counter coverage
+    // --- 增强 phase 级活跃信号 ---
+    // 包含 GEMM/FC 流式状态以覆盖性能计数器
     wire perf_streaming_run   = (fsm_state == FSM_GEMM_STREAM_RUN);
     wire perf_streaming_store = (fsm_state == FSM_GEMM_STREAM_STORE);
     assign perf_compute_active = compute_fsm_active || perf_streaming_run;
@@ -1675,8 +1675,8 @@ module npu_top #(
                                || perf_streaming_store;
     assign perf_collect_active = (compute_fsm_active && (comp_sub_state == CP_COLLECT));
 
-    // --- Read/Write valid byte counts ---
-    assign perf_read_byte_cnt = 6'd32;  // all read beats are full 256-bit (32 bytes)
+    // --- 读/写有效字节计数 ---
+    assign perf_read_byte_cnt = 6'd32;  // 所有读 beat 均为完整 256-bit（32 字节）
     wire [5:0] wstrb_popcount;
     assign wstrb_popcount =
         {5'd0, m_axi_wstrb[0]}  + {5'd0, m_axi_wstrb[1]}  +
@@ -1697,18 +1697,18 @@ module npu_top #(
         {5'd0, m_axi_wstrb[30]} + {5'd0, m_axi_wstrb[31]};
     assign perf_write_byte_cnt = (m_axi_wvalid && m_axi_wready) ? wstrb_popcount : 6'd0;
 
-    // --- MAC count: count actual MAC operations per cycle ---
+    // --- MAC 计数：统计每周期实际 MAC 操作数 ---
     wire mac_event = compute_fsm_active && (comp_sub_state == CP_DRAIN) &&
         cluster_arb_out_valid &&
         (comp_drain_cnt >= array_drain_offset) &&
         (comp_drain_cnt < array_drain_offset + array_active_cols);
-    // Each drain cycle: all active PE columns produce results simultaneously.
+    // 每个 drain 周期：所有活跃 PE 列同时产生结果。
     // Total MAC per drain cycle = active_rows × active_cols (all active PEs).
     wire [15:0] macs_per_drain_event = array_active_rows * array_active_cols;
     assign perf_mac_count_valid = mac_event;
     assign perf_mac_count_add = macs_per_drain_event;
 
-    // --- Compute stall breakdown ---
+    // --- 计算停顿分解 ---
     assign perf_stall_act_evt = is_conv_mode && compute_fsm_active &&
         (comp_sub_state == CP_WAIT_WIN) && !cf_new_window && !cf_done;
     assign perf_stall_wgt_evt = (fsm_state == FSM_CIN_LOAD_WGT) ||
@@ -1718,7 +1718,7 @@ module npu_top #(
     assign perf_stall_store_evt = ((fsm_state == FSM_STORE) || pipe_mode) &&
         (store_pack_state == SP_PUSH) && wf_wr_full;
 
-    // --- Array fill/drain ---
+    // --- Array 填充/drain ---
     assign perf_array_fill_drain_evt = compute_fsm_active &&
         ((comp_sub_state == CP_FEED_ACT) ||
          ((comp_sub_state == CP_DRAIN) && (comp_drain_cnt < array_drain_offset)));
@@ -1730,15 +1730,15 @@ module npu_top #(
     reg [AXI_DMA_DATA_W-1:0] dma_wr_data_r;
     reg dma_wr_valid_r;
 
-    // P3: COLLECT acc read during FSM_PIPE_RUN — reads from load_bank (new compute)
-    // while store reads from comp_bank (old compute results).
+    // COLLECT acc 读取期间 FSM_PIPE_RUN — 从 load_bank（新计算）读取
+    // 而 store 从 comp_bank（旧计算结果）读取。
     wire pipe_coll_acc_rd = (fsm_state == FSM_PIPE_RUN) &&
         ((comp_sub_state == CP_DRAIN && comp_drain_cnt > array_drain_offset && acc_collect_wait) ||
          (comp_sub_state == CP_COLLECT && acc_collect_wait));
 
-    // P5: During store, use prefetch pointer for pipelined acc_buffer reads.
-    // dma_rd_ptr is the "data valid" index (what's currently on acc_rd_data),
-    // store_rd_prefetch is the "next read" index (issued to buffer).
+    // 在 store 期间，使用预取指针进行流水线 acc_buffer 读取。
+    // dma_rd_ptr 是"数据有效"索引（当前在 acc_rd_data 上的数据），
+    // store_rd_prefetch 是"下一读取"索引（发往 buffer）。
     wire [BUF_ADDR_W-1:0] store_rd_addr;
     assign store_rd_addr = ((fsm_state == FSM_STORE || pipe_mode) &&
                             (store_pack_state == SP_FIRST || store_pack_state == SP_STREAM))
@@ -1749,7 +1749,7 @@ module npu_top #(
                             ((comp_sub_state == CP_COLLECT) || (comp_sub_state == CP_DRAIN)))
                          ? acc_partial_addr
                          : store_rd_addr;
-    // P3: During COMPUTE (COLLECT/DRAIN) including PIPE_RUN, COLLECT reads from load_bank.
+    // 在 COMPUTE（COLLECT/DRAIN）包括 PIPE_RUN 期间，COLLECT 从 load_bank 读取。
     // During STORE (and PIPE_RUN store), reads from comp_bank (previous compute's results).
     assign acc_rd_bank = pipe_coll_acc_rd ? acc_load_bank :
                          (fsm_state == FSM_STORE || fsm_state == FSM_PIPE_RUN) ? acc_comp_bank :
@@ -1775,8 +1775,8 @@ module npu_top #(
     // producer_done: asserted when producer finishes producing all data for the
     // current phase. The DMA writer uses this to avoid hanging in S_WAIT_DATA
     // when the remaining FIFO data is less than the calculated burst size.
-    // Covered: store_pack (all task types), vec_relu streaming path,
-    //          GEMM streaming background STORE engine (Phase 4c-2, placeholder).
+    // 覆盖：store_pack（所有任务类型）、vec_relu 流式路径、
+    //          GEMM 流式后台 STORE 引擎。
     wire dma_producer_done_legacy;
     assign dma_producer_done_legacy = (((fsm_state == FSM_STORE) || (fsm_state == FSM_PIPE_RUN) || pipe_mode) &&
                                         (store_pack_state == SP_IDLE) &&
@@ -1787,19 +1787,19 @@ module npu_top #(
                                         vec_relu_read_done &&
                                         vec_relu_proc_done);
 
-    // Phase 4c-2/4c-3: gemm_store_eng_active driven by main FSM; GST runs as background tick.
-    // Phase 4c-3: removed fsm_state guard — GST can run during RUN/PREP/LOAD_A etc.
+    // gemm_store_eng_active 由主 FSM 驱动；GST 作为后台 tick 运行。
+    // 移除 fsm_state 保护 — GST 可在 RUN/PREP/LOAD_A 等期间运行
     wire gemm_store_eng_producer_done;
     assign gemm_store_eng_producer_done = gemm_store_eng_active &&
                                            (gemm_store_eng_phase == GST_START);
 
-    // Final producer_done: legacy paths OR GEMM streaming store engine
+    // 最终 producer_done：旧路径 或 GEMM 流式 store 引擎
     assign dma_producer_done = gemm_store_eng_producer_done || dma_producer_done_legacy;
 
     // ============================================================
-    // 32-lane INT8 ReLU: combinational vector postprocess
-    // For each byte lane: if signed bit[7]=1 (negative), output 0; else pass through
-    // Input: act_rd_data (256-bit beat from act_buffer, Phase B read)
+    // 32 lane INT8 ReLU：组合向量后处理
+    // 对每个字节 lane：若有符号位 bit[7]=1（负数），输出 0；否则直通
+    // 输入：act_rd_data（来自 act_buffer 的 256-bit beat，Phase B 读取）
     // ============================================================
     genvar vl;
     generate
@@ -1818,7 +1818,7 @@ module npu_top #(
     assign perf_task_active = task_active_r;
     assign perf_freeze = (fsm_state == FSM_DONE) || (fsm_state == FSM_ERROR);
 
-    // === DEBUG: vec_relu counters ===
+    // === 调试：vec_relu 计数器 ===
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             dbg_fifo_pop_count <= 32'd0;
@@ -1838,7 +1838,7 @@ module npu_top #(
             // R handshakes: count actual AXI read data beats
             if (m_axi_rvalid && m_axi_rready)
                 dbg_rd_data_count <= dbg_rd_data_count + 32'd1;
-            // Phase B stall: push blocked because write_beat_fifo is full
+            // Phase B 停顿：因 write_beat_fifo 满而推送阻塞
             if (wf_wr_full && vec_relu_proc_active && !vec_relu_proc_done)
                 dbg_fifo_full_stall <= dbg_fifo_full_stall + 32'd1;
             dbg_cycle_cnt <= dbg_cycle_cnt + 32'd1;
@@ -1846,16 +1846,16 @@ module npu_top #(
     end
 
     // ============================================================
-    // Main FSM — sequential
+    // 主 FSM — 时序逻辑
     // ============================================================
     reg        task_done_r, task_error_r;
     reg [7:0]  task_error_code_r;
 
     // ============================================================
-    // Phase 4a-3: background input tile prefetch micro-sequencer.
-    // Runs during FSM_GEMM_STREAM_RUN to load next chunk's A tile
-    // into the inactive bank while compute reads the active bank.
-    // Independent of foreground LOAD_A micro-sequencer.
+    // 后台输入 tile 预取微序列器。
+    // 在 FSM_GEMM_STREAM_RUN 期间运行，加载下一 chunk 的 A tile
+    // 到非活跃 bank，而计算从活跃 bank 读取。
+    // 独立于前台 LOAD_A 微序列器。
     // ============================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -1881,7 +1881,7 @@ module npu_top #(
                     input_prefetch_phase <= PREF_CAPTURE;
                 end
                 PREF_CAPTURE: begin
-                    // Beat-level bulk unpack into prefetch bank
+                    // beat 级批量解包到预取 bank
                     integer rem_v;
                     integer btb_v;
                     integer lane;
@@ -1889,7 +1889,7 @@ module npu_top #(
                     ls_v  = input_prefetch_lane_start;
                     rem_v = input_prefetch_k_tile - input_prefetch_col;
                     btb_v = (rem_v < (32 - ls_v)) ? rem_v : (32 - ls_v);
-                    // Write bytes to prefetch bank
+                    // 写入字节到预取 bank
                     if (input_prefetch_bank == 1'b0) begin
                         for (lane = 0; lane < 32; lane = lane + 1) begin
                             if ((lane >= ls_v) && ((lane - ls_v) < btb_v)) begin
@@ -1910,9 +1910,9 @@ module npu_top #(
                     input_prefetch_beat_count <= input_prefetch_beat_count + 16'd1;
                     input_prefetch_byte_count <= input_prefetch_byte_count
                         + {10'd0, btb_v[5:0]};
-                    // Advance
+                    // 前进
                     if (input_prefetch_col + btb_v >= input_prefetch_k_tile) begin
-                        // Row done: zero-fill
+                        // 行完成：零填充
                         if (input_prefetch_bank == 1'b0) begin
                             for (lane = input_prefetch_k_tile; lane < 64; lane = lane + 1)
                                 input_tile_bank0[input_prefetch_row][lane] <= 8'd0;
@@ -1925,7 +1925,7 @@ module npu_top #(
                             input_prefetch_col   <= 7'd0;
                             input_prefetch_phase <= PREF_REQ;
                         end else begin
-                            // All rows done — mark bank valid
+                            // 所有行完成 — 标记 bank 有效
                             if (input_prefetch_bank == 1'b0) begin
                                 input_bank0_valid  <= 1'b1;
                                 input_bank0_k_base <= input_prefetch_k_base;
@@ -1958,10 +1958,10 @@ module npu_top #(
     end
 
     // ============================================================
-    // Phase 4b-2: background weight prefetch micro-sequencer.
-    // Runs during FSM_GEMM_STREAM_RUN, reads next chunk's B weights
-    // from wgt_buffer and writes them into wgt_load_reg.
-    // Uses K-major compact B layout: (k_base+kk)*N_tile + n.
+    // 后台权重预取微序列器。
+    // 在 FSM_GEMM_STREAM_RUN 期间运行，读取下一 chunk 的 B 权重
+    // 从 wgt_buffer 写入 wgt_load_reg。
+    // 使用 K-major 紧凑 B 布局：(k_base+kk)*N_tile + n。
     // ============================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -1995,7 +1995,7 @@ module npu_top #(
                     integer wp_lanes_in_beat;
                     wp_remain = (wgt_pref_n_tile * wgt_pref_k_tile) - wgt_pref_lane_idx;
                     wp_beatsz = 32'd32 - {27'd0, wgt_pref_abs_byte_idx[4:0]};
-                    // Phase U5-b: same n_tile lane-per-beat limit as weight staging
+                    // 与权重暂存相同的 n_tile 每 beat lane 限制
                     wp_lanes_in_beat = (wgt_pref_n_tile == 16'd0) ? 32'd32 :
                         {16'd0, wgt_pref_n_tile} - (wgt_pref_lane_idx % {16'd0, wgt_pref_n_tile});
                     wp_count  = (wp_remain > 32'd32) ? 32'd32 : wp_remain;
@@ -2008,7 +2008,7 @@ module npu_top #(
                             reg [31:0] wp_lane_row;
                             reg [4:0]  wp_lane_bsel;
                             wp_lane_idx  = wgt_pref_lane_idx + wp_lane;
-                            // Phase 5-2: N-major for streaming GEMM full-B strided read
+                            // N-major 用于流式 GEMM 完整 B 跨步读取
                             wp_lane_out  = (wgt_pref_n_tile == 16'd0) ? 32'd0 : (wp_lane_idx % {16'd0, wgt_pref_n_tile});
                             wp_lane_row  = (wgt_pref_n_tile == 16'd0) ? 32'd0 : (wp_lane_idx / {16'd0, wgt_pref_n_tile});
                             wp_lane_bsel = wgt_pref_abs_byte_idx[4:0] + wp_lane;
@@ -2039,10 +2039,10 @@ module npu_top #(
     end
 
     // ============================================================
-    // Phase 4b: sequential weight staging micro-sequencer.
-    // Reads B weights from wgt_buffer and unpacks into wgt_load_reg.
-    // Phase 4b-1: sequential (runs in FSM_LOAD_ARRAY, not during RUN).
-    // Phase 4b-2a: DBG counter increment
+    // 顺序权重暂存微序列器。
+    // 从 wgt_buffer 读取 B 权重并解包到 wgt_load_reg。
+    // 顺序执行（在 FSM_LOAD_ARRAY 中运行，非 RUN 期间）。
+    // DBG 计数器递增
     // ============================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -2076,8 +2076,8 @@ module npu_top #(
                     wgt_stage_phase <= WGT_STAGE_CAPTURE;
                 end
                 WGT_STAGE_CAPTURE: begin
-                    // Beat-level unpack: up to 32 bytes from wgt_buffer
-                    // into wgt_load_reg. Same formula as legacy FC/GEMM path.
+                    // beat 级解包：从 wgt_buffer 中最多 32 字节
+                    // 到 wgt_load_reg。与 legacy FC/GEMM 路径相同的公式。
                     integer ws_remain;
                     integer ws_beatsz;
                     integer ws_count;
@@ -2085,11 +2085,11 @@ module npu_top #(
                     integer ws_lanes_in_beat;
                     ws_remain = (wgt_stage_n_tile * wgt_stage_k_tile) - wgt_stage_lane_idx;
                     ws_beatsz = 32'd32 - {27'd0, wgt_stage_abs_byte_idx[4:0]};
-                    // Phase U5-b: limit lanes per beat to consecutive lanes within
-                    // the same B-matrix row.  For n_tile < 32, only n_tile lanes
-                    // fit in one 32-byte beat (each lane shift of n_tile adds N
-                    // bytes to the buffer index, crossing a beat boundary when
-                    // N > 32 or when lane wraps to next row).
+                    // 限制每 beat 的 lane 为行内连续 lane
+                    // 同一 B-matrix 行内。对于 n_tile < 32，只有 n_tile 个 lane
+                    // 适合一个 32 字节 beat（每个 lane 的 n_tile 偏移添加 N
+                    // 字节到 buffer 索引，当 N > 32 或 lane 换行时跨越 beat 边界）。
+
                     ws_lanes_in_beat = (wgt_stage_n_tile == 16'd0) ? 32'd32 :
                         {16'd0, wgt_stage_n_tile} - (wgt_stage_lane_idx % {16'd0, wgt_stage_n_tile});
                     ws_count  = (ws_remain > 32'd32) ? 32'd32 : ws_remain;
@@ -2102,7 +2102,7 @@ module npu_top #(
                             reg [31:0] ws_lane_row;
                             reg [4:0]  ws_lane_bsel;
                             ws_lane_idx  = wgt_stage_lane_idx + ws_lane;
-                            // Phase 5-2: K-major for streaming (GEMM/FC) full-B strided read
+                            // K-major 用于流式（GEMM/FC）完整 B 跨步读取
                             ws_lane_out  = matrix_streaming_en ?
                                 ((wgt_stage_n_tile == 16'd0) ? 32'd0 : (ws_lane_idx % {16'd0, wgt_stage_n_tile})) :
                                 ((wgt_stage_k_tile == 16'd0) ? 32'd0 : (ws_lane_idx / {16'd0, wgt_stage_k_tile}));
@@ -2117,7 +2117,7 @@ module npu_top #(
                     wgt_stage_beat_count <= wgt_stage_beat_count + 16'd1;
                     wgt_stage_byte_count <= wgt_stage_byte_count + {10'd0, ws_count[5:0]};
                     if (wgt_stage_lane_idx + ws_count >= (wgt_stage_n_tile * wgt_stage_k_tile)) begin
-                        // All bytes staged: mark valid
+                        // 所有字节已暂存：标记有效
                         wgt_stage_valid <= 1'b1;
                         wgt_stage_valid_k_base  <= wgt_stage_k_base;
                         wgt_stage_valid_k_tile  <= wgt_stage_k_tile;
@@ -2197,7 +2197,7 @@ module npu_top #(
             stream_capture_count <= 16'd0;
             stream_active <= 1'b0;
             stream_a_tile_loaded <= 1'b0;
-            // Phase 3c: input-tile-loader micro-sequencer
+            // input-tile-loader 微序列器
             gemm_a_load_done  <= 1'b0;
             gemm_a_load_phase <= A_LOAD_IDLE;
             gemm_a_load_row   <= 3'd0;
@@ -2206,7 +2206,7 @@ module npu_top #(
             gemm_a_load_byte_count   <= 16'd0;
             gemm_a_load_max_beats_per_row <= 6'd0;
             gemm_a_load_unaligned_row_count <= 16'd0;
-            // Phase 4a-2: bank ownership and metadata
+            // bank 所有权和元数据
             input_load_bank    <= 1'b0;
             input_compute_bank <= 1'b0;
             input_bank0_valid  <= 1'b0;
@@ -2215,14 +2215,14 @@ module npu_top #(
             input_bank1_k_base <= 16'd0;
             input_bank0_k_tile <= 16'd0;
             input_bank1_k_tile <= 16'd0;
-            // Phase 4a-3: prefetch counters
+            // 预取计数器
             input_prefetch_start_count <= 16'd0;
             input_prefetch_done_count  <= 16'd0;
             input_prefetch_hit_count   <= 16'd0;
             input_prefetch_stall_count <= 16'd0;
             input_prefetch_beat_count  <= 16'd0;
             input_prefetch_byte_count  <= 16'd0;
-            // Phase 4b: weight staging
+            // 权重暂存
             wgt_stage_active  <= 1'b0;
             wgt_stage_done    <= 1'b0;
             wgt_stage_phase   <= WGT_STAGE_IDLE;
@@ -2234,7 +2234,7 @@ module npu_top #(
             wgt_stage_valid_n_tile  <= 16'd0;
             wgt_stage_beat_count <= 16'd0;
             wgt_stage_byte_count <= 16'd0;
-            // Phase 4b-2: weight prefetch
+            // 权重预取
             wgt_pref_active  <= 1'b0;
             wgt_pref_done    <= 1'b0;
             wgt_pref_valid   <= 1'b0;
@@ -2247,7 +2247,7 @@ module npu_top #(
             wgt_pref_beat_count  <= 16'd0;
             wgt_pref_byte_count  <= 16'd0;
             wgt_pref_n_base      <= 16'd0;
-            // Phase 4b-2a: FSM debug counters
+            // FSM 调试计数器
             dbg_load_array_entry     <= 16'd0;
             dbg_wgt_ld_entry         <= 16'd0;
             dbg_dual_hit_count       <= 16'd0;
@@ -2320,7 +2320,7 @@ module npu_top #(
             dbg_fifo_full_stall <= 32'd0;
             dbg_cycle_cnt <= 32'd0;
         end else begin
-            // Default: pulse signals low
+            // 默认：脉冲信号置低
             act_dma_start <= 1'b0; wgt_dma_start <= 1'b0; dma_wr_start <= 1'b0;
             act_load_start <= 1'b0; act_load_done <= 1'b0;
             act_comp_start <= 1'b0; act_comp_done <= 1'b0;
@@ -2358,7 +2358,7 @@ module npu_top #(
 
                 FSM_TASK_SETUP: begin
                     if (blk_valid) begin
-                        // Capture per-task block parameters after block_scheduler has advanced
+                        // 在 block_scheduler 前进后捕获每任务 block 参数
                         cin_total <= blk_cin_total;
                         wgt_per_cin <= blk_wgt_per_cin;
                         if (bias_enabled && is_conv_mode) begin
@@ -2367,12 +2367,12 @@ module npu_top #(
                             wgt_buf_flush <= 1'b1;
                             fsm_state <= FSM_LOAD_BIAS;
                         end else if (is_vec_relu_mode) begin
-                            // P0-3 FIX: Vector INT8 ReLU 256b starts DMA ONCE here,
-                            // then transitions directly to FSM_VEC_RELU_PROC.
-                            // Previously FSM_TASK_SETUP started act_dma_start for all
-                            // task types, and FSM_LOAD_ACT (is_vec_relu_mode branch)
-                            // started a SECOND act_dma_start on act_dma_done, causing
-                            // 2x DMA read (1024 beats instead of 512 for 16KB).
+                            // Vector INT8 ReLU 256b 在此处仅启动一次 DMA，
+                            // 然后直接转换到 FSM_VEC_RELU_PROC。
+                            // 之前 FSM_TASK_SETUP 为所有任务类型启动 act_dma_start，
+                            // 而 FSM_LOAD_ACT（is_vec_relu_mode 分支）
+                            // 在 act_dma_done 时启动了第二次 act_dma_start，导致
+                            // 2 倍 DMA 读取（16KB 时为 1024 个 beat 而非 512）。
                             act_dma_start <= 1'b1;
                             act_dma_addr <= blk_in_addr;
                             act_dma_bytes <= blk_in_bytes;
@@ -2442,7 +2442,7 @@ module npu_top #(
                                 act_load_bank <= block_bank;
                                 fsm_state <= FSM_LOAD_ACT;
                             end else begin
-                                // P1: restore preload bank after bias extraction
+                                // bias 提取后恢复预加载 bank
                                 if (fc_use_preload)
                                     wgt_consume_bank <= fc_preload_bank;
                                 wgt_dma_start <= 1'b0;  // clear for next DMA edge
@@ -2497,9 +2497,9 @@ module npu_top #(
                             rq_store_bytes <= blk_out_bytes;
                             fsm_state <= FSM_REQUANT_COMPUTE;
                         end else if (is_vec_relu_mode) begin
-                            // P0-3 FIX: Unreachable — vec_relu now transitions
-                            // directly from FSM_TASK_SETUP to FSM_VEC_RELU_PROC.
-                            // Keep as defensive dead-code guard.
+                            // 不可达 — vec_relu 现在直接从
+                            // FSM_TASK_SETUP 转换到 FSM_VEC_RELU_PROC。
+                            // 保留作为防御性死代码保护。
                             fsm_state <= FSM_ERROR;
                             task_error_r <= 1'b1;
                             task_error_code_r <= 8'hFF;
@@ -2510,14 +2510,14 @@ module npu_top #(
                             fsm_state <= FSM_FC_TILE_PREP;
                         end else if (is_gemm_mode) begin
                             // GEMM: M output rows, each row uses one FC/GEMV pass
-                            // Reuse FC infrastructure: PE rows = K (input dim), PE cols = N
+                            // 复用 FC 基础设施：PE rows = K（输入维度），PE cols = N
                             gemm_row_idx <= 16'd0;
                             fc_out_start <= 16'd0;
                             fc_in_base <= 16'd0;
                             fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
                             fsm_state <= FSM_FC_TILE_PREP;
                         end else begin
-                            // Conv: start conv_frontend
+                            // Conv：启动 conv_frontend
                             comp_total_wins <= blk_out_rows * conv_total_out_cols;
                             comp_win_idx <= 16'd0;
                             fsm_state <= FSM_CF_START;
@@ -2602,8 +2602,8 @@ module npu_top #(
                 // ============================================================
                 // FSM_VEC_RELU_PROC — 256-bit streaming vector INT8 ReLU
                 //
-                // Slow pipeline (rd_wait, 0.5 beat/cycle). Verified correct data.
-                // Writer partial burst handles tail when Phase B finishes first.
+                // 慢速流水线（rd_wait，0.5 beat/cycle）。已验证数据正确。
+                // Writer 部分 burst 处理 Phase B 先完成时的尾部。
                 // ============================================================
                 FSM_VEC_RELU_PROC: begin
                     dma_wr_valid_r <= 1'b0;
@@ -2736,37 +2736,37 @@ module npu_top #(
                     comp_sub_state <= CP_WAIT_WIN;
                     cin_idx <= 16'd0;
                     cf_channel_sel <= 6'd0;
-                    // Start first input channel weight load
+                    // 启动首个输入通道权重加载
                     fsm_state <= FSM_CIN_START;
                 end
 
                 FSM_FC_TILE_PREP: begin
                     // Streaming (GEMM/FC) or legacy GEMM: use N-tile = min(N, PE_COLS)
-                    // Legacy FC only: uses fc_tile_outputs_next (capacity-based)
+                    // 仅 Legacy FC：使用 fc_tile_outputs_next（基于容量）
                     if (is_gemm_mode || matrix_streaming_en)
                         fc_tile_outputs <= (gemm_N_val > PE_COLS_16) ? PE_COLS_16 : gemm_N_val;
                     else
                         fc_tile_outputs <= fc_tile_outputs_next;
                     fc_in_base <= 16'd0;
                     fc_chunk_inputs <= (input_c > PE_ROWS_16) ? PE_ROWS_16 : input_c;
-                    // Phase 3a: init streaming K-chunk state (this state entered once per task)
+                    // 初始化流式 K-chunk 状态（此状态每任务进入一次）
                     if (matrix_streaming_en) begin
                         gemm_stream_k_base       <= 16'd0;
                         gemm_stream_k_chunk_idx  <= 16'd0;
                         gemm_stream_first_chunk  <= 1'b1;
                         gemm_stream_last_chunk   <= (input_c <= PE_ROWS_16);
-                        // Phase 5-1: init M tile descriptor
+                        // 初始化 M tile 描述符
                         gemm_tile_m_base <= 16'd0;
                         gemm_tile_M <= (gemm_M_val > 16'd8) ? 16'd8 : gemm_M_val;
-                        // Phase 5-2: init N tile descriptor
+                        // 初始化 N tile 描述符
                         gemm_tile_n_base <= 16'd0;
                         gemm_tile_N <= (gemm_N_val > PE_COLS_16) ? PE_COLS_16 : gemm_N_val;
-                        // Phase 4c-1: init result_tile banks
+                        // 初始化 result_tile bank
                         compute_result_bank <= 1'b0;
                         store_result_bank   <= 1'b0;
                     end
                     dma_rd_ptr <= 0;
-                    // Phase 1a+: GEMM weight retention — skip reload
+                    // GEMM 权重保留 — 跳过重新加载
                     if (gemm_weight_hit) begin
                         comp_feed_cnt <= 7'd0;
                         comp_drain_cnt <= 16'd0;
@@ -2774,7 +2774,7 @@ module npu_top #(
                         fsm_state <= FSM_COMPUTE;
                     end else if (fc_preload_done && (fc_preload_out_start == fc_out_start)) begin
                         // Use preloaded weights — skip DMA, go directly to LOAD_ARRAY
-                        // P1: preload hit — use preloaded weights
+                        // 预加载命中 — 使用预加载的权重
                         fc_preload_done <= 1'b0;
                         fc_use_preload <= 1'b1;
                         wgt_consume_bank <= fc_preload_bank;
@@ -2791,7 +2791,7 @@ module npu_top #(
                         end
                     end else begin
                         // Fresh DMA (first tile or preload not ready)
-                        // P1: preload not ready — use fresh DMA
+                        // 预加载未就绪 — 使用新 DMA
                         fc_use_preload <= 1'b0;
                         fc_preload_active <= 1'b0;
                         fc_preload_done  <= 1'b0;
@@ -2810,7 +2810,7 @@ module npu_top #(
                     wgt_dma_start <= 1'b1;
                     wgt_dma_addr <= {fc_wgt_dma_base[31:5], 5'b0};
                     wgt_dma_byte_offset <= fc_wgt_dma_base[4:0];
-                    // Phase 5-2: streaming (GEMM/FC) loads full B[K,N] for N-tiling
+                    // 流式（GEMM/FC）加载完整 B[K,N] 用于 N-tiling
                     wgt_dma_bytes <= matrix_streaming_en ?
                         (output_c * input_c) + {27'd0, fc_wgt_dma_base[4:0]} :
                         (fc_tile_outputs * input_c) + {27'd0, fc_wgt_dma_base[4:0]};
@@ -2962,13 +2962,13 @@ module npu_top #(
 
                 // ============================================================
                 // FSM_LOAD_ARRAY: load weights from wgt_buffer into wgt_load_reg
-                // Phase 4b-1: GEMM streaming uses weight staging micro-sequencer.
-                // Legacy FC/GEMM/Conv uses original inline unpack.
+                // GEMM 流式使用权重暂存微序列器。
+                // Legacy FC/GEMM/Conv 使用原始内联解包。
                 // ============================================================
                 FSM_LOAD_ARRAY: begin
                     dbg_load_array_entry <= dbg_load_array_entry + 16'd1;
                     if (matrix_streaming_en) begin
-                        // Phase 4b-1: sequential weight staging
+                        // 顺序权重暂存
                         if (!wgt_stage_active && !wgt_stage_done) begin
                             wgt_stage_active   <= 1'b1;
                             wgt_stage_done     <= 1'b0;
@@ -2977,11 +2977,11 @@ module npu_top #(
                             wgt_stage_n_start  <= fc_out_start;
                             wgt_stage_n_tile   <= fc_tile_outputs;
                             wgt_stage_valid    <= 1'b0;
-                            // Phase will be set to REQ by micro-sequencer IDLE state
+                            // Phase 将由微序列器 IDLE 状态设置为 REQ
                             $display("[WGT_STG] START k_base=%0d k_tile=%0d n_start=%0d n_tile=%0d",
                                 fc_in_base, fc_chunk_inputs, fc_out_start, fc_tile_outputs);
                         end else if (wgt_stage_done) begin
-                            // Weight staging complete — verify meta
+                            // 权重暂存完成 — 验证元数据
                             if (!wgt_stage_valid ||
                                 (wgt_stage_valid_k_base  != fc_in_base) ||
                                 (wgt_stage_valid_k_tile  != fc_chunk_inputs) ||
@@ -3005,12 +3005,12 @@ module npu_top #(
                         if (wgt_load_wait) begin
                             wgt_load_wait <= 1'b0;
                         end else if (wgt_load_phase < (fc_tile_outputs * fc_chunk_inputs)) begin
-                            // Performance fix: load up to 32 bytes/cycle from 256-bit
-                            // weight buffer (matching buffer native width), instead of
-                            // the original 1 byte/cycle.  Uses same for-loop pattern as
-                            // the Conv path below.  All 32 bytes in a beat map to the
-                            // same output neuron (fc_load_out_idx constant) but different
-                            // input rows, so wgt_load_reg write targets are all distinct.
+                            // 性能修正：从 256-bit 每周期加载最多 32 字节
+                            // 权重 buffer（匹配 buffer 原始宽度），而非
+                            // 原来的每周期 1 字节。使用与下面 Conv 路径相同的 for 循环模式。
+                            // 一个 beat 中所有 32 字节映射到相同的输出神经元
+                            // （fc_load_out_idx 恒定）但不同的输入行，
+                            // 因此 wgt_load_reg 写入目标是完全不同的。
                             reg [31:0] fc_load_remaining;
                             reg [31:0] fc_bytes_in_beat;
                             reg [31:0] fc_load_count;
@@ -3044,11 +3044,11 @@ module npu_top #(
                     end else if (wgt_load_wait) begin
                         wgt_load_wait <= 1'b0;
                     end else if (wgt_load_phase < conv_wgt_valid_bytes) begin
-                        // Map memory byte idx to wgt_load_reg byte idx:
-                        // memory: spatial_pos * C_out + out_c  (sequential)
-                        // wgt_reg: spatial_pos * PE_COLS + out_c   (strided for array columns)
-                        // HB1-B: phase is a byte index; beat address and byte lane
-                        // use the same 256-bit extraction rule as FC weights.
+                        // 映射 memory 字节索引到 wgt_load_reg 字节索引：
+                        // memory: spatial_pos * C_out + out_c（顺序）
+                        // wgt_reg: spatial_pos * PE_COLS + out_c（为 array 列跨步）
+                        // phase 是字节索引；beat 地址和字节 lane
+                        // 使用与 FC 权重相同的 256-bit 提取规则。
                         reg [31:0] load_idx;
                         reg [31:0] load_abs_idx;
                         reg [31:0] load_count;
@@ -3087,7 +3087,7 @@ module npu_top #(
 
                 FSM_WGT_LD: begin
                     dbg_wgt_ld_entry <= dbg_wgt_ld_entry + 16'd1;
-                    // weight_ld pulsed → weights now in array PEs
+                    // weight_ld 脉冲 → 权重现在在 array PE 中
                     comp_feed_cnt <= 7'd0;
                     comp_drain_cnt <= 16'd0;
                     if (matrix_streaming_en) begin
@@ -3096,7 +3096,7 @@ module npu_top #(
                         comp_sub_state <= fc_or_gemm ? CP_FEED_ACT : CP_WAIT_WIN;
                         fsm_state <= FSM_COMPUTE;
                     end
-                    fc_use_preload <= 1'b0;  // P1: preload consumed, clear flag
+                    fc_use_preload <= 1'b0;  // 预加载已使用，清除标志
                     if (is_gemm_mode) begin
                         gemm_weight_valid         <= 1'b1;
                         gemm_weight_addr_cached   <= weight_addr;
@@ -3105,7 +3105,7 @@ module npu_top #(
                         gemm_weight_k_size_cached <= fc_chunk_inputs;
                         gemm_weight_n_size_cached <= fc_tile_outputs;
                     end
-                    // Phase 2: trigger shadow load for next FC chunk
+                    // 触发下一 FC chunk 的影子加载
                     if (is_fc_mode && (fc_in_base + fc_chunk_inputs < input_c)) begin
                         fc_shadow_active  <= 1'b1;
                         fc_shadow_phase   <= 32'd0;
@@ -3134,7 +3134,7 @@ module npu_top #(
                         fsm_state <= FSM_ERROR;
                     // FC Phase 1: check FC preload DMA completion
                     end else if (fc_preload_active && wgt_dma_done) begin
-                        // P1: FC preload DMA complete
+                        // FC 预加载 DMA 完成
                         wgt_load_done <= 1'b1;
                         fc_preload_active <= 1'b0;
                         fc_preload_done  <= 1'b1;
@@ -3143,8 +3143,8 @@ module npu_top #(
                         fc_preload_active <= 1'b0;
                         fsm_state <= FSM_ERROR;
                     end else begin
-                    // P2 fix: COLLECT merged into CP_DRAIN (DRAIN+COLLECT overlap).
-                    // conv preload must trigger during CP_DRAIN collect phase.
+                    // COLLECT 合并到 CP_DRAIN（DRAIN+COLLECT 重叠）。
+                    // conv 预加载必须在 CP_DRAIN collect phase 期间触发。
                     if (is_conv_mode && !wgt_preload_active && !wgt_preload_done &&
                         (comp_drain_cnt > array_drain_offset) && !acc_collect_wait &&
                         (cin_idx + 16'd1 < cin_total)) begin
@@ -3158,10 +3158,10 @@ module npu_top #(
                         wgt_dma_byte_offset <= conv_next_wgt_dma_base[4:0];
                         wgt_dma_bytes <= conv_wgt_valid_bytes + {27'd0, conv_next_wgt_dma_base[4:0]};
                         wgt_load_start <= 1'b1;
-                    // P1: FC tile preload trigger — start DMA for next tile
+                    // FC tile 预加载触发 — 启动下一 tile 的 DMA
                     // during early compute of current tile.
-                    // Uses correct byte_offset (was hardcoded to 0, causing
-                    // misaligned preloads when next_tile * input_c not 32B-aligned).
+                    // 使用正确的 byte_offset（之前硬编码为 0，导致
+                    // next_tile * input_c 非 32B 对齐时预加载错位）。
                     end else if (is_fc_mode &&
                                  !fc_preload_active && !fc_preload_done &&
                                  (fc_out_start + fc_tile_outputs < output_c)) begin
@@ -3206,7 +3206,7 @@ module npu_top #(
                                     end
                                 end
                             end else begin
-                                // Conv: feed activations to conv_frontend
+                                // Conv：将激活馈送到 conv_frontend
                                 if (act_feed_wait) begin
                                     act_feed_wait <= 1'b0;
                                 end else if (conv_act_ready && (act_feed_done_cnt < blk_in_bytes[15:0])) begin
@@ -3230,31 +3230,31 @@ module npu_top #(
                                 comp_feed_cnt <= comp_feed_cnt + 7'd1;
                             end else begin
                                 comp_drain_cnt <= 16'd0;
-                                // P0 FIX: pre-set acc_collect_wait to block spurious writes
-                                // before the COLLECT init at drain_offset.  Without this,
+                                // 预设 acc_collect_wait 以阻止虚假写入
+                                // 在 drain_offset 处 COLLECT 初始化之前。没有这个，
                                 // the first drain cycles (before drain_offset) and the
                                 // init cycle itself (comp_drain_cnt == drain_offset, where
                                 // acc_collect_wait NBA hasn't taken effect yet) can write
                                 // stale col_results to acc_buffer, corrupting partial sums.
                                 acc_collect_wait <= 1'b1;
-                                // Set up partial sum address for this window
+                                // 设置此窗口的部分和地址
                                 if (is_conv_mode) begin
                                     conv_collect_base_next =
                                         ({16'd0, comp_win_idx} * {16'd0, collect_total_cols});
                                     acc_partial_addr <= conv_collect_base_next[BUF_ADDR_W-1:0];
                                 end else if (fc_or_gemm) begin
-                                    // GEMM row-by-row: each row stores N outputs to acc[0:N-1]
+                                    // GEMM 逐行：每行将 N 个输出存储到 acc[0:N-1]
                                     acc_partial_addr <= {BUF_ADDR_W{1'b0}};
                                 end
                                 comp_sub_state <= CP_DRAIN;
                             end
                         end
 
-                        // P2: CP_DRAIN with overlapped collect.
-                        // Drain captures columns into col_results[].
-                        // After first valid column (cnt >= offset), collect starts
+                        // CP_DRAIN 带重叠 collect。
+                        // Drain 捕获列到 col_results[]。
+                        // 首个有效列之后（cnt >= offset），collect 开始
                         // in parallel: reads col_results[], accumulates into acc_buffer.
-                        // Both advance 1 column/cycle; drain leads by ~offset cycles.
+                        // 两者均每周期前进 1 列；drain 领先约 offset 个周期。
                         CP_DRAIN: begin
                             // === DRAIN: capture column from PE array ===
                             if (cluster_arb_out_valid) begin
@@ -3295,14 +3295,14 @@ module npu_top #(
 
                             // === COLLECT: start after first valid column ===
                             if (comp_drain_cnt == array_drain_offset) begin
-                                // First valid column captured; init collect
+                                // 首个有效列已捕获；初始化 collect
                                 acc_col_idx <= 16'd0;
                                 if (fc_or_gemm)
                                     acc_partial_addr <= {BUF_ADDR_W{1'b0}};
                                 acc_collect_wait <= 1'b1;
                                 acc_collect_skip_write <= 1'b0;
                             end else if (comp_drain_cnt > array_drain_offset) begin
-                                // Continue collecting in parallel with drain
+                                // 与 drain 并行继续收集
                                 if (acc_collect_wait) begin
                                     acc_collect_wait <= 1'b0;
                                 end else if (acc_col_idx + 16'd1 < collect_total_cols) begin
@@ -3318,9 +3318,9 @@ module npu_top #(
                                 end
                             end
 
-                            // === Termination: both drain and collect complete ===
-                            // comp_drain_cnt > offset ensures collect has actually started
-                            // (previously the termination fired on the same cycle as init).
+                            // === 终止：drain 和 collect 均完成 ===
+                            // comp_drain_cnt > offset 确保 collect 确实已开始
+                            //（之前终止条件在初始化的同一周期触发）。
                             if ((comp_drain_cnt > array_drain_offset) &&
                                 (comp_drain_cnt >= (array_drain_offset + array_active_cols - 1)) &&
                                 (acc_col_idx + 16'd1 >= collect_total_cols) &&
@@ -3332,14 +3332,14 @@ module npu_top #(
                                 acc_collect_skip_write <= 1'b0;
                                 if (fc_or_gemm) begin
                                     if (fc_in_base + fc_chunk_inputs < input_c) begin
-                                        // P0 FIX: Bypass Phase-2 shadow register.
-                                        // Shadow weight preload can fail to complete before
-                                        // compute finishes (P2 reduced compute from 261→133
-                                        // cycles, shadow needs ~256).  Instead of swapping
-                                        // possibly-incomplete wgt_load_reg_shadow, go through
-                                        // FSM_LOAD_ARRAY which reloads the next chunk's weights
-                                        // directly from wgt_buffer.  Cost: ~128 cycles per
-                                        // additional K-chunk.  Correctness > performance.
+                                        // 绕过影子寄存器。
+                                        // 影子权重预加载可能在计算完成前无法完成
+                                        // （计算时间从 261→133 周期减少，
+                                        // 影子需要约 256 周期）。不交换
+                                        // 可能不完整的 wgt_load_reg_shadow，而是通过
+                                        // FSM_LOAD_ARRAY 直接从 wgt_buffer 重新加载下一 chunk 的权重
+                                        
+                                        // 正确性优先于性能。
                                         if (is_gemm_mode)
                                             gemm_weight_valid <= 1'b0;
                                         fc_in_base <= fc_in_base + fc_chunk_inputs;
@@ -3352,8 +3352,8 @@ module npu_top #(
                                         fsm_state <= FSM_LOAD_ARRAY;
                                     end else begin
                                         if (is_gemm_mode) begin
-                                            // GEMM row-by-row store: 32B-aligned row stride
-                                            // Row stride = ceil(N*4/32)*32 to keep DMA addr aligned
+                                            // GEMM 逐行 store：32B 对齐的行跨度
+                                            // 行跨度 = ceil(N*4/32)*32 以保持 DMA 地址对齐
                                             fc_store_addr <= blk_out_addr + (gemm_row_idx * ((gemm_N_val * 32'd4 + 32'd31) & 32'hFFFF_FFE0));
                                             fc_store_bytes <= gemm_N_val * 32'd4;
                                             dma_wr_addr <= blk_out_addr + (gemm_row_idx * ((gemm_N_val * 32'd4 + 32'd31) & 32'hFFFF_FFE0));
@@ -3394,8 +3394,8 @@ module npu_top #(
                             end else if (acc_col_idx + 16'd1 < collect_total_cols) begin
                                 acc_col_idx <= acc_col_idx + 16'd1;
                                 acc_partial_addr <= acc_partial_addr + 1;
-                                // P2: single-cycle per column for FC (removed 2-cycle wait).
-                                // Conv already runs 1 cycle/column (acc_collect_wait not set).
+                                // FC 每列单周期（移除 2 周期等待）。
+                                // Conv 已经每列 1 周期运行（不设 acc_collect_wait）。
                                 // Safe because each column writes to different acc_buffer addr.
                                 if (is_conv_mode) begin
                                     acc_collect_skip_write <=
@@ -3408,8 +3408,8 @@ module npu_top #(
                                 acc_collect_skip_write <= 1'b0;
                                 if (is_fc_mode) begin
                                     if (fc_in_base + fc_chunk_inputs < input_c) begin
-                                        // P0 FIX: Same as CP_DRAIN path — bypass shadow.
-                                        // Reload weights via LOAD_ARRAY for safety.
+                                        // 与 CP_DRAIN 路径相同 — 绕过影子。
+                                        // 通过 LOAD_ARRAY 安全重新加载权重。
                                         fc_in_base <= fc_in_base + fc_chunk_inputs;
                                         fc_chunk_inputs <= ((input_c - (fc_in_base + fc_chunk_inputs)) > PE_ROWS_16) ?
                                                            PE_ROWS_16 :
@@ -3448,7 +3448,7 @@ module npu_top #(
                         CP_NEXT: begin
                             comp_win_idx <= comp_win_idx + 16'd1;
                             if (comp_win_idx + 16'd1 >= comp_total_wins) begin
-                                // All windows processed for this c_in
+                                // 此 c_in 的所有窗口已处理
                                 fsm_state <= FSM_CIN_NEXT;
                             end else begin
                                 comp_sub_state <= CP_WAIT_WIN;
@@ -3466,7 +3466,7 @@ module npu_top #(
                 FSM_CIN_NEXT: begin
                     if (cin_idx + 16'd1 < cin_total) begin
                         cin_idx <= cin_idx + 16'd1;
-                        // Restart conv_frontend and reset feed pointers for next c_in
+                        // 重启 conv_frontend 并重置馈送指针以进行下一 c_in
                         act_feed_ptr <= 0;
                         act_feed_wait <= 1'b1;
                         act_feed_done_cnt <= 16'd0;
@@ -3476,9 +3476,9 @@ module npu_top #(
                         act_comp_done <= 1'b1;
                         if (bias_enabled) begin
                             rq_mode_internal <= 1'b1;
-                            // The scheduler's Conv block byte count is the legacy
-                            // 32-bit-word layout. A task that requests fewer bytes
-                            // explicitly selects dense INT8 requant packing.
+                            // 调度器的 Conv block 字节计数是旧版
+                            // 32-bit word 布局。请求更少字节的任务
+                            // 显式选择密集 INT8 requant 打包。
                             rq_word_store_mode <= (output_bytes == blk_out_bytes);
                             rq_src_idx <= 32'd0;
                             rq_src_wait <= 1'b1;
@@ -3509,7 +3509,7 @@ module npu_top #(
                 end
 
                 FSM_CIN_RESTART: begin
-                    // Pulse cf_start, clear tracking for next c_in iteration
+                    // 脉冲 cf_start，清除跟踪以进行下一 c_in 迭代
                     cf_last_row <= 16'hFFFF;
                     cf_last_col <= 16'hFFFF;
                     // Flush wgt_buffer so it can accept new DMA load for next c_in
@@ -3520,7 +3520,7 @@ module npu_top #(
 
                 // ============================================================
                 // FSM_STORE: DMA write acc_buffer to memory
-                // Store-pack state machine moved to shared block (below).
+                // store-pack 状态机移至共享块（下方）。
                 // ============================================================
                 FSM_STORE: begin
                     // P3: lock compute bank at STORE entry so reads come from
@@ -3551,10 +3551,10 @@ module npu_top #(
                         dma_wr_valid_r <= 1'b0;
                     end
 
-                    // P3: start next block's act+wgt DMA during current block STORE.
+                    // 在当前 block STORE 期间启动下一 block 的 act+wgt DMA。
                     // 3-cycle sequence: (1) pulse blk_done, (2) wait for
                     // block_scheduler update, (3) check blk_all_done & launch.
-                    // Gated for Conv/Pool; skipped for FC/requant/add/gap.
+                    // 对 Conv/Pool 有效；对 FC/requant/add/gap 跳过。
                     if (!next_blk_prep && !next_blk_wait && !next_dma_launched &&
                         dma_wr_started &&
                         !is_fc_mode && !is_requant_mode && !is_add_mode && !is_gap_mode) begin
@@ -3579,7 +3579,7 @@ module npu_top #(
                             wgt_load_start <= 1'b1;
                             wgt_load_bank <= ~block_bank;
                         end
-                        // Set launched regardless to prevent re-firing
+                        // 无论如何设置 launched 以防止重复触发
                         next_dma_launched <= 1'b1;
                     end
 
@@ -3615,7 +3615,7 @@ module npu_top #(
                 // ============================================================
                 FSM_PIPE_RUN: begin
                     // Both DMAs already done (guaranteed by entry condition).
-                    // Set up compute for next block and start conv_frontend.
+                    // 设置下一 block 的计算并启动 conv_frontend。
                     comp_win_idx <= 16'd0;
                     comp_total_wins <= blk_out_rows * conv_total_out_cols;
                     comp_sub_state <= CP_WAIT_WIN;
@@ -3635,7 +3635,7 @@ module npu_top #(
                         wgt_preload_done <= 1'b0;
                         wgt_load_done_r <= 1'b0;
                         wgt_load_phase <= 32'd0;
-                        // Clean up old store state
+                        // 清理旧 store 状态
                         dma_wr_valid_r <= 1'b0;
                         dma_wr_started <= 1'b0;
                         dma_rd_ptr <= 0;
@@ -3657,7 +3657,7 @@ module npu_top #(
                 end
 
                 FSM_BLK_CHECK: begin
-                    // P3: use !blk_valid instead of blk_all_done because
+                    // 使用 !blk_valid 而非 blk_all_done，因为
                     // block_scheduler may have already decayed S_DONE→S_IDLE
                     // (task_start=0 after initial validation). Both indicate
                     // no more blocks are available.
@@ -3669,7 +3669,7 @@ module npu_top #(
                         next_dma_launched <= 1'b0;
                         fsm_state <= FSM_DONE;
                     end else begin
-                        // Next block
+                        // 下一 block
                         dma_rd_ptr <= 0;
                         dma_wr_started <= 1'b0;
                         block_bank <= ~block_bank;
@@ -3706,7 +3706,7 @@ module npu_top #(
                 end
 
                 // ============================================================
-                // Phase 2b-1: GEMM row-streaming states
+                // GEMM 行流式状态
                 // ============================================================
                 FSM_GEMM_STREAM_PREP: begin
                     stream_cycle <= 16'd0;
@@ -3715,7 +3715,7 @@ module npu_top #(
                     stream_a_tile_loaded <= 1'b0;
                     gemm_a_load_done <= 1'b0;
                     comp_feed_cnt <= 7'd0;
-                    // Phase 4a-2: bank selection — toggles per chunk
+                    // bank 选择 — 每 chunk 切换
                     if (gemm_stream_first_chunk) begin
                         integer ci, cj;
                         for (ci = 0; ci < 8; ci = ci + 1)
@@ -3728,24 +3728,24 @@ module npu_top #(
                                     result_tile_valid_bank1[ci][cj] <= 1'b0;
                                 end
                             end
-                        // First chunk of new task: clear both banks to prevent
-                        // stale data from previous tasks from matching prefetch.
+                        // 新任务的首个 chunk：清除两个 bank 以防止
+                        // 来自之前任务的过期数据匹配预取。
                         input_bank0_valid <= 1'b0;
                         input_bank1_valid <= 1'b0;
                         wgt_stage_valid   <= 1'b0;
                         wgt_pref_valid    <= 1'b0;
                         wgt_pref_done     <= 1'b0;
                         wgt_pref_active   <= 1'b0;
-                        // Phase 5-1: M tile descriptor set once per task at FC_TILE_PREP
-                        // First chunk: load into bank0, compute from bank0
+                        // M tile 描述符 set once per task at FC_TILE_PREP
+                        // 首个 chunk：加载到 bank0，从 bank0 计算
                         input_load_bank    <= 1'b0;
                         input_compute_bank <= 1'b0;
                         fsm_state <= FSM_GEMM_STREAM_LOAD_A;
                     end else begin
-                        // Subsequent chunks: compute from the bank LOAD_A just loaded.
-                        // input_load_bank was toggled in ACCUM before LOAD_A.
+                        // 后续 chunk：从 LOAD_A 刚加载的 bank 计算。
+                        // input_load_bank 在 LOAD_A 之前的 ACCUM 中已切换。
                         input_compute_bank <= input_load_bank;
-                        // Check that the bank LOAD_A loaded has valid metadata
+                        // 检查 LOAD_A 加载的 bank 是否有有效的元数据
                         if (input_load_bank == 1'b0) begin
                             if (!input_bank0_valid ||
                                 (input_bank0_k_base != gemm_stream_k_base) ||
@@ -3763,7 +3763,7 @@ module npu_top #(
                                     input_bank1_k_tile, fc_chunk_inputs);
                             end
                         end
-                        // Skip LOAD_A — bank already loaded by ACCUM→LOAD_A
+                        // 跳过 LOAD_A — bank 已由 ACCUM→LOAD_A 加载
                         fsm_state <= FSM_GEMM_STREAM_RUN;
                     end
                     $display("[KCHUNK] PREP k_base=%0d k_chunk_idx=%0d first=%0d last=%0d load_bank=%0d comp_bank=%0d b0v=%0d b1v=%0d",
@@ -3774,15 +3774,15 @@ module npu_top #(
                 end
 
                 // ============================================================
-                // Phase 4a-2: beat-level input-tile-loader with double-buffer
-                // Reads input_tile_bank[load_bank][row][col] = A[row][k_base+col]
-                // from act_buffer: one 256-bit beat per read, unpack up to 32 bytes.
-                // Handles unaligned rows: up to 3 beats for 64 bytes.
+                // beat 级 input-tile-loader，带双缓冲
+                // 读取 input_tile_bank[load_bank][row][col] = A[row][k_base+col]
+                // 从 act_buffer：每次读取一个 256-bit beat，解包最多 32 字节。
+                // 处理非对齐行：最多 3 个 beat 处理 64 字节。
                 // ============================================================
                 FSM_GEMM_STREAM_LOAD_A: begin
                     if (gemm_a_load_done) begin
-                        // Micro-sequencer finished loading input tile.
-                        // Mark loaded bank as valid with metadata.
+                        // 微序列器完成加载输入 tile。
+                        // 用元数据标记已加载 bank 为有效。
                         if (input_load_bank == 1'b0) begin
                             input_bank0_valid  <= 1'b1;
                             input_bank0_k_base <= gemm_stream_k_base;
@@ -3795,14 +3795,14 @@ module npu_top #(
                         $display("[BEAT_LD] done: bank=%0d beats=%0d bytes=%0d unaligned_rows=%0d k_base=%0d k_tile=%0d",
                             input_load_bank, gemm_a_load_beat_count, gemm_a_load_byte_count,
                             gemm_a_load_unaligned_row_count, gemm_stream_k_base, fc_chunk_inputs);
-                        // Route: first K-chunk of first M tile → RUN (weights pre-loaded);
-                        //        first K-chunk of subsequent M tile → LOAD_ARRAY
-                        //        (clear first_chunk so PREP doesn't re-clear result_tile);
-                        //        K-chunk1+ → LOAD_ARRAY or WGT_LD if prefetched.
+                        // 路由：首个 M tile 的首个 K-chunk → RUN（权重已预加载）；
+                        //        后续 M tile 的首个 K-chunk → LOAD_ARRAY
+                        //        （清除 first_chunk 使 PREP 不会重新清除 result_tile）；
+                        //        K-chunk1+ → LOAD_ARRAY 或 WGT_LD（如果已预取）。
                         if (gemm_stream_first_chunk && (gemm_tile_m_base == 16'd0) && (gemm_tile_n_base == 16'd0))
                             fsm_state <= FSM_GEMM_STREAM_RUN;
                         else if (gemm_stream_first_chunk) begin
-                            // New M or N tile: need weight reload, clear first_chunk
+                            // 新 M 或 N tile：需要权重重新加载，清除 first_chunk
                             gemm_stream_first_chunk <= 1'b0;
                             wgt_load_phase <= 32'd0;
                             wgt_load_wait <= 1'b1;
@@ -3811,7 +3811,7 @@ module npu_top #(
                                  (wgt_pref_k_base == gemm_stream_k_base) &&
                                  (wgt_pref_k_tile == fc_chunk_inputs) &&
                                  (wgt_pref_n_tile == fc_tile_outputs) && (wgt_pref_n_base == gemm_tile_n_base)) begin
-                            // Weight was prefetched during previous RUN
+                            // 权重在上一个 RUN 期间已预取
                             wgt_pref_hit_count <= wgt_pref_hit_count + 16'd1;
                             wgt_pref_valid <= 1'b0;
                             wgt_pref_done  <= 1'b0;
@@ -3821,7 +3821,7 @@ module npu_top #(
                         end else
                             fsm_state <= FSM_LOAD_ARRAY;
                     end else begin
-                        // Micro-sequencer: 4-phase beat-level load
+                        // 微序列器：4 phase beat 级加载
                         case (gemm_a_load_phase)
                             A_LOAD_IDLE: begin
                                 gemm_a_load_row   <= 3'd0;
@@ -3832,17 +3832,17 @@ module npu_top #(
                                 gemm_a_load_phase <= A_LOAD_REQ;
                             end
                             A_LOAD_REQ: begin
-                                // act_rd_addr already driven by combinational mux;
-                                // wait one cycle for synchronous buffer read latency.
+                                // act_rd_addr 已由组合多路复用器驱动；
+                                // 等待一个周期以处理同步 buffer 读取延迟。
                                 gemm_a_load_phase <= A_LOAD_WAIT;
                             end
                             A_LOAD_WAIT: begin
-                                // Data appears next cycle.
+                                // 数据在下一周期出现。
                                 gemm_a_load_phase <= A_LOAD_CAPTURE;
                             end
                             A_LOAD_CAPTURE: begin
-                                // Beat-level bulk unpack: up to 32 bytes from one 256-bit beat.
-                                // Writes to input_tile_bank[input_load_bank].
+                                // beat 级批量解包：从一个 256-bit beat 中最多 32 字节。
+                                // 写入 input_tile_bank[input_load_bank]。
                                 integer lane_start_v;
                                 integer remaining_v;
                                 integer bytes_this_beat_v;
@@ -3852,7 +3852,7 @@ module npu_top #(
                                 bytes_this_beat_v = (remaining_v < (32 - lane_start_v)) ?
                                                       remaining_v : (32 - lane_start_v);
 
-                                // Unpack valid bytes from this beat into load bank
+                                // 解包此 beat 中的有效字节到加载 bank
                                 if (input_load_bank == 1'b0) begin
                                     for (lane = 0; lane < 32; lane = lane + 1) begin
                                         if ((lane >= lane_start_v) &&
@@ -3873,7 +3873,7 @@ module npu_top #(
                                     end
                                 end
 
-                                // Debug counters
+                                // 调试计数器
                                 gemm_a_load_beat_count <= gemm_a_load_beat_count + 16'd1;
                                 gemm_a_load_byte_count <= gemm_a_load_byte_count
                                     + {10'd0, bytes_this_beat_v[5:0]};
@@ -3881,9 +3881,9 @@ module npu_top #(
                                     gemm_a_load_unaligned_row_count <=
                                         gemm_a_load_unaligned_row_count + 16'd1;
 
-                                // Advance col by bytes captured this beat
+                                // 按此 beat 捕获的字节数前进 col
                                 if (gemm_a_load_col + bytes_this_beat_v >= fc_chunk_inputs) begin
-                                    // Row complete: zero-fill in load bank
+                                    // 行完成：在加载 bank 中零填充
                                     if (input_load_bank == 1'b0) begin
                                         for (lane = fc_chunk_inputs; lane < 64; lane = lane + 1)
                                             input_tile_bank0[gemm_a_load_row][lane] <= 8'd0;
@@ -3897,7 +3897,7 @@ module npu_top #(
                                         gemm_a_load_col   <= 7'd0;
                                         gemm_a_load_phase <= A_LOAD_REQ;
                                     end else begin
-                                        // All rows done
+                                        // 所有行完成
                                         gemm_a_load_done  <= 1'b1;
                                         gemm_a_load_phase <= A_LOAD_IDLE;
                                     end
@@ -3913,18 +3913,18 @@ module npu_top #(
                 end
 
                 FSM_GEMM_STREAM_RUN: begin
-                    // Phase 4a-3: on first cycle of RUN, trigger background prefetch
-                    // of next chunk's input tile into the inactive bank.
+                    // 在 RUN 的首个周期，触发后台预取
+                    // 将下一 chunk 的输入 tile 放到非活跃 bank.
                     if ((stream_cycle == 16'd0) && !gemm_stream_last_chunk &&
                         !input_prefetch_active) begin
-                        // Compute next chunk's k_base and k_tile
+                        // 计算下一 chunk 的 k_base 和 k_tile
                         // next_k_base = gemm_stream_k_base + fc_chunk_inputs
                         // next_k_tile = min(64, input_c - next_k_base)
                         automatic integer nk_base;
                         automatic integer nk_tile;
                         nk_base = gemm_stream_k_base + fc_chunk_inputs;
                         nk_tile = (input_c - nk_base > 64) ? 64 : (input_c - nk_base);
-                        // Launch prefetch only if bank not already valid with matching meta
+                        // 仅当 bank 没有匹配元数据的有效数据时才启动预取
                         if (!((input_bank0_valid && (input_bank0_k_base == nk_base) &&
                                (input_bank0_k_tile == nk_tile)) ||
                               (input_bank1_valid && (input_bank1_k_base == nk_base) &&
@@ -3943,7 +3943,7 @@ module npu_top #(
                             $display("[PREFETCH] START bank=%0d k_base=%0d k_tile=%0d comp_bank=%0d",
                                 ~input_compute_bank, nk_base, nk_tile, input_compute_bank);
                         end
-                        // Phase 4b-2: also trigger background weight prefetch
+                        // 同时触发后台权重预取
                         if (1'b0 && !wgt_pref_active && !wgt_pref_done &&
                             !(wgt_pref_valid &&
                               (wgt_pref_k_base == nk_base) &&
@@ -3974,7 +3974,7 @@ module npu_top #(
                                 str_m = $signed({16'd0, stream_cycle}) - $signed({16'd0, active_k}) - $signed({16'd0, str_n}) - $signed({16'd0, stream_pipe_offset});
                                 if (!str_m[31] && str_m < gemm_tile_M && str_n < gemm_N_val) begin
                                     if (gemm_stream_first_chunk) begin
-                                        // First K-chunk: write-once (v1 behavior)
+                                        // 首个 K-chunk：单次写入（v1 行为）
                                         if (!(compute_result_bank ? result_tile_valid_bank1[str_m][str_n] : result_tile_valid_bank0[str_m][str_n])) begin
                                             if (compute_result_bank == 1'b0) begin
                                                 result_tile_bank0[str_m][str_n] <= array_sum_out[str_n*32 +: 32];
@@ -3999,22 +3999,22 @@ module npu_top #(
                     end
                     if (stream_cycle >= (gemm_tile_M + active_k + array_active_cols + stream_pipe_offset + 16'd10)) begin
                         stream_active <= 1'b0;
-                        fsm_state <= FSM_GEMM_STREAM_ACCUM;  // Phase 3a: check K-chunk loop
+                        fsm_state <= FSM_GEMM_STREAM_ACCUM;  // 检查 K-chunk 循环
                     end
                 end
 
-                // Phase 4a-3: K-chunk loop with prefetch-aware routing
-                // If next chunk's input tile was prefetched during RUN,
-                // skip foreground LOAD_A and go directly to LOAD_ARRAY.
+                // K-chunk 循环，带预取感知路由
+                // 如果下一 chunk 的输入 tile 在 RUN 期间已预取，
+                // 跳过前台 LOAD_A 直接进入 LOAD_ARRAY。
                 FSM_GEMM_STREAM_ACCUM: begin
                     if (fc_in_base + fc_chunk_inputs < input_c) begin
-                        // More K-chunks remain
+                        // 还有更多 K-chunk
                         automatic integer next_kb;
                         automatic integer next_kt;
                         next_kb = fc_in_base + fc_chunk_inputs;
                         next_kt = (input_c - next_kb > PE_ROWS_16) ? PE_ROWS_16 : (input_c - next_kb);
 
-                        // Phase 4b-2: also check weight prefetch stall
+                        // 同时检查权重预取停顿
                         if (input_prefetch_active || wgt_pref_active) begin
                             if (input_prefetch_active) begin
                                 input_prefetch_stall_count <= input_prefetch_stall_count + 16'd1;
@@ -4028,7 +4028,7 @@ module npu_top #(
                         end else if (input_bank0_valid && (input_bank0_k_base == next_kb) &&
                                        (input_bank0_k_tile == next_kt) &&
                                        (1'b0 != input_compute_bank)) begin
-                            // Input prefetch HIT: bank0 has next chunk's A data.
+                            // 输入预取命中：bank0 有下一 chunk 的 A 数据。
                             input_prefetch_hit_count <= input_prefetch_hit_count + 16'd1;
                             gemm_stream_k_base       <= next_kb;
                             gemm_stream_k_chunk_idx  <= gemm_stream_k_chunk_idx + 16'd1;
@@ -4039,12 +4039,12 @@ module npu_top #(
                             fc_chunk_inputs <= next_kt;
                             input_load_bank <= 1'b0;
                             fc_shadow_active <= 1'b0;
-                            // Check weight prefetch hit too
+                            // 同时检查权重预取命中
                             if (wgt_pref_valid &&
                                 (wgt_pref_k_base == next_kb) &&
                                 (wgt_pref_k_tile == next_kt) &&
                                 (wgt_pref_n_tile == fc_tile_outputs) && (wgt_pref_n_base == gemm_tile_n_base)) begin
-                                // Dual HIT: skip both LOAD_A and LOAD_ARRAY
+                                // 双重命中：跳过 LOAD_A 和 LOAD_ARRAY
                                 wgt_pref_hit_count <= wgt_pref_hit_count + 16'd1;
                                 wgt_pref_valid <= 1'b0;
                                 wgt_pref_done  <= 1'b0;
@@ -4054,7 +4054,7 @@ module npu_top #(
                                     next_kb);
                                 fsm_state <= FSM_WGT_LD;
                             end else begin
-                                // Input hit only: skip LOAD_A, go to LOAD_ARRAY
+                                // 仅输入命中：跳过 LOAD_A，进入 LOAD_ARRAY
                                 wgt_load_phase <= 32'd0;
                                 wgt_load_wait <= 1'b1;
                                 $display("[PREFETCH] HIT bank0 k_base=%0d k_chunk=%0d (skip LOAD_A)",
@@ -4064,7 +4064,7 @@ module npu_top #(
                         end else if (input_bank1_valid && (input_bank1_k_base == next_kb) &&
                                        (input_bank1_k_tile == next_kt) &&
                                        (1'b1 != input_compute_bank)) begin
-                            // Input prefetch HIT: bank1 has next chunk's A data
+                            // 输入预取命中：bank1 有下一 chunk 的 A 数据
                             input_prefetch_hit_count <= input_prefetch_hit_count + 16'd1;
                             gemm_stream_k_base       <= next_kb;
                             gemm_stream_k_chunk_idx  <= gemm_stream_k_chunk_idx + 16'd1;
@@ -4075,12 +4075,12 @@ module npu_top #(
                             fc_chunk_inputs <= next_kt;
                             input_load_bank <= 1'b1;
                             fc_shadow_active <= 1'b0;
-                            // Check weight prefetch hit too
+                            // 同时检查权重预取命中
                             if (wgt_pref_valid &&
                                 (wgt_pref_k_base == next_kb) &&
                                 (wgt_pref_k_tile == next_kt) &&
                                 (wgt_pref_n_tile == fc_tile_outputs) && (wgt_pref_n_base == gemm_tile_n_base)) begin
-                                // Dual HIT
+                                // 双重命中
                                 wgt_pref_hit_count <= wgt_pref_hit_count + 16'd1;
                                 wgt_pref_valid <= 1'b0;
                                 wgt_pref_done  <= 1'b0;
@@ -4098,8 +4098,8 @@ module npu_top #(
                                 fsm_state <= FSM_LOAD_ARRAY;
                             end
                         end else begin
-                            // Fallback: no prefetch data — use foreground LOAD_A
-                            // Also handles first chunk after RUN0 (prefetch started but not done)
+                            // 回退：无预取数据 — 使用前台 LOAD_A
+                            // 同时处理 RUN0 后的首个 chunk（预取已启动但未完成）
                             gemm_stream_k_base       <= next_kb;
                             gemm_stream_k_chunk_idx  <= gemm_stream_k_chunk_idx + 16'd1;
                             gemm_stream_first_chunk  <= 1'b0;
@@ -4118,7 +4118,7 @@ module npu_top #(
                             fsm_state <= FSM_GEMM_STREAM_LOAD_A;
                         end
                     end else begin
-                        // All K-chunks done: proceed to STORE
+                        // 所有 K-chunk 完成：转到 STORE
                         $display("[KCHUNK] ACCUM: all %0d chunks done, starting STORE",
                             gemm_stream_k_chunk_idx + 16'd1);
                         $display("[FSM_DBG] LOAD_ARRAY_entries=%0d WGT_LD_entries=%0d DUAL_HIT=%0d ACCUM→WGT_LD=%0d ACCUM→LOAD_ARRAY=%0d",
@@ -4131,11 +4131,11 @@ module npu_top #(
 
                 FSM_GEMM_STREAM_DONE: begin
                     store_result_bank <= compute_result_bank;
-                    // Phase 4c-3: STORE overlap — launch immediately if writer idle.
-                    // Only lock store_desc_* when GST is idle, to avoid corrupting
-                    // an active background STORE's descriptor.
+                    // STORE 重叠 — 若 writer 空闲则立即启动 if writer idle.
+                    // 仅在 GST 空闲时锁定 store_desc_*，避免破坏
+                    // 活跃后台 STORE 的描述符。
                     if (!gemm_store_eng_active) begin
-                        // Lock store descriptor from current tile
+                        // 从当前 tile 锁定 store 描述符
                         store_desc_m_base     <= gemm_tile_m_base;
                         store_desc_n_base     <= gemm_tile_n_base;
                         store_desc_M          <= gemm_tile_M;
@@ -4147,7 +4147,7 @@ module npu_top #(
                         store_desc_bank       <= compute_result_bank;
                         store_desc_relu_en   <= fc_streaming_en && relu_en;
                         store_desc_output_dtype <= int8_test_hook;
-                        // Launch current tile STORE
+                        // 启动当前 tile STORE
                         gemm_store_row_idx <= 16'd0;
                         gemm_store_beat_idx <= 16'd0;
                         gemm_store_eng_active <= 1'b1;
@@ -4157,9 +4157,9 @@ module npu_top #(
                             gemm_tile_m_base, gemm_tile_n_base,
                             gemm_tile_M, gemm_tile_N, compute_result_bank,
                             int8_test_hook);
-                        // Check for next tile
+                        // 检查下一 tile
                         if (gemm_tile_n_base + gemm_tile_N < gemm_N_val) begin
-                            // N-tile advance: overlap STORE with next tile compute
+                            // N-tile 前进：STORE 与下一 tile 计算重叠
                             automatic integer next_n_base;
                             next_n_base = gemm_tile_n_base + gemm_tile_N;
                             gemm_tile_n_base <= next_n_base;
@@ -4183,7 +4183,7 @@ module npu_top #(
                             compute_result_bank <= ~compute_result_bank;
                             fsm_state <= FSM_GEMM_STREAM_PREP;
                         end else if (gemm_tile_m_base + gemm_tile_M < gemm_M_val) begin
-                            // M-tile advance: overlap STORE with next tile compute
+                            // M-tile 前进：STORE 与下一 tile 计算重叠
                             automatic integer next_m_base;
                             next_m_base = gemm_tile_m_base + gemm_tile_M;
                             gemm_tile_m_base <= next_m_base;
@@ -4208,12 +4208,12 @@ module npu_top #(
                             compute_result_bank <= ~compute_result_bank;
                             fsm_state <= FSM_GEMM_STREAM_PREP;
                         end else begin
-                            // Final tile: wait for STORE to complete
+                            // 最终 tile：等待 STORE 完成
                             $display("[GST_FINAL] final tile, waiting for STORE done");
                             fsm_state <= FSM_GEMM_STREAM_STORE;
                         end
                     end else begin
-                        // Previous STORE still running — mark pending
+                        // 上一个 STORE 仍在运行 — 标记为待处理
                         gemm_store_pending <= 1'b1;
                         $display("[GST_PEND] store pending: previous STORE still active");
                         fsm_state <= FSM_GEMM_STREAM_STORE;
@@ -4221,11 +4221,11 @@ module npu_top #(
                 end
 
                 FSM_GEMM_STREAM_STORE: begin
-                    // Phase 4c-3: Wait for background STORE engine to finish current tile.
-                    // GST micro-FSM now runs as an after-case background tick, not here.
+                    // 等待后台 STORE 引擎 to finish current tile.
+                    // GST 微 FSM 现在作为 case 后的后台 tick 运行，不在此处。
                     if (!gemm_store_eng_active) begin
                         if (gemm_store_pending) begin
-                            // Previous STORE finished — lock descriptor + launch pending STORE
+                            // 上一个 STORE 完成 — 锁定描述符 + 启动待处理的 STORE
                             store_desc_m_base     <= gemm_tile_m_base;
                             store_desc_n_base     <= gemm_tile_n_base;
                             store_desc_M          <= gemm_tile_M;
@@ -4245,7 +4245,7 @@ module npu_top #(
                             $display("[GST_LAUNCH_PEND] m_base=%0d n_base=%0d M=%0d N=%0d bank=%0d",
                                 store_desc_m_base, store_desc_n_base,
                                 store_desc_M, store_desc_N, store_desc_bank);
-                            // Check for next tile after pending launch
+                            // 待处理启动后检查下一 tile
                             if (gemm_tile_n_base + gemm_tile_N < gemm_N_val) begin
                                 automatic integer next_n_base;
                                 next_n_base = gemm_tile_n_base + gemm_tile_N;
@@ -4290,11 +4290,11 @@ module npu_top #(
                                 compute_result_bank <= ~compute_result_bank;
                                 fsm_state <= FSM_GEMM_STREAM_PREP;
                             end else begin
-                                // Final tile STORE launched — wait for it
+                                // 最终 tile STORE 已启动 — 等待完成
                                 fsm_state <= FSM_GEMM_STREAM_STORE;
                             end
                         end else begin
-                            // All STOREs done — final tile complete
+                            // 所有 STORE 完成 — 最终 tile 完成
                             task_done_r <= 1'b1;
                             task_active_r <= 1'b0;
                             fsm_state <= FSM_DONE;
@@ -4321,13 +4321,13 @@ module npu_top #(
             endcase
 
             // ================================================================
-            // P5: pipelined shared store_pack state machine — runs during FSM_STORE
-            // or pipe_mode.  Placed AFTER the fsm_state case so store overrides
+            // 流水线共享 store_pack 状态机 — 在 FSM_STORE 期间运行
+            // 或 pipe_mode。放在 fsm_state case 之后，使 store 覆盖
             // signals set in FSM_STORE init on the same cycle.
             //
             // Pipelined read: we issue the NEXT read address (store_rd_prefetch)
             // while consuming the CURRENT data (dma_rd_ptr tracks consumed index).
-            // This achieves 1 word/cycle sustained throughput (was 1 word/2 cycles
+            // 这实现每周期 1 word 的持续吞吐（原来是每 2 周期 1 word，
             // due to WAIT state for acc_buffer's 1-cycle read latency).
             // ================================================================
             if (fsm_state == FSM_STORE || pipe_mode) begin
@@ -4348,8 +4348,8 @@ module npu_top #(
                     end
 
                     SP_FIRST: begin
-                        // First data word (addr 0) is now valid on acc_rd_data
-                        // Accumulate it and issue next read
+                        // 首数据 word（地址 0）现在在 acc_rd_data 上有效
+                        // 累加并发出下一读取
                         if (store_word_idx < store_words_active) begin
                             store_pack_data <= store_pack_data_next;
                             store_pack_lane <= store_pack_lane + 3'd1;
@@ -4376,7 +4376,7 @@ module npu_top #(
                     end
 
                     SP_STREAM: begin
-                        // Data from previous read is valid. Accumulate and issue next.
+                        // 上一读取的数据有效。累加并发出下一读取。
                         if (store_word_idx < store_words_active) begin
                             store_pack_data <= store_pack_data_next;
                             store_pack_lane <= store_pack_lane + 3'd1;
@@ -4385,14 +4385,14 @@ module npu_top #(
 
                             if ((store_pack_lane == 3'd7) ||
                                 (store_word_idx + 32'd1 >= store_words_active)) begin
-                                // Beat complete
+                                // Beat 完成
                                 dma_wr_data_r <= store_pack_data_next;
                                 dma_wr_valid_r <= 1'b1;
                                 store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
                                 store_pack_lane <= 3'd0;
                                 store_pack_state <= SP_PUSH;
                             end else begin
-                                // Issue next read
+                                // 发出下一读取
                                 if (store_word_idx + 32'd1 < store_words_active)
                                     store_rd_prefetch <= store_rd_prefetch + 1;
                                 // stay in SP_STREAM
@@ -4413,7 +4413,7 @@ module npu_top #(
                         end else if (!wf_wr_full) begin
                             dma_wr_valid_r <= 1'b0;
                             if (store_word_idx < store_words_active) begin
-                                // Prefetch next address (dma_rd_ptr is already correct)
+                                // 预取下一地址（dma_rd_ptr 已正确）
                                 store_rd_prefetch <= dma_rd_ptr + 1;
                                 store_pack_state <= SP_FIRST;
                             end else begin
@@ -4428,10 +4428,10 @@ module npu_top #(
                 // --- dma_wr_done / error handling ---
                 if (dma_wr_done) begin
                     if (pipe_mode && fsm_state != FSM_PIPE_DONE) begin
-                        // P3: store finished during pipe mode — flag completion
+                        // pipe 模式下 store 完成 — flag completion
                         pipe_store_done <= 1'b1;
                     end else if (fsm_state == FSM_STORE) begin
-                        // Normal STORE completion
+                        // 正常 STORE 完成
                         rq_mode_internal <= 1'b0;
                         rq_mode_internal <= 1'b0;
                         rq_word_store_mode <= 1'b0;
@@ -4444,7 +4444,7 @@ module npu_top #(
                         store_word_idx <= 32'd0;
                         store_pack_data <= {AXI_DMA_DATA_W{1'b0}};
                         if (is_gemm_mode) begin
-                            // GEMM row-by-row: store current row, advance to next
+                            // GEMM 逐行：存储当前行，前进到下一行
                             if (gemm_row_idx + 16'd1 < gemm_M_val) begin
                                 gemm_row_idx <= gemm_row_idx + 16'd1;
                                 fc_out_start <= 16'd0;
@@ -4483,8 +4483,8 @@ module npu_top #(
             end
 
             // ================================================================
-            // Phase 4c-3: background GEMM STORE engine tick.
-            // GST micro-FSM runs here (not inside FSM_GEMM_STREAM_STORE),
+            // 后台 GEMM STORE 引擎 tick。
+            // GST 微 FSM 在此处运行（不在 FSM_GEMM_STREAM_STORE 内），
             // allowing STORE to overlap with main FSM RUN/PREP/LOAD_A states.
             // Still in the same always block — no multi-driver.
             // ================================================================
@@ -4499,7 +4499,7 @@ module npu_top #(
                         reg [31:0]  n_base_addr;      // n_base offset in bytes
                         reg [31:0]  beat_addr_offset;  // beat_idx offset in bytes
                         integer lane;
-                        // Phase U4-d: output-dtype-dependent packing
+                        // 输出 dtype 相关打包
                         if (store_desc_output_dtype == 1'b0) begin
                             // INT32: 8 columns per beat, 4 bytes per column
                             beat_cols_max   = 6'd8;
@@ -4586,7 +4586,7 @@ module npu_top #(
                     end
 
                     GST_ADVANCE: begin
-                        // Phase U4-d: beats per row depends on output dtype
+                        // 每行 beat 数取决于输出 dtype
                         // INT32: ceil(N/8), INT8: ceil(N/32)
                         if (gemm_store_beat_idx + 16'd1 <
                             (store_desc_output_dtype ?
@@ -4623,7 +4623,7 @@ module npu_top #(
     assign wgt_mac_addr = conv_weight_dma_byte_idx[BUF_ADDR_W+4:5];
 
     // ============================================================
-    // Phase 2: FC Shadow Weight Load — loads next chunk's weights
+    // FC 影子权重加载 — 加载下一 chunk 的权重
     // into wgt_load_reg_shadow during FEED_ACT+DRAIN+COLLECT.
     // After compute finishes, the main FSM swaps shadow→wgt_load_reg
     // in one cycle, bypassing the 128-cycle FSM_LOAD_ARRAY.
@@ -4666,7 +4666,7 @@ module npu_top #(
             end
             // fc_shadow_active stays 1 after load completion;
             // it is cleared at CP_COLLECT done after the swap into wgt_load_reg.
-            // Clearing it here would cause the swap to miss the shadow data
+            // 在此处清除会导致交换错过影子数据
             // and load zero weights for the next K-chunk.
         end
     end

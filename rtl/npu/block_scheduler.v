@@ -1,20 +1,20 @@
-// block_scheduler: splits Conv/FC/Pool tasks into blocks that fit in on-chip buffers
-// Computes per-block addresses, byte counts, and dimensions
-// Conv: splits by output rows (horizontal stripes with kernel overlap)
-// Pool: splits by output rows (2 input rows per 1 output row)
-// FC: splits by output neurons (column groups)
-// Multi-channel: blocks sized by acc_buffer capacity (output bytes bottleneck)
+// block_scheduler: 将 Conv/FC/Pool 任务拆分为适合片上 buffer 的块
+// 计算每块地址、字节数和维度
+// Conv: 按输出行拆分（带 kernel 重叠的水平条带）
+// Pool: 按输出行拆分（每 1 输出行需 2 输入行）
+// FC: 按输出神经元拆分（列组）
+// 多通道：块大小由 acc_buffer 容量决定（输出字节瓶颈）
 `timescale 1ns / 1ps
 
 module block_scheduler #(
-    parameter BUF_ENTRIES = 1024,     // entries per buffer bank
+    parameter BUF_ENTRIES = 1024,     // 每个 buffer bank 的条目数
     parameter BUF_ADDR_W  = 10,
     parameter AXI_ADDR_W  = 32
 ) (
     input  wire        clk,
     input  wire        rst_n,
 
-    // Task parameters (from npu_ctrl)
+    // 任务参数（来自 npu_ctrl）
     input  wire        task_start,
     input  wire [2:0]  task_type,     // 0=Conv, 1=FC, 2=Pool, 3=Requant, 4=ADD, 5=GAP
     input  wire [31:0] input_addr,
@@ -29,12 +29,12 @@ module block_scheduler #(
     input  wire [15:0] output_c,
     input  wire [31:0] conv_cfg,
 
-    // Block request/response
+    // 块请求/响应
     input  wire        block_done,
     output wire        block_valid,
     output wire        all_blocks_done,
 
-    // Current block parameters
+    // 当前块参数
     output wire [31:0] blk_input_addr,
     output wire [31:0] blk_weight_addr,
     output wire [31:0] blk_output_addr,
@@ -43,12 +43,12 @@ module block_scheduler #(
     output wire [31:0] blk_output_bytes,
     output wire [15:0] blk_input_rows,
     output wire [15:0] blk_output_rows,
-    // Per-input-channel weight info (Conv/FC only)
+    // 每输入通道权重信息（仅 Conv/FC）
     output wire [31:0] blk_wgt_per_cin,
     output wire [15:0] blk_cin_total
 );
 
-    // State
+    // 状态
     localparam S_IDLE   = 2'd0;
     localparam S_ACTIVE = 2'd1;
     localparam S_DONE   = 2'd2;
@@ -200,7 +200,7 @@ module block_scheduler #(
         end
     end
 
-    // Combinational block parameters
+    // 组合逻辑块参数
     wire [15:0] this_block_rows;
     wire [15:0] conv_raw_start_row;
     wire [15:0] conv_input_start_row;
@@ -222,15 +222,15 @@ module block_scheduler #(
     assign conv_this_in_rows =
         (conv_input_end_row > conv_input_start_row) ? (conv_input_end_row - conv_input_start_row) : 16'd0;
 
-    // Conv: generalized conservative input rows. Pool: input rows = 2 * output rows. FC: 1
+    // Conv: 通用保守输入行数。Pool: 输入行 = 2 * 输出行。FC: 1
     assign this_in_rows = (task_type == TASK_CONV) ? conv_this_in_rows :
                           (task_type == TASK_POOL) ? (this_block_rows << 1) :
                           (task_type == TASK_VECTOR_RELU) ? 16'd1 :
                           this_block_rows;
 
     always @(*) begin
-        if (task_type == TASK_POOL) begin  // Pool: per-block slicing
-            // Input: INT32, HWC layout. Each output row needs 2 input rows
+        if (task_type == TASK_POOL) begin  // Pool: 逐块切片
+            // 输入: INT32, HWC 布局。每个输出行需要 2 个输入行
             blk_input_addr_r  = input_addr  + curr_out_row * 2 * input_w * input_c * 32'd4;
             blk_input_bytes_r = this_in_rows * input_w * input_c * 32'd4;
             blk_weight_addr_r  = weight_addr;
@@ -239,7 +239,7 @@ module block_scheduler #(
             blk_output_bytes_r = this_block_rows * total_out_cols * output_c * 32'd4;
             blk_input_rows_r   = this_in_rows;
             blk_output_rows_r  = this_block_rows;
-        end else if ((task_type == TASK_FC) || (task_type == TASK_GEMM)) begin  // FC/GEMM: pass through
+        end else if ((task_type == TASK_FC) || (task_type == TASK_GEMM)) begin  // FC/GEMM: 直通
             blk_input_addr_r   = input_addr;
             blk_input_bytes_r  = input_bytes;
             blk_weight_addr_r  = weight_addr;
@@ -249,7 +249,7 @@ module block_scheduler #(
             blk_input_rows_r   = input_h;
             blk_output_rows_r  = input_h;
         end else if ((task_type == TASK_REQUANT) || (task_type == TASK_ADD) ||
-                     (task_type == TASK_GAP) || (task_type == TASK_VECTOR_RELU)) begin  // Requant/ADD/GAP/VecRelu: pass through
+                     (task_type == TASK_GAP) || (task_type == TASK_VECTOR_RELU)) begin  // Requant/ADD/GAP/VecRelu: 直通
             blk_input_addr_r   = input_addr;
             blk_input_bytes_r  = input_bytes;
             blk_weight_addr_r  = 32'd0;
@@ -258,7 +258,7 @@ module block_scheduler #(
             blk_output_bytes_r = output_bytes;
             blk_input_rows_r   = 16'd1;
             blk_output_rows_r  = 16'd1;
-        end else begin  // Conv: per-block slicing with kernel overlap
+        end else begin  // Conv: 逐块切片（带 kernel 重叠）
             blk_input_addr_r   = input_addr  + conv_input_start_row * input_w * input_c;
             blk_input_bytes_r  = this_in_rows * input_w * input_c;
             blk_weight_addr_r  = weight_addr;

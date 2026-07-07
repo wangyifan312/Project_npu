@@ -1,4 +1,4 @@
-// axi_ram: simple AXI-Lite RAM for program/data storage
+// axi_ram: 简单 AXI-Lite RAM，用于程序/数据存储
 `timescale 1ns / 1ps
 
 module axi_ram #(
@@ -9,7 +9,7 @@ module axi_ram #(
     input  wire        clk,
     input  wire        rst_n,
 
-    // AXI-Lite Slave
+    // AXI-Lite 从设备
     input  wire                        s_axi_awvalid,
     output wire                        s_axi_awready,
     input  wire [AXI_ADDR_W-1:0]       s_axi_awaddr,
@@ -31,7 +31,7 @@ module axi_ram #(
 
     reg [AXI_DATA_W-1:0] ram [0:RAM_DEPTH-1];
 
-    // Write path
+    // 写路径
     reg         aw_stored;
     reg  [31:0] aw_addr;
     reg         w_stored;
@@ -81,7 +81,7 @@ module axi_ram #(
     assign s_axi_bvalid = bvalid;
     assign s_axi_bresp  = 2'b00;
 
-    // Read path
+    // 读路径
     reg         ar_stored;
     reg  [31:0] ar_addr;
     reg         rvalid;

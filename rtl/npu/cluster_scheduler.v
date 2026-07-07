@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 
-// cluster_scheduler: single-cluster enable control (64x64 PE array).
-// Trivial for CLUSTER_COUNT=1 — always enables cluster 0.
+// cluster_scheduler: 单cluster使能控制（64x64 PE阵列）。
+// CLUSTER_COUNT=1 时简化为始终使能 cluster 0。
 
 module cluster_scheduler #(
     parameter CLUSTER_COUNT = 1
@@ -14,7 +14,7 @@ module cluster_scheduler #(
 );
 
     always @(*) begin
-        // Single cluster: enable if mask bit 0 is set
+        // 单cluster：mask bit 0 置位时使能
         cluster_enable = {CLUSTER_COUNT{1'b0}};
         cluster_enable[0] = cluster_mask_req[0];
         cluster_count   = cluster_enable[0] ? 3'd1 : 3'd0;

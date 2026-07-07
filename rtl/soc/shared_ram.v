@@ -1,5 +1,5 @@
-// shared_ram: unified 1MB memory with CPU AXI-Lite + NPU 256-bit AXI4 DMA ports
-// CPU and NPU access the same physical 32768 x 256-bit beat array.
+// shared_ram: 统一 1MB 存储器，具有 CPU AXI-Lite + NPU 256-bit AXI4 DMA 端口
+// CPU 和 NPU 访问同一物理 32768 x 256-bit beat 阵列。
 `timescale 1ns / 1ps
 
 module shared_ram #(
@@ -11,7 +11,7 @@ module shared_ram #(
     input  wire        clk,
     input  wire        rst_n,
 
-    // === CPU AXI-Lite port (32-bit word lane in a 256-bit beat) ===
+    // === CPU AXI-Lite 端口（256-bit beat 中的 32-bit 字通道） ===
     input  wire                        cpu_awvalid,
     output wire                        cpu_awready,
     input  wire [AXI_ADDR_W-1:0]       cpu_awaddr,
@@ -30,7 +30,7 @@ module shared_ram #(
     output wire [CPU_AXI_DATA_W-1:0]   cpu_rdata,
     output wire [1:0]                  cpu_rresp,
 
-    // === NPU DMA AXI4 port (256-bit beat) ===
+    // === NPU DMA AXI4 端口（256-bit beat） ===
     input  wire                        npu_awvalid,
     output wire                        npu_awready,
     input  wire [AXI_ADDR_W-1:0]       npu_awaddr,
@@ -68,7 +68,7 @@ module shared_ram #(
     localparam [1:0] AXI_BURST_INCR = 2'b01;
     localparam integer MEM_BYTES = RAM_DEPTH * NPU_BEAT_BYTES;
 
-    // Address split: beat_addr=addr[19:5], word_in_beat=addr[4:2]
+    // 地址拆分：beat_addr=addr[19:5], word_in_beat=addr[4:2]
     reg [NPU_AXI_DATA_W-1:0] ram [0:RAM_DEPTH-1];
 
     function [ADDR_BITS-1:0] beat_index;
@@ -127,7 +127,7 @@ module shared_ram #(
     endfunction
 
     // ============================================================
-    // CPU AXI-Lite write path
+    // CPU AXI-Lite 写路径
     // ============================================================
     reg                         cpu_aw_valid_r;
     reg  [AXI_ADDR_W-1:0]       cpu_aw_addr_r;
@@ -198,7 +198,7 @@ module shared_ram #(
     assign cpu_bresp  = cpu_bresp_r;
 
     // ============================================================
-    // CPU AXI-Lite read path
+    // CPU AXI-Lite 读路径
     // ============================================================
     reg         cpu_rvalid_r;
     reg [CPU_AXI_DATA_W-1:0] cpu_rdata_r;
@@ -227,7 +227,7 @@ module shared_ram #(
     assign cpu_rresp  = cpu_rresp_r;
 
     // ============================================================
-    // NPU AXI4 write path
+    // NPU AXI4 写路径
     // ============================================================
     reg         npu_aw_valid_r;
     reg  [AXI_ADDR_W-1:0] npu_aw_addr_r;
@@ -299,7 +299,7 @@ module shared_ram #(
     assign npu_bresp  = npu_bresp_r;
 
     // ============================================================
-    // NPU AXI4 read path
+    // NPU AXI4 读路径
     // ============================================================
     reg         npu_ar_valid_r;
     reg  [AXI_ADDR_W-1:0] npu_ar_addr_r;

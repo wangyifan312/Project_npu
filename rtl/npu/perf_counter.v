@@ -1,66 +1,66 @@
-// perf_counter: performance statistics for NPU tasks
-// Tracks total cycles, DMA beat counts, active cycles, array utilization
-// Enhanced with compute/load/store breakdown and valid-byte counters
+// perf_counter: NPU任务性能统计
+// 跟踪总周期数、DMA拍数、活跃周期数、阵列利用率
+// 增强：计算/加载/存储细分和有效字节计数器
 `timescale 1ns / 1ps
 
 module perf_counter (
     input  wire        clk,
     input  wire        rst_n,
 
-    // Control
-    input  wire        task_active,    // high during task execution
-    input  wire        freeze,         // freeze counters on error/done
+    // 控制
+    input  wire        task_active,    // 任务执行期间为高
+    input  wire        freeze,         // 错误/完成时冻结计数器
 
-    // DMA event inputs (pulse per beat)
-    input  wire        read_beat,      // one AXI read beat completed
-    input  wire        write_beat,     // one AXI write beat completed
-    input  wire        read_active,    // DMA reader is actively transferring
-    input  wire        write_active,   // DMA writer is actively transferring
+    // DMA事件输入（每拍一个脉冲）
+    input  wire        read_beat,      // 一个AXI读拍完成
+    input  wire        write_beat,     // 一个AXI写拍完成
+    input  wire        read_active,    // DMA读端正在传输
+    input  wire        write_active,   // DMA写端正在传输
 
-    // --- Enhanced event inputs ---
-    // Phase-level activity signals
-    input  wire        compute_active,  // high during COMPUTE/PIPE_RUN states
-    input  wire        load_active,     // high during LOAD states (act/wgt DMA + LOAD_ARRAY)
-    input  wire        store_active,    // high during STORE state
-    input  wire        collect_active,  // high during COLLECT phase
+    // --- 增强事件输入 ---
+    // 阶段级活跃信号
+    input  wire        compute_active,  // COMPUTE/PIPE_RUN状态期间为高
+    input  wire        load_active,     // LOAD状态期间为高（act/wgt DMA + LOAD_ARRAY）
+    input  wire        store_active,    // STORE状态期间为高
+    input  wire        collect_active,  // COLLECT阶段期间为高
 
-    // Read valid bytes (per beat: actual payload, handles partial last beat)
-    // NOTE: 6 bits needed because max is 32 (0x20), which overflows 5 bits
-    input  wire [5:0]  read_byte_cnt,   // valid bytes in this read beat (1-32)
+    // 读有效字节数（每拍：实际有效载荷，处理部分最后拍）
+    // 注意：需要6位，因为最大值为32（0x20），会溢出5位
+    input  wire [5:0]  read_byte_cnt,   // 此读拍中的有效字节数（1-32）
 
-    // Write valid bytes (per beat: WSTRB popcount, handles partial last beat)
-    input  wire [5:0]  write_byte_cnt,  // valid bytes in this write beat (1-32)
+    // 写有效字节数（每拍：WSTRB popcount，处理部分最后拍）
+    input  wire [5:0]  write_byte_cnt,  // 此写拍中的有效字节数（1-32）
 
-    // MAC count event (pulse with count of MACs completed this cycle)
-    input  wire        mac_count_valid, // high when mac_count_add is valid
-    input  wire [15:0] mac_count_add,   // MACs completed this cycle
+    // MAC计数事件（脉冲，携带本周期完成的MAC数量）
+    input  wire        mac_count_valid, // mac_count_add有效时为高
+    input  wire [15:0] mac_count_add,   // 本周期完成的MAC数
 
-    // Compute stall breakdown
-    input  wire        stall_act,       // waiting for activation data
-    input  wire        stall_wgt,       // waiting for weight data
-    input  wire        stall_acc,       // waiting for acc buffer
-    input  wire        stall_store,     // waiting for store/FIFO
+    // 计算停顿细分
+    input  wire        stall_act,       // 等待激活数据
+    input  wire        stall_wgt,       // 等待权重数据
+    input  wire        stall_acc,       // 等待acc缓冲区
+    input  wire        stall_store,     // 等待store/FIFO
 
-    // Array fill/drain phase
-    input  wire        array_fill_drain, // array is filling or draining (not at steady state)
+    // 阵列填充/排空阶段
+    input  wire        array_fill_drain, // 阵列正在填充或排空（非稳态）
 
-    // Legacy array inputs
-    input  wire        array_active,   // array is computing (window_valid)
-    input  wire        array_stall,    // array is stalled waiting for data
+    // 遗留阵列输入
+    input  wire        array_active,   // 阵列正在计算（window_valid）
+    input  wire        array_stall,    // 阵列停顿等待数据
     input  wire [2:0]  cluster_active_inc,
     input  wire [2:0]  cluster_stall_inc,
 
-    // Write transaction-level counter inputs
-    input  wire        write_data_cycle,     // WVALID && WREADY (per AXI W beat)
-    input  wire        write_txn_active,     // AW handshake -> B handshake window
+    // 写事务级计数器输入
+    input  wire        write_data_cycle,     // WVALID && WREADY（每AXI W拍）
+    input  wire        write_txn_active,     // AW握手到B握手窗口
 
-    // AXI channel handshake cycle inputs
+    // AXI通道握手周期输入
     input  wire        ar_active,            // ARVALID && ARREADY
     input  wire        aw_active,            // AWVALID && AWREADY
     input  wire        b_active,             // BVALID && BREADY
-    input  wire        bus_active,           // union of AR/R/AW/W/B handshake
+    input  wire        bus_active,           // AR/R/AW/W/B握手的并集
 
-    // Counter outputs (frozen on done/error)
+    // 计数器输出（done/error时冻结）
     output wire [31:0] total_cycle_lo,
     output wire [31:0] total_cycle_hi,
     output wire [31:0] read_beat_count,
@@ -78,7 +78,7 @@ module perf_counter (
     output wire [31:0] b_handshake_cycles,
     output wire [31:0] bus_active_cycles,
 
-    // --- Enhanced counter outputs ---
+    // --- 增强计数器输出 ---
     output wire [31:0] compute_cycles,
     output wire [31:0] load_cycles,
     output wire [31:0] store_cycles,
@@ -94,13 +94,13 @@ module perf_counter (
     output wire [31:0] array_fill_drain_cycles
 );
 
-    // 64-bit cycle counter
+    // 64位周期计数器
     reg [31:0] cycle_lo, cycle_hi;
 
-    // Beat counters
+    // 拍计数器
     reg [31:0] read_beats, write_beats;
 
-    // Active cycle counters
+    // 活跃周期计数器
     reg [31:0] rd_active_cyc, wr_active_cyc;
     reg [31:0] arr_active_cyc, arr_stall_cyc;
     reg [31:0] cl_active_cyc, cl_stall_cyc;
@@ -108,20 +108,20 @@ module perf_counter (
     reg [31:0] ar_cyc, aw_cyc, b_cyc, bus_cyc;
     reg        task_active_d;
 
-    // --- Enhanced counters ---
-    reg [31:0] comp_cyc;       // compute_cycles
-    reg [31:0] load_cyc;       // load_cycles
-    reg [31:0] store_cyc;      // store_cycles
-    reg [31:0] coll_cyc;       // collect_cycles
-    reg [31:0] rd_valid_bytes; // read_valid_bytes
-    reg [31:0] wr_valid_bytes; // write_valid_bytes
-    reg [31:0] mac_cnt_lo;     // mac_count_lo
-    reg [31:0] mac_cnt_hi;     // mac_count_hi
-    reg [31:0] s_act_cyc;      // stall_act_cycles
-    reg [31:0] s_wgt_cyc;      // stall_wgt_cycles
-    reg [31:0] s_acc_cyc;      // stall_acc_cycles
-    reg [31:0] s_store_cyc;    // stall_store_cycles
-    reg [31:0] fill_drain_cyc; // array_fill_drain_cycles
+    // --- 增强计数器 ---
+    reg [31:0] comp_cyc;       // 计算周期数
+    reg [31:0] load_cyc;       // 加载周期数
+    reg [31:0] store_cyc;      // 存储周期数
+    reg [31:0] coll_cyc;       // 收集周期数
+    reg [31:0] rd_valid_bytes; // 读有效字节数
+    reg [31:0] wr_valid_bytes; // 写有效字节数
+    reg [31:0] mac_cnt_lo;     // MAC计数低32位
+    reg [31:0] mac_cnt_hi;     // MAC计数高32位
+    reg [31:0] s_act_cyc;      // 停顿_激活_周期
+    reg [31:0] s_wgt_cyc;      // 停顿_权重_周期
+    reg [31:0] s_acc_cyc;      // 停顿_累加_周期
+    reg [31:0] s_store_cyc;    // 停顿_存储_周期
+    reg [31:0] fill_drain_cyc; // 阵列填充排空周期
 
     wire counting = task_active && !freeze;
     wire task_start_pulse = task_active && !task_active_d;
@@ -133,7 +133,7 @@ module perf_counter (
             task_active_d <= task_active;
     end
 
-    // Cycle counter
+    // 周期计数器
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             cycle_lo <= 32'h0;
@@ -147,7 +147,7 @@ module perf_counter (
         end
     end
 
-    // Read beat counter
+    // 读拍计数器
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             read_beats <= 32'h0;
@@ -159,7 +159,7 @@ module perf_counter (
         end
     end
 
-    // Write beat counter
+    // 写拍计数器
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             write_beats <= 32'h0;
@@ -171,7 +171,7 @@ module perf_counter (
         end
     end
 
-    // Read active cycles
+    // 读活跃周期
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             rd_active_cyc <= 32'h0;
@@ -183,7 +183,7 @@ module perf_counter (
         end
     end
 
-    // Write active cycles
+    // 写活跃周期
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             wr_active_cyc <= 32'h0;
@@ -195,7 +195,7 @@ module perf_counter (
         end
     end
 
-    // Write data cycles (WVALID && WREADY)
+    // 写数据周期（WVALID && WREADY）
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             wr_data_cyc <= 32'h0;
@@ -207,7 +207,7 @@ module perf_counter (
         end
     end
 
-    // Write transaction cycles (AW handshake to B handshake window)
+    // 写事务周期（AW握手到B握手窗口）
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             wr_txn_cyc <= 32'h0;
@@ -219,7 +219,7 @@ module perf_counter (
         end
     end
 
-    // AR handshake cycles (ARVALID && ARREADY)
+    // AR握手周期（ARVALID && ARREADY）
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             ar_cyc <= 32'h0;
@@ -231,7 +231,7 @@ module perf_counter (
         end
     end
 
-    // AW handshake cycles (AWVALID && AWREADY)
+    // AW握手周期（AWVALID && AWREADY）
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             aw_cyc <= 32'h0;
@@ -243,7 +243,7 @@ module perf_counter (
         end
     end
 
-    // B handshake cycles (BVALID && BREADY)
+    // B握手周期（BVALID && BREADY）
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             b_cyc <= 32'h0;
@@ -255,7 +255,7 @@ module perf_counter (
         end
     end
 
-    // Bus active cycles (union of AR/R/AW/W/B handshake)
+    // 总线活跃周期（AR/R/AW/W/B握手的并集）
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             bus_cyc <= 32'h0;
@@ -267,7 +267,7 @@ module perf_counter (
         end
     end
 
-    // Array active cycles
+    // 阵列活跃周期
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             arr_active_cyc <= 32'h0;
@@ -279,7 +279,7 @@ module perf_counter (
         end
     end
 
-    // Array stall cycles
+    // 阵列停顿周期
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             arr_stall_cyc <= 32'h0;
@@ -291,7 +291,7 @@ module perf_counter (
         end
     end
 
-    // Aggregate enabled-cluster active cycles
+    // 聚合已启用集群的活跃周期
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             cl_active_cyc <= 32'h0;
@@ -303,7 +303,7 @@ module perf_counter (
         end
     end
 
-    // Aggregate enabled-cluster stall cycles
+    // 聚合已启用集群的停顿周期
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             cl_stall_cyc <= 32'h0;
@@ -316,10 +316,10 @@ module perf_counter (
     end
 
     // ============================================================
-    // Enhanced counters
+    // 增强计数器
     // ============================================================
 
-    // compute_cycles: high during compute phase (FEED_ACT/DRAIN/COLLECT)
+    // compute_cycles: 计算阶段期间为高（FEED_ACT/DRAIN/COLLECT）
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             comp_cyc <= 32'h0;
@@ -331,7 +331,7 @@ module perf_counter (
         end
     end
 
-    // load_cycles: high during LOAD states (act DMA, wgt DMA, LOAD_ARRAY, etc.)
+    // load_cycles: LOAD状态期间为高（act DMA, wgt DMA, LOAD_ARRAY等）
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             load_cyc <= 32'h0;
@@ -343,7 +343,7 @@ module perf_counter (
         end
     end
 
-    // store_cycles: high during STORE state
+    // store_cycles: STORE状态期间为高
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             store_cyc <= 32'h0;
@@ -355,7 +355,7 @@ module perf_counter (
         end
     end
 
-    // collect_cycles: high during COLLECT phase specifically
+    // collect_cycles: 专门在COLLECT阶段期间为高
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             coll_cyc <= 32'h0;
@@ -367,7 +367,7 @@ module perf_counter (
         end
     end
 
-    // read_valid_bytes: accumulate actual payload bytes from read beats
+    // read_valid_bytes: 累积读拍的实际有效载荷字节数
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             rd_valid_bytes <= 32'h0;
@@ -379,7 +379,7 @@ module perf_counter (
         end
     end
 
-    // write_valid_bytes: accumulate actual payload bytes from write beats (WSTRB-based)
+    // write_valid_bytes: 累积写拍的实际有效载荷字节数（基于WSTRB）
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             wr_valid_bytes <= 32'h0;
@@ -391,7 +391,7 @@ module perf_counter (
         end
     end
 
-    // mac_count: accumulate actual MAC operations
+    // mac_count: 累积实际MAC操作数
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             {mac_cnt_hi, mac_cnt_lo} <= 64'h0;
@@ -404,7 +404,7 @@ module perf_counter (
         end
     end
 
-    // stall_act_cycles: waiting for activation data
+    // stall_act_cycles: 等待激活数据
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             s_act_cyc <= 32'h0;
@@ -416,7 +416,7 @@ module perf_counter (
         end
     end
 
-    // stall_wgt_cycles: waiting for weight data
+    // stall_wgt_cycles: 等待权重数据
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             s_wgt_cyc <= 32'h0;
@@ -428,7 +428,7 @@ module perf_counter (
         end
     end
 
-    // stall_acc_cycles: waiting for acc buffer
+    // stall_acc_cycles: 等待acc缓冲区
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             s_acc_cyc <= 32'h0;
@@ -440,7 +440,7 @@ module perf_counter (
         end
     end
 
-    // stall_store_cycles: waiting for store/FIFO
+    // stall_store_cycles: 等待store/FIFO
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             s_store_cyc <= 32'h0;
@@ -452,7 +452,7 @@ module perf_counter (
         end
     end
 
-    // array_fill_drain_cycles: array is filling/draining (not at steady state)
+    // array_fill_drain_cycles: 阵列正在填充/排空（非稳态）
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             fill_drain_cyc <= 32'h0;
@@ -465,7 +465,7 @@ module perf_counter (
     end
 
     // ============================================================
-    // Output assignments
+    // 输出赋值
     // ============================================================
     assign total_cycle_lo    = cycle_lo;
     assign total_cycle_hi    = cycle_hi;
@@ -484,7 +484,7 @@ module perf_counter (
     assign b_handshake_cycles    = b_cyc;
     assign bus_active_cycles     = bus_cyc;
 
-    // Enhanced outputs
+    // 增强输出
     assign compute_cycles        = comp_cyc;
     assign load_cycles           = load_cyc;
     assign store_cycles          = store_cyc;

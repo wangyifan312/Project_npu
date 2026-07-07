@@ -1,20 +1,20 @@
-// task_checker: validate task parameters and addresses before NPU execution
-// One-cycle check: registers inputs on task_start, outputs result next cycle
+// task_checker: 在 NPU 执行前验证任务参数和地址
+// 单周期检查：在 task_start 时寄存输入，下一周期输出结果
 `timescale 1ns / 1ps
 
 module task_checker #(
-    parameter [31:0] MEM_BASE  = 32'h0000_0000,  // valid memory region base
-    parameter [31:0] MEM_SIZE  = 32'h0010_0000,  // valid memory region size (1MB default)
-    parameter integer BUF_ENTRIES = 16384,        // entries per buffer bank
-    parameter integer DMA_DATA_W = 256            // AXI DMA data width in bits
+    parameter [31:0] MEM_BASE  = 32'h0000_0000,  // 有效内存区域基地址
+    parameter [31:0] MEM_SIZE  = 32'h0010_0000,  // 有效内存区域大小（默认 1MB）
+    parameter integer BUF_ENTRIES = 16384,        // 每个 buffer bank 的条目数
+    parameter integer DMA_DATA_W = 256            // AXI DMA 数据宽度（位）
 ) (
     input  wire        clk,
     input  wire        rst_n,
 
-    // Task trigger from npu_ctrl
+    // 来自 npu_ctrl 的任务触发
     input  wire        task_start,
 
-    // Task parameters (from npu_ctrl latched outputs)
+    // 任务参数（来自 npu_ctrl 锁存输出）
     input  wire [2:0]  task_type,
     input  wire        task_type_reserved_invalid,  // U9-b4: |TASK_TYPE[31:3] != 0
     input  wire [31:0] input_addr,
@@ -46,14 +46,14 @@ module task_checker #(
     input  wire [31:0] add_out_multiplier,
     input  wire [5:0]  add_out_shift,
 
-    // Check result
+    // 检查结果
     output wire        checks_pass,
     output wire [7:0]  error_code,
-    output wire        check_done    // pulsed when check completes
+    output wire        check_done    // 检查完成时的脉冲
 );
 
     // ============================================================
-    // Error codes
+    // 错误码
     // ============================================================
     localparam ERR_NONE              = 8'h00;
     localparam ERR_INVALID_TASK_TYPE = 8'h01;
@@ -80,13 +80,13 @@ module task_checker #(
     localparam [2:0] TASK_GEMM        = 3'd7;
 
     // ============================================================
-    // Buffer capacity: single bank max capacity in bytes
+    // 缓冲区容量：单个 bank 最大容量（字节）
     // ============================================================
     localparam integer DMA_BEAT_BYTES = DMA_DATA_W / 8;
     localparam integer BUF_BANK_BYTES = BUF_ENTRIES * DMA_BEAT_BYTES;
 
     // ============================================================
-    // Internal registers (latch inputs on task_start)
+    // 内部寄存器（在 task_start 时锁存输入）
     // ============================================================
     reg         checking;
     reg  [2:0]  task_type_r;
@@ -171,12 +171,12 @@ module task_checker #(
             add_out_multiplier_r <= add_out_multiplier;
             add_out_shift_r <= add_out_shift;
         end else if (checking) begin
-            checking <= 1'b0;  // one cycle check
+            checking <= 1'b0;  // 单周期检查
         end
     end
 
     // ============================================================
-    // Address helper: check if addr is in valid region
+    // 地址辅助函数：检查 addr 是否在有效区域内
     // ============================================================
     function addr_in_bounds;
         input [31:0] addr;
@@ -185,7 +185,7 @@ module task_checker #(
         end
     endfunction
 
-    // Address helper: check if addr + bytes doesn't overflow region
+    // 地址辅助函数：检查 addr + bytes 是否不溢出区域
     function addr_range_ok;
         input [31:0] addr;
         input [31:0] bytes;
@@ -197,7 +197,7 @@ module task_checker #(
     endfunction
 
     // ============================================================
-    // Combinational checks (evaluated when checking=1)
+    // 组合逻辑检查（在 checking=1 时评估）
     // ============================================================
     reg [7:0]  error_code_comb;
 
@@ -207,37 +207,37 @@ module task_checker #(
                          (task_type_r == TASK_GAP) ||
                          (task_type_r == TASK_VECTOR_RELU);
 
-    // Alignment: require 64-byte alignment for AXI burst efficiency.
-    // Pool/Requant/ADD may leave weight_addr unused.
+    // 对齐：要求 64 字节对齐以保证 AXI burst 效率。
+    // Pool/Requant/ADD 可以不使用 weight_addr。
     wire addr_aligned_ok = (input_addr_r[5:0]  == 6'h00) &&
                            (output_addr_r[5:0] == 6'h00) &&
                            (weight_unused || (weight_addr_r[5:0] == 6'h00));
 
-    // Check that required bytes are non-zero (weight may be unused for Pool/Requant/ADD)
+    // 检查所需字节数非零（Pool/Requant/ADD 可以不使用 weight）
     wire bytes_ok = (input_bytes_r != 32'h0) && (output_bytes_r != 32'h0) &&
                     (weight_unused || (weight_bytes_r != 32'h0));
 
-    // Check that required addresses are non-null (weight may be unused for Pool/Requant/ADD)
+    // 检查所需地址非空（Pool/Requant/ADD 可以不使用 weight）
     wire addr_non_null = (input_addr_r != 32'h0) && (output_addr_r != 32'h0) &&
                          (weight_unused || (weight_addr_r != 32'h0));
 
-    // Check addresses are in bounds (weight_addr may be 0 for Pool/Requant/ADD)
+    // 检查地址在范围内（Pool/Requant/ADD 的 weight_addr 可以为 0）
     wire addr_bounds_ok = addr_in_bounds(input_addr_r) &&
                           addr_in_bounds(output_addr_r) &&
                           (weight_unused || addr_in_bounds(weight_addr_r));
 
-    // Check address ranges (weight may be 0 for Pool/Requant/ADD)
+    // 检查地址范围（Pool/Requant/ADD 的 weight 可以为 0）
     wire addr_range_ok_sig = addr_range_ok(input_addr_r,  input_bytes_r) &&
                              addr_range_ok(output_addr_r, output_bytes_r) &&
                              (weight_unused || addr_range_ok(weight_addr_r, weight_bytes_r));
 
-    // Buffer capacity: each DMA load must fit within one buffer bank
-    // input_bytes and weight_bytes each independently must not exceed
-    // one bank's capacity.  The DMA loads a single bank per task stage.
+    // 缓冲区容量：每次 DMA 加载必须适配单个 buffer bank
+    // input_bytes 和 weight_bytes 各自独立不得超过
+    // 单个 bank 的容量。DMA 在每个任务阶段加载单个 bank。
     wire buf_capacity_ok = (input_bytes_r <= BUF_BANK_BYTES) &&
                            (weight_unused || (weight_bytes_r <= BUF_BANK_BYTES));
 
-    // Check task_type
+    // 检查 task_type
     wire task_type_known = (task_type_r == TASK_CONV)    ||
                            (task_type_r == TASK_FC)      ||
                            (task_type_r == TASK_POOL)    ||
@@ -304,27 +304,27 @@ module task_checker #(
         (conv_out_h != 16'd0) &&
         (conv_out_w != 16'd0);
 
-    // Pool: input dimensions must be even (2x2/stride=2)
+    // Pool: 输入维度必须为偶数（2x2/stride=2）
     wire pool_dim_ok = (input_h_r[0] == 1'b0) && (input_w_r[0] == 1'b0);
 
-    // Conv dimension check (only for Conv task_type)
+    // Conv 维度检查（仅针对 Conv task_type）
     wire conv_check = (task_type_r != TASK_CONV) || conv_dim_ok;
 
-    // Pool dimension check (only for Pool task_type)
+    // Pool 维度检查（仅针对 Pool task_type）
     wire pool_check = (task_type_r != TASK_POOL) || pool_dim_ok;
 
-    // Input/output channel relationship for Conv/FC
+    // Conv/FC 的输入/输出通道关系
     // Conv: C_in >= 1, C_out >= 1
-    // FC: C_in >= 1, C_out >= 1 (mapped to input_c/output_c or input_h/output_c)
+    // FC: C_in >= 1, C_out >= 1（映射到 input_c/output_c 或 input_h/output_c）
     wire dim_relation_ok =
         ((task_type_r == TASK_REQUANT) || (task_type_r == TASK_ADD) || (task_type_r == TASK_GAP) ||
          (task_type_r == TASK_VECTOR_RELU)) ?
         1'b1 : ((input_c_r >= 16'd1) && (output_c_r >= 16'd1));
 
-    // Requant task:
-    // - input is INT32 words, so byte count must be 4 * output byte count
-    // - no weight payload
-    // - multiplier must be non-zero
+    // Requant 任务:
+    // - 输入为 INT32 字，因此字节数必须为 4 * 输出字节数
+    // - 无 weight 载荷
+    // - multiplier 必须非零
     wire requant_param_ok =
         (task_type_r != TASK_REQUANT) ||
         ((input_bytes_r[1:0] == 2'b00) &&
@@ -368,10 +368,10 @@ module task_checker #(
 
     wire gap_post_requant_en = postproc_cfg_ext_r[1];
     wire gap_cfg_ok =
-        (gap_cfg_r[1:0] == 2'd0) &&          // INT8 input
-        (gap_cfg_r[3:2] == 2'd0) &&          // INT8 output
+        (gap_cfg_r[1:0] == 2'd0) &&          // INT8 输入
+        (gap_cfg_r[3:2] == 2'd0) &&          // INT8 输出
         (gap_cfg_r[19:4] == 16'd0) &&
-        (gap_cfg_r[25:20] == 6'd6) &&        // exact 8x8 divide-by-64 shift
+        (gap_cfg_r[25:20] == 6'd6) &&        // 精确 8x8 除以 64 移位
         (gap_cfg_r[31:26] == 6'd0) &&
         ((postproc_cfg_ext_r & 32'hFFFF_FFFD) == 32'd0);
     wire gap_requant_ok =
@@ -389,19 +389,19 @@ module task_checker #(
          (weight_bytes_r == 32'd0) &&
          gap_requant_ok);
 
-    // Vector INT8 ReLU 256b task:
-    // - input is INT8 array, output is INT8 array (same size)
-    // - no weight payload
-    // - requires 32B alignment (enforced by addr_aligned_ok)
+    // Vector INT8 ReLU 256b 任务:
+    // - 输入为 INT8 数组，输出为 INT8 数组（相同大小）
+    // - 无 weight 载荷
+    // - 要求 32B 对齐（由 addr_aligned_ok 强制执行）
     wire vec_relu_param_ok =
         (task_type_r != TASK_VECTOR_RELU) ||
         ((input_bytes_r == output_bytes_r) &&
          (weight_bytes_r == 32'd0));
 
-    // Priority-encoded error
+    // 优先级编码错误
     always @(*) begin
         error_code_comb = ERR_NONE;
-        // U9-b4: reject task if TASK_TYPE[31:3] has non-zero reserved bits
+        // U9-b4: 如果 TASK_TYPE[31:3] 有非零保留位则拒绝任务
         if (task_type_reserved_invalid)
             error_code_comb = ERR_INVALID_TASK_TYPE;
         else if (!task_type_known)
@@ -443,7 +443,7 @@ module task_checker #(
     wire all_checks_pass = (error_code_comb == ERR_NONE);
 
     // ============================================================
-    // Output registers: valid in the cycle after checking=1
+    // 输出寄存器：在 checking=1 之后的周期有效
     // ============================================================
     reg         checks_pass_r;
     reg  [7:0]  error_code_r;

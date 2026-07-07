@@ -1,5 +1,5 @@
-// npu_ctrl: NPU register file + control state machine
-// AXI4-Lite slave for CPU access, controls task lifecycle
+// npu_ctrl: NPU 寄存器文件 + 控制状态机
+// AXI4-Lite 从接口，用于 CPU 访问，控制任务生命周期
 `timescale 1ns / 1ps
 
 module npu_ctrl #(
@@ -11,39 +11,39 @@ module npu_ctrl #(
     input  wire        clk,
     input  wire        rst_n,
 
-    // === AXI4-Lite Slave Interface ===
-    // Write address channel
+    // === AXI4-Lite 从接口 ===
+    // 写地址通道
     input  wire                        s_axi_awvalid,
     output wire                        s_axi_awready,
     input  wire [AXI_ADDR_WIDTH-1:0]   s_axi_awaddr,
-    // Write data channel
+    // 写数据通道
     input  wire                        s_axi_wvalid,
     output wire                        s_axi_wready,
     input  wire [AXI_DATA_WIDTH-1:0]   s_axi_wdata,
     input  wire [3:0]                  s_axi_wstrb,
-    // Write response channel
+    // 写响应通道
     output wire                        s_axi_bvalid,
     input  wire                        s_axi_bready,
     output wire [1:0]                  s_axi_bresp,
-    // Read address channel
+    // 读地址通道
     input  wire                        s_axi_arvalid,
     output wire                        s_axi_arready,
     input  wire [AXI_ADDR_WIDTH-1:0]   s_axi_araddr,
-    // Read data channel
+    // 读数据通道
     output wire                        s_axi_rvalid,
     input  wire                        s_axi_rready,
     output wire [AXI_DATA_WIDTH-1:0]   s_axi_rdata,
     output wire [1:0]                  s_axi_rresp,
 
-    // === Task control outputs (latched, to NPU internals) ===
+    // === 任务控制输出（已锁存，送往 NPU 内部）===
     output wire                        ctrl_busy,
     output wire                        ctrl_done,
     output wire                        ctrl_error,
     output wire [7:0]                  ctrl_error_code,
-    output wire                        task_go,      // high only after checks pass
+    output wire                        task_go,      // 仅在检查通过后为高
     output wire                        task_start,
     output wire [2:0]                  task_type,
-    output wire                        task_type_reserved_invalid,  // U9-b4: high bits non-zero
+    output wire                        task_type_reserved_invalid,  // 高位非零
     output wire [31:0]                 input_addr,
     output wire [31:0]                 weight_addr,
     output wire [31:0]                 output_addr,
@@ -76,17 +76,17 @@ module npu_ctrl #(
     output wire [31:0]                 add_out_multiplier,
     output wire [5:0]                  add_out_shift,
 
-    // === IRQ output (Phase U8-a) ===
+    // === IRQ 输出 ===
     output wire                        npu_irq,
 
-    // === Task status inputs (from NPU internals) ===
+    // === 任务状态输入（来自 NPU 内部）===
     input  wire                        task_done_i,
     input  wire                        task_error_i,
     input  wire [7:0]                  task_error_code_i,
-    input  wire                        check_done_i,    // task_checker result ready
-    input  wire                        checks_pass_i,   // task_checker: all checks passed
+    input  wire                        check_done_i,    // task_checker 结果就绪
+    input  wire                        checks_pass_i,   // task_checker: 所有检查通过
 
-    // === Performance counter inputs ===
+    // === 性能计数器输入 ===
     input  wire [31:0]                 perf_cycle_lo_i,
     input  wire [31:0]                 perf_cycle_hi_i,
     input  wire [31:0]                 perf_read_beats_i,
@@ -122,7 +122,7 @@ module npu_ctrl #(
 );
 
     // ============================================================
-    // Register address map (byte offsets)
+    // 寄存器地址映射（字节偏移）
     // ============================================================
     localparam ADDR_CTRL           = 6'd0;   // 0x00: [0]=start,[1]=busy,[2]=done,[3]=error
     localparam ADDR_STATUS         = 6'd1;   // 0x04: [7:0]=error_code
@@ -157,10 +157,10 @@ module npu_ctrl #(
     localparam ADDR_PERF_BUS_ACTIVE     = 6'd57;  // 0xE4
     localparam ADDR_PERF_COMPUTE_CYCLES = 6'd58;  // 0xE8
     localparam ADDR_PERF_LOAD_CYCLES    = 6'd59;  // 0xEC
-    localparam ADDR_PERF_STORE_CYCLES   = 6'd60;  // 0xF0 (was 60, fix: 6'd60 = 0xF0 correct)
+    localparam ADDR_PERF_STORE_CYCLES   = 6'd60;  // 0xF0（原为 60，修正：6'd60 = 0xF0 正确）
     localparam ADDR_PERF_COLLECT_CYCLES = 6'd61;  // 0xF4
     localparam ADDR_PERF_READ_VALID_BYTES  = 6'd62;  // 0xF8
-    localparam ADDR_PERF_WRITE_VALID_BYTES = 6'd63;  // 0xFC (max 6-bit addr)
+    localparam ADDR_PERF_WRITE_VALID_BYTES = 6'd63;  // 0xFC（最大 6 位地址）
     localparam ADDR_REQUANT_SEL         = 6'd25;  // 0x64: [1:0]=slot select
     localparam ADDR_REQUANT0_MULT       = 6'd26;  // 0x68
     localparam ADDR_REQUANT0_SHIFT      = 6'd27;  // 0x6C: [5:0]=shift
@@ -170,30 +170,30 @@ module npu_ctrl #(
     localparam ADDR_REQUANT2_SHIFT      = 6'd31;  // 0x7C: [5:0]=shift
     localparam ADDR_REQUANT3_MULT       = 6'd32;  // 0x80
     localparam ADDR_REQUANT3_SHIFT      = 6'd33;  // 0x84: [5:0]=shift
-    localparam ADDR_CLUSTER_MODE        = 6'd34;  // 0x88: [1:0]=cluster mode (reserved, CLUSTER_COUNT=1)
-    localparam ADDR_CLUSTER_MASK        = 6'd35;  // 0x8C: [5:0]=cluster mask (reserved, only bit[0] used)
-    localparam ADDR_VERSION             = 6'd36;  // 0x90: R1a register map version
-    localparam ADDR_CAPABILITY          = 6'd37;  // 0x94: supported RTL capability bits
-    localparam ADDR_CONV_CFG            = 6'd38;  // 0x98: future generalized Conv config
-    localparam ADDR_BIAS_ADDR           = 6'd39;  // 0x9C: future folded bias base
-    localparam ADDR_BIAS_BYTES          = 6'd40;  // 0xA0: future folded bias bytes
-    localparam ADDR_SRC1_ADDR           = 6'd41;  // 0xA4: future residual source1 base
-    localparam ADDR_SRC1_BYTES          = 6'd42;  // 0xA8: future residual source1 bytes
-    localparam ADDR_ADD_CFG             = 6'd43;  // 0xAC: future residual ADD config
-    localparam ADDR_GAP_CFG             = 6'd44;  // 0xB0: future GAP config
-    localparam ADDR_POSTPROC_CFG        = 6'd45;  // 0xB4: future extended postproc config
+    localparam ADDR_CLUSTER_MODE        = 6'd34;  // 0x88: [1:0]=cluster 模式（保留，CLUSTER_COUNT=1）
+    localparam ADDR_CLUSTER_MASK        = 6'd35;  // 0x8C: [5:0]=cluster 掩码（保留，仅 bit[0] 有效）
+    localparam ADDR_VERSION             = 6'd36;  // 0x90: R1a 寄存器映射版本
+    localparam ADDR_CAPABILITY          = 6'd37;  // 0x94: 支持的 RTL 能力位
+    localparam ADDR_CONV_CFG            = 6'd38;  // 0x98: 通用 Conv 配置
+    localparam ADDR_BIAS_ADDR           = 6'd39;  // 0x9C: 折叠 bias 基地址
+    localparam ADDR_BIAS_BYTES          = 6'd40;  // 0xA0: 折叠 bias 字节数
+    localparam ADDR_SRC1_ADDR           = 6'd41;  // 0xA4: 残差源1 基地址
+    localparam ADDR_SRC1_BYTES          = 6'd42;  // 0xA8: 残差源1 字节数
+    localparam ADDR_ADD_CFG             = 6'd43;  // 0xAC: 残差 ADD 配置
+    localparam ADDR_GAP_CFG             = 6'd44;  // 0xB0: GAP 配置
+    localparam ADDR_POSTPROC_CFG        = 6'd45;  // 0xB4: 扩展后处理配置
 
-    // Phase U8-a: IRQ registers (extended 7-bit address space, 0x100-0x10C)
-    localparam ADDR_IRQ_EN              = 7'd64;  // 0x100: [1:0]=irq_en (bit0=done, bit1=error)
-    localparam ADDR_IRQ_STATUS          = 7'd65;  // 0x104: [1:0]=irq_status R/O
+    // IRQ 寄存器（扩展 7 位地址空间，0x100-0x10C）
+    localparam ADDR_IRQ_EN              = 7'd64;  // 0x100: [1:0]=irq_en（bit0=done，bit1=error）
+    localparam ADDR_IRQ_STATUS          = 7'd65;  // 0x104: [1:0]=irq_status 只读
     localparam ADDR_IRQ_CLEAR           = 7'd66;  // 0x108: [1:0]=irq_clear W1C
 
-    localparam ADDR_ADD_SRC0_MULT       = 6'd46;  // 0xB8: R1d ADD src0 pre-align multiplier
-    localparam ADDR_ADD_SRC0_SHIFT      = 6'd47;  // 0xBC: R1d ADD src0 pre-align shift
-    localparam ADDR_ADD_SRC1_MULT       = 6'd48;  // 0xC0: R1d ADD src1 pre-align multiplier
-    localparam ADDR_ADD_SRC1_SHIFT      = 6'd49;  // 0xC4: R1d ADD src1 pre-align shift
-    localparam ADDR_ADD_OUT_MULT        = 6'd50;  // 0xC8: R1d ADD post-requant multiplier
-    localparam ADDR_ADD_OUT_SHIFT       = 6'd51;  // 0xCC: R1d ADD post-requant shift
+    localparam ADDR_ADD_SRC0_MULT       = 6'd46;  // 0xB8: R1d ADD src0 预对齐乘数
+    localparam ADDR_ADD_SRC0_SHIFT      = 6'd47;  // 0xBC: R1d ADD src0 预对齐移位
+    localparam ADDR_ADD_SRC1_MULT       = 6'd48;  // 0xC0: R1d ADD src1 预对齐乘数
+    localparam ADDR_ADD_SRC1_SHIFT      = 6'd49;  // 0xC4: R1d ADD src1 预对齐移位
+    localparam ADDR_ADD_OUT_MULT        = 6'd50;  // 0xC8: R1d ADD 后 requant 乘数
+    localparam ADDR_ADD_OUT_SHIFT       = 6'd51;  // 0xCC: R1d ADD 后 requant 移位
 
     localparam [31:0] R1A_VERSION_VALUE = 32'h0001_000A;
     localparam [31:0] CAP_CONV_5X5      = 32'h0000_0001;
@@ -244,7 +244,7 @@ module npu_ctrl #(
                 ADDR_ADD_SRC0_MULT, ADDR_ADD_SRC0_SHIFT,
                 ADDR_ADD_SRC1_MULT, ADDR_ADD_SRC1_SHIFT,
                 ADDR_ADD_OUT_MULT, ADDR_ADD_OUT_SHIFT,
-                // Phase U8-a: IRQ registers
+                // IRQ 寄存器
                 ADDR_IRQ_EN, ADDR_IRQ_CLEAR:
                     is_write_addr_valid = 1'b1;
                 default:
@@ -286,7 +286,7 @@ module npu_ctrl #(
                 ADDR_ADD_SRC0_MULT, ADDR_ADD_SRC0_SHIFT,
                 ADDR_ADD_SRC1_MULT, ADDR_ADD_SRC1_SHIFT,
                 ADDR_ADD_OUT_MULT, ADDR_ADD_OUT_SHIFT,
-                // Phase U8-a: IRQ registers
+                // IRQ 寄存器
                 ADDR_IRQ_EN, ADDR_IRQ_STATUS:
                     is_read_addr_valid = 1'b1;
                 default:
@@ -296,7 +296,7 @@ module npu_ctrl #(
     endfunction
 
     // ============================================================
-    // AXI-Lite write path: AW+W stored separately, write when both ready
+    // AXI-Lite 写路径：AW+W 分开存储，两者就绪时写入
     // ============================================================
     reg         aw_stored;
     reg  [31:0] stored_awaddr;
@@ -316,7 +316,7 @@ module npu_ctrl #(
     wire [31:0] write_addr = aw_hs ? s_axi_awaddr : stored_awaddr;
     wire [31:0] write_data = w_hs  ? s_axi_wdata  : stored_wdata;
     wire [3:0]  write_strb = w_hs  ? s_axi_wstrb  : stored_wstrb;
-    wire [6:0]  wr_addr = write_addr[8:2];  // Phase U8-a: extended to 7 bits for IRQ CSRs
+    wire [6:0]  wr_addr = write_addr[8:2];  // 扩展至 7 位以支持 IRQ CSR
     wire [31:0] ctrl_write_data = apply_wstrb(32'h0, write_data, write_strb);
 
     always @(posedge clk or negedge rst_n) begin
@@ -351,7 +351,7 @@ module npu_ctrl #(
         end
     end
 
-    // BVALID: fires when write completes
+    // BVALID: 写操作完成时发出
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             bvalid <= 1'b0;
@@ -367,14 +367,14 @@ module npu_ctrl #(
     assign s_axi_bresp  = bresp;
 
     // ============================================================
-    // AXI-Lite read path
+    // AXI-Lite 读路径
     // ============================================================
     reg         ar_stored;
     reg  [31:0] stored_araddr;
     reg         rvalid;
     reg  [31:0] rdata_reg;
     reg  [1:0]  rresp_reg;
-    wire [6:0]  rd_addr = stored_araddr[8:2];  // Phase U8-a: extended to 7 bits for IRQ CSRs
+    wire [6:0]  rd_addr = stored_araddr[8:2];  // 扩展至 7 位以支持 IRQ CSR
 
     assign s_axi_arready = !ar_stored;
 
@@ -407,7 +407,7 @@ module npu_ctrl #(
     assign s_axi_rresp  = rresp_reg;
 
     // ============================================================
-    // Internal registers
+    // 内部寄存器
     // ============================================================
     reg  [31:0] cfg_task_type;
     reg  [31:0] cfg_input_addr;
@@ -439,17 +439,17 @@ module npu_ctrl #(
     reg  [31:0] cfg_add_out_mult;
     reg  [31:0] cfg_add_out_shift;
 
-    // Status registers (HW-managed)
+    // 状态寄存器（硬件管理）
     reg         busy;
     reg         done;
     reg         error;
     reg  [7:0]  error_code;
 
-    // Phase U8-a: IRQ registers
-    reg  [1:0]  irq_en;       // bit0=done_irq_en, bit1=error_irq_en
-    reg  [1:0]  irq_status;   // bit0=done_pending, bit1=error_pending
+    // IRQ 寄存器
+    reg  [1:0]  irq_en;       // bit0=done_irq_en，bit1=error_irq_en
+    reg  [1:0]  irq_status;   // bit0=done_pending，bit1=error_pending
 
-    // Task latched outputs
+    // 任务锁存输出
     reg         task_start_r;
     reg  [2:0]  task_type_r;
     reg  [31:0] input_addr_r;
@@ -484,7 +484,7 @@ module npu_ctrl #(
 
     wire wr_allowed = !busy || error;
 
-    // Register write: use the transaction payload selected from live or stored channels.
+    // 寄存器写：使用从当前或已存储通道中选择的事务负载。
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             cfg_task_type    <= 32'h0;
@@ -524,7 +524,7 @@ module npu_ctrl #(
             cfg_add_out_shift <= 32'd0;
         end else if (write_hs && wr_allowed && is_write_addr_valid(wr_addr)) begin
             case (wr_addr)
-                ADDR_TASK_TYPE:    cfg_task_type    <= apply_wstrb(cfg_task_type, write_data, write_strb);  // U9-b4: preserve full 32b for reserved-bit check
+                ADDR_TASK_TYPE:    cfg_task_type    <= apply_wstrb(cfg_task_type, write_data, write_strb);  // 保留完整 32 位以支持保留位检查
                 ADDR_INPUT_ADDR:   cfg_input_addr   <= apply_wstrb(cfg_input_addr, write_data, write_strb);
                 ADDR_WEIGHT_ADDR:  cfg_weight_addr  <= apply_wstrb(cfg_weight_addr, write_data, write_strb);
                 ADDR_OUTPUT_ADDR:  cfg_output_addr  <= apply_wstrb(cfg_output_addr, write_data, write_strb);
@@ -545,7 +545,7 @@ module npu_ctrl #(
                 ADDR_REQUANT3_SHIFT:cfg_requant_shift[3] <= apply_wstrb(cfg_requant_shift[3], write_data, write_strb);
                 ADDR_CLUSTER_MODE:  cfg_cluster_mode      <= apply_wstrb(cfg_cluster_mode, write_data, write_strb) & 32'h0000_0003;
                 ADDR_CLUSTER_MASK:  cfg_cluster_mask      <= apply_wstrb(cfg_cluster_mask, write_data, write_strb) & 32'h0000_003f;
-                ADDR_CONV_CFG:      cfg_conv_cfg          <= apply_wstrb(cfg_conv_cfg, write_data, write_strb) & 32'h0000_007f; // bit[6]: U4-d INT8 test hook
+                ADDR_CONV_CFG:      cfg_conv_cfg          <= apply_wstrb(cfg_conv_cfg, write_data, write_strb) & 32'h0000_007f; // bit[6]: INT8 测试钩子
                 ADDR_BIAS_ADDR:     cfg_bias_addr         <= apply_wstrb(cfg_bias_addr, write_data, write_strb);
                 ADDR_BIAS_BYTES:    cfg_bias_bytes        <= apply_wstrb(cfg_bias_bytes, write_data, write_strb);
                 ADDR_SRC1_ADDR:     cfg_src1_addr         <= apply_wstrb(cfg_src1_addr, write_data, write_strb);
@@ -559,7 +559,7 @@ module npu_ctrl #(
                 ADDR_ADD_SRC1_SHIFT:cfg_add_src1_shift    <= apply_wstrb(cfg_add_src1_shift, write_data, write_strb) & 32'h0000_003f;
                 ADDR_ADD_OUT_MULT:  cfg_add_out_mult      <= apply_wstrb(cfg_add_out_mult, write_data, write_strb);
                 ADDR_ADD_OUT_SHIFT: cfg_add_out_shift     <= apply_wstrb(cfg_add_out_shift, write_data, write_strb) & 32'h0000_003f;
-                // Phase U8-a: IRQ registers
+                // IRQ 寄存器
                 ADDR_IRQ_EN:    irq_en      <= write_data[1:0];
                 ADDR_IRQ_CLEAR: irq_status  <= irq_status & ~write_data[1:0];  // W1C
                 default: ;
@@ -568,7 +568,7 @@ module npu_ctrl #(
     end
 
     // ============================================================
-    // Control FSM: start / check / busy / done / error
+    // 控制 FSM：启动 / 检查 / 忙碌 / 完成 / 错误
     // ============================================================
     wire busy_write_violation = write_hs && busy && !error;
     wire busy_start_violation = write_hs && busy && !error && (wr_addr == ADDR_CTRL) && ctrl_write_data[0];
@@ -630,11 +630,11 @@ module npu_ctrl #(
                 busy       <= 1'b0;
                 error      <= 1'b1;
                 error_code <= task_error_code_i;
-                irq_status[1] <= 1'b1;  // Phase U8-a: error pending
+                irq_status[1] <= 1'b1;  // error 挂起
             end else if (task_done_i && busy && !done) begin
                 busy  <= 1'b0;
                 done  <= 1'b1;
-                irq_status[0] <= 1'b1;  // Phase U8-a: done pending
+                irq_status[0] <= 1'b1;  // done 挂起
                 error <= 1'b0;
             end else if (checking && check_done_i) begin
                 checking <= 1'b0;
@@ -647,7 +647,7 @@ module npu_ctrl #(
                     busy       <= 1'b0;
                     error      <= 1'b1;
                     error_code <= task_error_code_i;
-                    irq_status[1] <= 1'b1;  // Phase U8-a: checker error pending
+                    irq_status[1] <= 1'b1;  // checker error 挂起
                 end
             end else if (write_new_start) begin
                 task_type_r     <= cfg_task_type[2:0];
@@ -723,7 +723,7 @@ module npu_ctrl #(
 
     assign task_start    = task_start_r;
     assign task_type     = task_type_r;
-    assign task_type_reserved_invalid = |cfg_task_type[31:3];  // U9-b4: detect illegal high bits
+    assign task_type_reserved_invalid = |cfg_task_type[31:3];  // 检测非法高位
     assign input_addr    = input_addr_r;
     assign weight_addr   = weight_addr_r;
     assign output_addr   = output_addr_r;
@@ -756,11 +756,11 @@ module npu_ctrl #(
     assign add_out_multiplier = add_out_mult_r;
     assign add_out_shift = add_out_shift_r;
 
-    // Phase U8-a: NPU IRQ output
+    // NPU IRQ 输出
     assign npu_irq = |(irq_status & irq_en);
 
     // ============================================================
-    // AXI read data generation
+    // AXI 读数据生成
     // ============================================================
     wire [31:0] ctrl_value = {28'h0, error, done, busy, 1'b0};
     wire [31:0] status_value = {24'h0, error_code};
@@ -830,7 +830,7 @@ module npu_ctrl #(
         (rd_addr == ADDR_ADD_SRC1_SHIFT)      ? cfg_add_src1_shift    :
         (rd_addr == ADDR_ADD_OUT_MULT)        ? cfg_add_out_mult      :
         (rd_addr == ADDR_ADD_OUT_SHIFT)       ? cfg_add_out_shift     :
-        // Phase U8-a: IRQ registers
+        // IRQ 寄存器
         (rd_addr == ADDR_IRQ_EN)              ? {30'h0, irq_en}       :
         (rd_addr == ADDR_IRQ_STATUS)          ? {30'h0, irq_status}   :
         32'h0;

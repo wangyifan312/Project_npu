@@ -1,10 +1,10 @@
-// residual_add_requant_i8: R1d residual ADD foundation.
-// Numeric ordering:
-//   src0 INT8 -> pre-align requant -> INT32
-//   src1 INT8 -> pre-align requant -> INT32
-//   add -> optional ReLU -> post requant -> INT8
-// The module reuses requant_i32_to_i8 for all scale conversions and does not
-// alter the existing round/clamp semantics.
+// residual_add_requant_i8: R1d 残差 ADD 基础模块。
+// 数值顺序：
+//   src0 INT8 -> 预对齐 requant -> INT32
+//   src1 INT8 -> 预对齐 requant -> INT32
+//   加法 -> 可选 ReLU -> 后 requant -> INT8
+// 本模块复用 requant_i32_to_i8 进行所有尺度转换，不改变
+// 现有 round/clamp 语义。
 `timescale 1ns / 1ps
 
 module residual_add_requant_i8 (

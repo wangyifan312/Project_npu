@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 
-// output_arbiter: single-cluster output pass-through (64x64 PE array).
-// With CLUSTER_COUNT=1: no round-robin needed — passes cluster 0 straight through.
+// output_arbiter: 单cluster输出直通（64x64 PE阵列）。
+// CLUSTER_COUNT=1 时：无需轮询——cluster 0 直通输出。
 
 module output_arbiter #(
     parameter CLUSTER_COUNT = 1,
@@ -21,7 +21,7 @@ module output_arbiter #(
     output wire                                 all_done
 );
 
-    // Single-cluster: always pick cluster 0 when valid
+    // 单cluster：valid 时始终选取 cluster 0
     always @(*) begin
         arb_valid        = cluster_enable[0] && cluster_valid[0];
         arb_cluster_id   = 3'd0;

@@ -1,6 +1,6 @@
-// axi_interconnect: simple AXI address decoder + mux
-// Routes: CPU (AXI-Lite master) → Memory or NPU registers
-//          NPU DMA (AXI4 master) → Memory
+// axi_interconnect: 简单 AXI 地址译码器 + 多路复用
+// 路由：CPU（AXI-Lite master）→ Memory 或 NPU 寄存器
+//       NPU DMA（AXI4 master）→ Memory
 `timescale 1ns / 1ps
 
 module axi_interconnect #(
@@ -8,12 +8,12 @@ module axi_interconnect #(
     parameter CPU_AXI_DATA_W  = 32,
     parameter DMA_AXI_DATA_W  = 256,
     parameter NPU_BASE   = 32'h1000_0000,
-    parameter NPU_MASK   = 32'hFFFF_FE00  // 512B NPU register space (extended for IRQ CSRs)
+    parameter NPU_MASK   = 32'hFFFF_FE00  // 512B NPU 寄存器空间（为 IRQ CSR 扩展）
 ) (
     input  wire        clk,
     input  wire        rst_n,
 
-    // === CPU AXI-Lite Master ===
+    // === CPU AXI-Lite 主设备 ===
     input  wire                        cpu_awvalid,
     output wire                        cpu_awready,
     input  wire [AXI_ADDR_W-1:0]       cpu_awaddr,
@@ -34,7 +34,7 @@ module axi_interconnect #(
     output wire [CPU_AXI_DATA_W-1:0]   cpu_rdata,
     output wire [1:0]                  cpu_rresp,
 
-    // === NPU Register Slave (connected to npu_ctrl) ===
+    // === NPU 寄存器从设备（连接至 npu_ctrl） ===
     output wire                        npu_awvalid,
     input  wire                        npu_awready,
     output wire [AXI_ADDR_W-1:0]       npu_awaddr,
@@ -53,7 +53,7 @@ module axi_interconnect #(
     input  wire [CPU_AXI_DATA_W-1:0]   npu_rdata,
     input  wire [1:0]                  npu_rresp,
 
-    // === Memory Slave (AXI-Lite) ===
+    // === Memory 从设备 (AXI-Lite) ===
     output wire                        mem_awvalid,
     input  wire                        mem_awready,
     output wire [AXI_ADDR_W-1:0]       mem_awaddr,
@@ -72,8 +72,8 @@ module axi_interconnect #(
     input  wire [CPU_AXI_DATA_W-1:0]   mem_rdata,
     input  wire [1:0]                  mem_rresp,
 
-    // === NPU DMA AXI4 Master (pass-through to memory) ===
-    // DMA Read
+    // === NPU DMA AXI4 主设备（直通至 Memory） ===
+    // DMA 读
     input  wire                        dma_arvalid,
     output wire                        dma_arready,
     input  wire [AXI_ADDR_W-1:0]       dma_araddr,
@@ -86,7 +86,7 @@ module axi_interconnect #(
     output wire                        dma_rlast,
     output wire [1:0]                  dma_rresp,
 
-    // DMA Write
+    // DMA 写
     input  wire                        dma_awvalid,
     output wire                        dma_awready,
     input  wire [AXI_ADDR_W-1:0]       dma_awaddr,
@@ -102,7 +102,7 @@ module axi_interconnect #(
     input  wire                        dma_bready,
     output wire [1:0]                  dma_bresp,
 
-    // === Memory AXI4 Slave port (for DMA) ===
+    // === Memory AXI4 从设备端口（供 DMA） ===
     output wire                        mem4_awvalid,
     input  wire                        mem4_awready,
     output wire [AXI_ADDR_W-1:0]       mem4_awaddr,
@@ -149,7 +149,7 @@ module axi_interconnect #(
     endfunction
 
     // ============================================================
-    // CPU AXI-Lite write bridge
+    // CPU AXI-Lite 写桥接
     // ============================================================
     reg                         cpu_aw_buf_valid;
     reg  [AXI_ADDR_W-1:0]       cpu_aw_buf_addr;
@@ -266,7 +266,7 @@ module axi_interconnect #(
     assign cpu_bresp  = cpu_bresp_r;
 
     // ============================================================
-    // CPU AXI-Lite read bridge
+    // CPU AXI-Lite 读桥接
     // ============================================================
     reg                       rd_active;
     reg [1:0]                 rd_target;
@@ -338,7 +338,7 @@ module axi_interconnect #(
     assign cpu_rdata  = cpu_rdata_r;
     assign cpu_rresp  = cpu_rresp_r;
 
-    // === NPU DMA → Memory AXI4 (direct pass-through) ===
+    // === NPU DMA → Memory AXI4（直接直通） ===
     assign mem4_awvalid = dma_awvalid;
     assign mem4_awaddr  = dma_awaddr;
     assign mem4_awlen   = dma_awlen;

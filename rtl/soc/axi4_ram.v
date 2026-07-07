@@ -1,5 +1,5 @@
-// axi4_ram: AXI4-capable RAM model for 256-bit DMA burst read/write
-// Supports INCR bursts; ARLEN/AWLEN count 256-bit beats.
+// axi4_ram: 支持 AXI4 的 RAM 模型，用于 256-bit DMA 突发读写
+// 支持 INCR 突发；ARLEN/AWLEN 以 256-bit beat 计数。
 `timescale 1ns / 1ps
 
 module axi4_ram #(
@@ -10,7 +10,7 @@ module axi4_ram #(
     input  wire        clk,
     input  wire        rst_n,
 
-    // AXI4 Write Address
+    // AXI4 写地址
     input  wire                        s_axi_awvalid,
     output wire                        s_axi_awready,
     input  wire [AXI_ADDR_W-1:0]       s_axi_awaddr,
@@ -18,19 +18,19 @@ module axi4_ram #(
     input  wire [2:0]                  s_axi_awsize,
     input  wire [1:0]                  s_axi_awburst,
 
-    // AXI4 Write Data
+    // AXI4 写数据
     input  wire                        s_axi_wvalid,
     output wire                        s_axi_wready,
     input  wire [AXI_DATA_W-1:0]       s_axi_wdata,
     input  wire [(AXI_DATA_W/8)-1:0]   s_axi_wstrb,
     input  wire                        s_axi_wlast,
 
-    // AXI4 Write Response
+    // AXI4 写响应
     output wire                        s_axi_bvalid,
     input  wire                        s_axi_bready,
     output wire [1:0]                  s_axi_bresp,
 
-    // AXI4 Read Address
+    // AXI4 读地址
     input  wire                        s_axi_arvalid,
     output wire                        s_axi_arready,
     input  wire [AXI_ADDR_W-1:0]       s_axi_araddr,
@@ -38,7 +38,7 @@ module axi4_ram #(
     input  wire [2:0]                  s_axi_arsize,
     input  wire [1:0]                  s_axi_arburst,
 
-    // AXI4 Read Data
+    // AXI4 读数据
     output wire                        s_axi_rvalid,
     input  wire                        s_axi_rready,
     output wire [AXI_DATA_W-1:0]       s_axi_rdata,
@@ -103,7 +103,7 @@ module axi4_ram #(
     endfunction
 
     // ============================================================
-    // Write path
+    // 写路径
     // ============================================================
     reg         aw_valid_r;
     reg  [AXI_ADDR_W-1:0] aw_addr_r;
@@ -175,7 +175,7 @@ module axi4_ram #(
     assign s_axi_bresp  = bresp_r;
 
     // ============================================================
-    // Read path
+    // 读路径
     // ============================================================
     reg         ar_valid_r;
     reg  [AXI_ADDR_W-1:0] ar_addr_r;

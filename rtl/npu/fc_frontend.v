@@ -1,50 +1,50 @@
-// fc_frontend: legacy/debug Fully-Connected stream formatter.
-// P0-3 formal FC execution is implemented directly in npu_top on the
-// cluster_scheduler -> compute_core -> output_arbiter path.
-// Passes activations through as a 1D vector stream for vector-matrix multiply.
-// Supports tiling: if output neurons > array columns, iterates over column blocks.
-// Weights for output column j go to array column j; activations stream through rows.
+// fc_frontend: legacy/debug 全连接流格式化器。
+// P0-3 正式 FC 执行直接在 npu_top 的
+// cluster_scheduler -> compute_core -> output_arbiter 路径上实现。
+// 将激活值以 1D 向量流形式传递，用于向量-矩阵乘法。
+// 支持分块：若输出神经元 > 阵列列数，则迭代列块。
+// 输出列 j 的权重送至阵列列 j；激活值在行方向流动。
 `timescale 1ns / 1ps
 
 module fc_frontend #(
-    parameter MAX_COLS = 64    // max array columns available for FC weights
+    parameter MAX_COLS = 64    // FC 权重可用的最大阵列列数
 ) (
     input  wire        clk,
     input  wire        rst_n,
 
-    // Input: streaming activation data from act_buffer
+    // 输入：来自 act_buffer 的流式激活数据
     input  wire [7:0]  act_data,
     input  wire        act_valid,
     output wire        act_ready,
 
-    // Output: activation stream (1D vector, same data, gated by state)
+    // 输出：激活流（1D 向量，相同数据，由状态门控）
     output wire [7:0]  act_out,
     output wire        act_valid_o,
 
-    // Control
-    input  wire [15:0] input_size,   // total number of input activations (N)
-    input  wire [15:0] output_size,  // total number of output neurons (M)
-    input  wire [15:0] block_start,  // starting output column for this block
+    // 控制
+    input  wire [15:0] input_size,   // 输入激活总数 (N)
+    input  wire [15:0] output_size,  // 输出神经元总数 (M)
+    input  wire [15:0] block_start,  // 本块的起始输出列
     input  wire        start,
     output wire        done,
-    output wire        block_done    // pulsed when current block done, next block needed
+    output wire        block_done    // 当前块完成时脉冲，需要下一块
 );
 
     // ============================================================
-    // State machine
+    // 状态机
     // ============================================================
     localparam S_IDLE     = 2'd0;
-    localparam S_STREAM   = 2'd1;  // streaming activations for current block
+    localparam S_STREAM   = 2'd1;  // 为当前块流式传输激活值
     localparam S_BLOCK_DONE = 2'd2;
     localparam S_DONE     = 2'd3;
 
     reg [1:0]  state;
-    reg [15:0] count;           // activations fed in current block
-    reg [15:0] block_col;       // current block's starting output column
+    reg [15:0] count;           // 当前块已送入的激活数
+    reg [15:0] block_col;       // 当前块的起始输出列
     reg [15:0] total_blocks;    // ceil(output_size / MAX_COLS)
 
     // ============================================================
-    // Sequential
+    // 时序逻辑
     // ============================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -95,7 +95,7 @@ module fc_frontend #(
     end
 
     // ============================================================
-    // Outputs
+    // 输出
     // ============================================================
     assign act_ready  = (state == S_STREAM);
     assign act_out    = act_data;

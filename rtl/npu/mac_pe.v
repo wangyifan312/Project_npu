@@ -1,26 +1,26 @@
-// mac_pe: single MAC Processing Element for systolic array
-// INT8 activation × INT8 weight → INT32 accumulation
-// Weight-stationary: weight pre-loaded, activation flows left→right, sum flows top→bottom
+// mac_pe: 脉动阵列的单个 MAC 处理单元
+// INT8 激活 × INT8 权重 → INT32 累加
+// 权重驻留：权重预加载，激活从左→右流动，部分和从上→下流动
 `timescale 1ns / 1ps
 
 module mac_pe (
     input  wire        clk,
     input  wire        rst_n,
 
-    // Data flow: activation left→right, partial sum top→bottom
+    // 数据流：激活左→右，部分和上→下
     input  wire [7:0]  act_in,
     output wire [7:0]  act_out,
     input  wire [31:0] sum_in,
     output wire [31:0] sum_out,
 
-    // Weight loading
+    // 权重加载
     input  wire [7:0]  weight,
     input  wire        weight_ld
 );
 
-    // Registered activation (forwarded to right neighbor)
+    // 寄存的激活值（转发给右侧邻居）
     reg [7:0]  act_reg;
-    // Weight storage (stationary)
+    // 权重存储（驻留）
     reg [7:0]  weight_reg;
 
     always @(posedge clk or negedge rst_n) begin
@@ -34,11 +34,11 @@ module mac_pe (
         end
     end
 
-    // Multiply: INT8 × INT8 → INT16 (combinational)
+    // 乘法：INT8 × INT8 → INT16（组合逻辑）
     wire signed [15:0] product;
     assign product = $signed(act_reg) * $signed(weight_reg);
 
-    // Accumulate with pipeline register (1 cycle per PE for systolic rhythm)
+    // 带流水线寄存器的累加（每个 PE 1 周期以匹配脉动节拍）
     reg [31:0] sum_out_reg;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n)
@@ -48,7 +48,7 @@ module mac_pe (
     end
     assign sum_out = sum_out_reg;
 
-    // Forward activation (registered via act_reg)
+    // 转发激活值（经 act_reg 寄存）
     assign act_out = act_reg;
 
 endmodule
